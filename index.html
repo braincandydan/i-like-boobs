@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TMDb Movie Viewer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    #search-form {
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    #movies-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-around;
+    }
+
+    .movie {
+      margin: 20px;
+      max-width: 300px;
+      text-align: center;
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .movie img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+    }
+
+    .movie h2 {
+      font-size: 1.2em;
+      margin-top: 10px;
+    }
+
+    .movie p {
+      font-size: 1em;
+      color: #555;
+    }
+
+    .watch-button {
+      background-color: #3498db;
+      color: #fff;
+      padding: 8px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>TMDb Movie Viewer</h1>
+
+  <div id="search-form">
+    <form onsubmit="event.preventDefault(); fetchMovies(document.getElementById('search-input').value);">
+      <label for="search-input">Search for movies: </label>
+      <input type="text" id="search-input" required>
+      <button type="submit">Search</button>
+    </form>
+  </div>
+
+  <div id="movies-container"></div>
+
+  <script>
+    const apiKey = '6f2345080ac02f962901b6baa3723f58';
+    const accessToken = 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI2ZjIzNDUwODBhYzAyZjk2MjkwMWI2YmFhMzcyM2Y1OCIsInN1YiI6IjY1NmFhZDExZjBmNTBlZDEwNWIzNTM0YyIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Z-oU6dL94w36cr2WWJ8P7lR4-5qskfqFYXj82I3kGng';
+
+    function fetchMovies(searchQuery) {
+      const apiUrl = 'https://api.themoviedb.org/3/search/movie';
+      const options = {
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+      };
+
+      fetch(`${apiUrl}?api_key=${apiKey}&query=${searchQuery}`, options)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('TMDb API response:', data);
+          displayMovies(data.results);
+        })
+        .catch(error => console.error('Error fetching data:', error));
+    }
+
+    function getImdbId(tmdbId) {
+      const externalIdsUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/external_ids?api_key=${apiKey}`;
+      const options = {
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+      };
+
+      return fetch(externalIdsUrl, options)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('External IDs response:', data);
+          return data.imdb_id;
+        })
+        .catch(error => {
+          console.error('Error fetching IMDb ID:', error);
+          return null;
+        });
+    }
+
+    async function displayMovies(movies) {
+      const moviesContainer = document.getElementById('movies-container');
+      moviesContainer.innerHTML = '';
+
+      for (const movie of movies) {
+        const movieDiv = document.createElement('div');
+        movieDiv.className = 'movie';
+
+        if (movie.poster_path) {
+          const image = document.createElement('img');
+          image.src = `https://image.tmdb.org/t/p/w500/${movie.poster_path}`;
+          image.alt = `${movie.title} Poster`;
+          movieDiv.appendChild(image);
+        }
+
+        const title = document.createElement('h2');
+        title.textContent = movie.title;
+        movieDiv.appendChild(title);
+
+        const imdbId = await getImdbId(movie.id);
+        const imdbIdParagraph = document.createElement('p');
+        imdbIdParagraph.textContent = imdbId ? `IMDb ID: ${imdbId}` : 'IMDb ID: Not available';
+        movieDiv.appendChild(imdbIdParagraph);
+
+        const watchButton = document.createElement('button');
+        watchButton.className = 'watch-button';
+        watchButton.textContent = 'Watch This';
+        watchButton.addEventListener('click', () => openImdbLink(imdbId));
+        movieDiv.appendChild(watchButton);
+
+        moviesContainer.appendChild(movieDiv);
+      }
+    }
+
+    function openImdbLink(imdbId) {
+      console.log('IMDb ID:', imdbId);
+      if (imdbId) {
+        window.open(`https://vidsrc.me/embed/${imdbId}`, '_blank');
+      } else {
+        console.error('IMDb ID not available');
+      }
+    }
+  </script>
+
+</body>
+</html>
