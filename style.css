@@ -1,0 +1,185 @@
+
+body {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  margin: 0;
+  background-color: #111;
+  color: #fff;
+}
+
+header {
+  background-color: #e50914; /* Netflix red */
+  padding: 10px;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+}
+
+
+
+
+/* Header */
+
+nav {
+    display: flex;
+    align-items: center;
+  }
+
+  .logo-container{
+    float:left;
+    display:flex;
+    align-items: center;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 1.5em;
+    color: #fff;
+    float:left;
+    width:100%;
+
+  }
+  
+  svg{
+  max-width:130px;
+  float:left;
+  padding:1rem;
+  }
+  
+
+#search-form {
+  text-align: center;
+  
+  width:100%
+  
+}
+
+label {
+  font-size: 1.2em;
+  color: #fff;
+ 
+}
+
+
+
+
+
+
+.movie-button {
+  background-color: #212121;
+  color: #fff;
+  padding: 10px;
+  font-size: 1em;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.search-container{
+    width:80%;
+}
+
+.input-group {
+    display: flex;
+    align-items: center;
+    
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  
+  #search-input {
+    padding: 10px;
+    font-size: 1em;
+    border: none;
+    border-radius: 5px 0 0 5px;
+    width: 80%;
+    background-color: #810006;
+    color: white;
+    font-weight: bold;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    text-transform: uppercase;
+  }
+  
+  .input-group-btn {
+    background-color: transparent;
+    color: #fff;
+    padding: 10px;
+    font-size: 1em;
+    border: none;
+    cursor: pointer;
+    width: 10%;
+    background-color:lightslategray;
+  }
+  
+  #media-type {
+    padding: 10px;
+    font-size: 1em;
+    border: none;
+    border-radius: 0 5px 5px 0;
+    
+    background-color: transparent;
+    color: #fff;
+    width: 10%;
+    background-color: coral;
+  }
+
+/* Movie Section */
+
+#movies-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+.movie-poster {
+  width:100%;
+  
+}
+
+.movie {
+  
+  float: left;
+  margin:1rem;
+  
+}
+
+.movie-row{
+ width:20%;
+
+}
+
+
+/* Add this to your existing styles or update as needed */
+
+/* Screens 800px and smaller */
+@media (max-width: 800px) {
+    header {
+      flex-direction: column; /* Stack items vertically */
+      align-items: center; /* Center items horizontally */
+    }
+  
+    .search-container {
+      width: 100%;
+    }
+  
+    .input-group {
+      width: 100%;
+    }
+  
+    #search-input {
+      width: auto; /* Adjust as needed */
+    }
+  
+    .input-group-btn,
+    #media-type {
+        width: auto; /* Adjust as needed */
+    }
+  
+    .movie-row {
+      width: 33%; /* Make movie rows take full width */
+    }
+  }
+  
+  /* Other media queries remain unchanged */
+  
+
+
