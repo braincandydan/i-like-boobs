@@ -153,8 +153,6 @@ label {
 }
 
 
-/* Add this to your existing styles or update as needed */
-
 /* Screens 800px and smaller */
 @media (max-width: 800px) {
     header {
@@ -171,20 +169,16 @@ label {
     }
   
     #search-input {
-      width: auto; /* Adjust as needed */
+      width: 70%; /* Adjust as needed */
     }
   
     .input-group-btn,
     #media-type {
-        width: auto; /* Adjust as needed */
+      width: 30%; /* Adjust as needed */
     }
   
     .movie-row {
-      width: 33%; /* Make movie rows take full width */
+      width: 100%; /* Make movie rows take full width */
     }
   }
   
-  /* Other media queries remain unchanged */
-  
-
-
