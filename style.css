@@ -154,7 +154,7 @@ label {
 
 
 /* Screens 800px and smaller */
-@media (max-width: 800px) {
+@media (max-width: 1200px) {
     header {
       flex-direction: column; /* Stack items vertically */
       align-items: center; /* Center items horizontally */
