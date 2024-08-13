@@ -234,6 +234,17 @@ nav ul li a {
     }
   }
 
+  .director-link, .actor-link {
+    color: #e50914;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.director-link:hover, .actor-link:hover {
+    text-decoration: underline;
+}
+
+
   #search-form input,
   #search-form select,
   #search-form button {

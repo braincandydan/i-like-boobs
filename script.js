@@ -109,8 +109,8 @@ function displayMovieDetails(movie, imdbId, mediaType) {
   const releaseDate = movie.release_date || movie.first_air_date;
   const overview = movie.overview;
   const voteAverage = movie.vote_average;
-  const director = movie.credits.crew.find(person => person.job === 'Director')?.name || 'N/A';
-  const cast = movie.credits.cast.slice(0, 3).map(actor => actor.name).join(', '); // Limit to top 3 cast members
+  const director = movie.credits.crew.find(person => person.job === 'Director');
+  const cast = movie.credits.cast.slice(0, 5); // Get top 5 cast members
   const trailer = movie.videos.results.find(video => video.type === 'Trailer');
 
   let trailerHtml = '';
@@ -126,8 +126,11 @@ function displayMovieDetails(movie, imdbId, mediaType) {
       ? `https://vidsrc.xyz/embed/${mediaType}?imdb=${imdbId}`
       : `https://vidsrc.xyz/embed/${mediaType}?tmdb=${movie.id}`;
 
-  // Truncate overview if it's too long
   const truncatedOverview = overview.length > 200 ? overview.substring(0, 200) + '...' : overview;
+
+  const castLinks = cast.map(actor => 
+      `<a href="#" class="actor-link" data-actor-id="${actor.id}">${actor.name}</a>`
+  ).join(', ');
 
   modalContent.innerHTML = `
       <span class="close">&times;</span>
@@ -135,8 +138,8 @@ function displayMovieDetails(movie, imdbId, mediaType) {
           <div class="modal-info">
               <h2>${title}</h2>
               <p><strong>Release Date:</strong> ${releaseDate}</p>
-              <p><strong>Director:</strong> ${director}</p>
-              <p><strong>Cast:</strong> ${cast}</p>
+              <p><strong>Director:</strong> <a href="#" class="director-link" data-director-id="${director ? director.id : ''}">${director ? director.name : 'N/A'}</a></p>
+              <p><strong>Cast:</strong> ${castLinks}</p>
               <p><strong>Rating:</strong> ${voteAverage}/10</p>
               <h3>Overview</h3>
               <p>${truncatedOverview}</p>
@@ -155,8 +158,30 @@ function displayMovieDetails(movie, imdbId, mediaType) {
   document.querySelector('.close').addEventListener('click', () => {
       document.getElementById('movie-modal').style.display = 'none';
   });
-}
 
+  // Add click event listener to director's name
+  const directorLink = document.querySelector('.director-link');
+  if (directorLink) {
+      directorLink.addEventListener('click', (event) => {
+          event.preventDefault();
+          const directorId = event.target.dataset.directorId;
+          if (directorId) {
+              searchPersonWorks(directorId, event.target.textContent, 'Director');
+          }
+      });
+  }
+
+  // Add click event listeners to actors' names
+  document.querySelectorAll('.actor-link').forEach(link => {
+      link.addEventListener('click', (event) => {
+          event.preventDefault();
+          const actorId = event.target.dataset.actorId;
+          if (actorId) {
+              searchPersonWorks(actorId, event.target.textContent, 'Actor');
+          }
+      });
+  });
+}
 // Search for movies or TV shows
 async function searchMedia(query, mediaType) {
     const url = `https://api.themoviedb.org/3/search/${mediaType}?api_key=${apiKey}&query=${encodeURIComponent(query)}`;
@@ -336,3 +361,102 @@ document.addEventListener('DOMContentLoaded', () => {
       // Your existing handleKeyNavigation code here...
   };
 });
+
+async function searchDirectorWorks(directorId, directorName) {
+  const url = `https://api.themoviedb.org/3/person/${directorId}/combined_credits?api_key=${apiKey}&language=en-US`;
+  try {
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      // Filter to include only movies and TV shows where the person was a director
+      const directedWorks = data.crew.filter(work => work.job === 'Director');
+      
+      // Sort by popularity (descending)
+      directedWorks.sort((a, b) => b.popularity - a.popularity);
+
+      // Close the modal
+      document.getElementById('movie-modal').style.display = 'none';
+
+      // Display the results
+      displayDirectorWorks(directedWorks, directorName);
+  } catch (error) {
+      console.error('Error fetching director works:', error);
+  }
+}
+
+function displayDirectorWorks(works, directorName) {
+  // Clear existing content
+  const mainContent = document.querySelector('main');
+  mainContent.innerHTML = '';
+
+  // Create a new section for director's works
+  const directorSection = document.createElement('section');
+  directorSection.innerHTML = `<h2>Works directed by ${directorName}</h2>`;
+  
+  // Create a container for the works
+  const worksContainer = document.createElement('div');
+  worksContainer.className = 'content-row';
+
+  // Display up to 20 works
+  works.slice(0, 20).forEach(work => {
+      const workElement = createMovieElement(work);
+      worksContainer.appendChild(workElement);
+  });
+
+  directorSection.appendChild(worksContainer);
+  mainContent.appendChild(directorSection);
+
+  // Scroll to the top of the page
+  window.scrollTo(0, 0);
+}
+async function searchPersonWorks(personId, personName, role) {
+    const url = `https://api.themoviedb.org/3/person/${personId}/combined_credits?api_key=${apiKey}&language=en-US`;
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        let works;
+        if (role === 'Director') {
+            works = data.crew.filter(work => work.job === 'Director');
+        } else {
+            works = data.cast;
+        }
+        
+        // Sort by popularity (descending)
+        works.sort((a, b) => b.popularity - a.popularity);
+
+        // Close the modal
+        document.getElementById('movie-modal').style.display = 'none';
+
+        // Display the results
+        displayPersonWorks(works, personName, role);
+    } catch (error) {
+        console.error(`Error fetching ${role.toLowerCase()} works:`, error);
+    }
+}
+
+function displayPersonWorks(works, personName, role) {
+    // Clear existing content
+    const mainContent = document.querySelector('main');
+    mainContent.innerHTML = '';
+
+    // Create a new section for person's works
+    const personSection = document.createElement('section');
+    personSection.innerHTML = `<h2>Works ${role === 'Director' ? 'directed' : 'featuring'} ${personName}</h2>`;
+    
+    // Create a container for the works
+    const worksContainer = document.createElement('div');
+    worksContainer.className = 'content-row';
+
+    // Display up to 20 works
+    works.slice(0, 20).forEach(work => {
+        const workElement = createMovieElement(work);
+        worksContainer.appendChild(workElement);
+    });
+
+    personSection.appendChild(worksContainer);
+    mainContent.appendChild(personSection);
+
+    // Scroll to the top of the page
+    window.scrollTo(0, 0);
+}
