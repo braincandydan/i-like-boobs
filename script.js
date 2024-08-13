@@ -130,11 +130,35 @@ async function searchMedia(query, mediaType) {
     try {
         const response = await fetch(url);
         const data = await response.json();
+        hideAllSections();
         displayMovies(data.results, 'search-results-content');
         document.getElementById('search-results').style.display = 'block';
     } catch (error) {
         console.error('Error searching:', error);
     }
+}
+
+// Hide all content sections except search results
+function hideAllSections() {
+    const sections = ['home', 'movies', 'tv-shows'];
+    sections.forEach(section => {
+        document.getElementById(section).style.display = 'none';
+    });
+}
+
+// Show all content sections and hide search results
+function showAllSections() {
+    const sections = ['home', 'movies', 'tv-shows'];
+    sections.forEach(section => {
+        document.getElementById(section).style.display = 'block';
+    });
+    document.getElementById('search-results').style.display = 'none';
+}
+
+// Clear search and restore original view
+function clearSearch() {
+    document.getElementById('search-input').value = '';
+    showAllSections();
 }
 
 // Event Listeners
@@ -150,8 +174,19 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const query = document.getElementById('search-input').value;
         const mediaType = document.getElementById('media-type').value;
-        searchMedia(query, mediaType);
+        if (query.trim() !== '') {
+            searchMedia(query, mediaType);
+        } else {
+            clearSearch();
+        }
     });
+
+    // Add clear search button
+    const clearButton = document.createElement('button');
+    clearButton.textContent = 'Clear Search';
+    clearButton.id = 'clear-search';
+    clearButton.addEventListener('click', clearSearch);
+    document.getElementById('search-form').appendChild(clearButton);
 
     // Modal close button
     document.querySelector('.close').addEventListener('click', () => {
@@ -164,5 +199,63 @@ document.addEventListener('DOMContentLoaded', () => {
         if (event.target === modal) {
             modal.style.display = 'none';
         }
+    });
+});
+
+let currentFocus = null;
+
+function handleKeyNavigation(event) {
+    const focusableElements = document.querySelectorAll('.movie, button, input, select');
+    const focusArray = Array.from(focusableElements);
+
+    if (!currentFocus) {
+        currentFocus = focusArray[0];
+        currentFocus.focus();
+        return;
+    }
+
+    const currentIndex = focusArray.indexOf(currentFocus);
+
+    switch(event.key) {
+        case 'ArrowRight':
+            if (currentIndex < focusArray.length - 1) {
+                currentFocus = focusArray[currentIndex + 1];
+            }
+            break;
+        case 'ArrowLeft':
+            if (currentIndex > 0) {
+                currentFocus = focusArray[currentIndex - 1];
+            }
+            break;
+        case 'ArrowUp':
+            const upIndex = Math.max(0, currentIndex - 5);
+            currentFocus = focusArray[upIndex];
+            break;
+        case 'ArrowDown':
+            const downIndex = Math.min(focusArray.length - 1, currentIndex + 5);
+            currentFocus = focusArray[downIndex];
+            break;
+    }
+
+    currentFocus.focus();
+    event.preventDefault();
+}
+
+document.addEventListener('keydown', handleKeyNavigation);
+
+const backToTopButton = document.getElementById('back-to-top');
+
+window.addEventListener('scroll', () => {
+    if (window.pageYOffset > 300) {
+        backToTopButton.style.display = 'block';
+    } else {
+        backToTopButton.style.display = 'none';
+    }
+});
+
+backToTopButton.addEventListener('click', () => {
+    window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
     });
 });

@@ -24,14 +24,10 @@
             </select>
             <button type="submit">Search</button>
         </form>
-        <section id="search-results">
-          <h2>Search Results</h2>
-          <div id="search-results-content" class="content-row"></div>
-      </section>
     </header>
 
     <main>
-        <section id="home" class="active">
+        <section id="home">
             <h2>Featured</h2>
             <div id="featured-content" class="content-row"></div>
 
@@ -55,7 +51,10 @@
             <div id="tv-shows-content" class="content-row"></div>
         </section>
 
-      
+        <section id="search-results" style="display: none;">
+            <h2>Search Results</h2>
+            <div id="search-results-content" class="content-row"></div>
+        </section>
     </main>
 
     <div id="movie-modal" class="modal">
@@ -64,6 +63,8 @@
             <div id="movie-details"></div>
         </div>
     </div>
+    <button id="back-to-top" style="display: none;">Back to Top</button>
+
 
     <script src="script.js"></script>
 </body>
