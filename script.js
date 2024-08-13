@@ -14,32 +14,51 @@ async function fetchContent(endpoint, containerId) {
 }
 
 // Display movies in the specified container
-function displayMovies(moviesData, containerId) {
-    const container = document.getElementById(containerId);
-    container.innerHTML = '';
+function displayMovies(moviesData, containerId, category) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
 
-    moviesData.forEach(movie => {
-        const movieDiv = document.createElement('div');
-        movieDiv.className = 'movie';
-        movieDiv.tabIndex = 0;
+  const moviesToShow = moviesData.slice(0, 4);
 
-        if (movie.poster_path) {
-            const image = document.createElement('img');
-            image.src = `https://image.tmdb.org/t/p/w500/${movie.poster_path}`;
-            image.alt = `${movie.title || movie.name} Poster`;
-            image.className = 'movie-poster';
-            movieDiv.appendChild(image);
-        }
+  moviesToShow.forEach(movie => {
+      const movieDiv = createMovieElement(movie);
+      container.appendChild(movieDiv);
+  });
 
-        movieDiv.addEventListener('click', () => showMovieDetails(movie));
-        movieDiv.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                showMovieDetails(movie);
-            }
-        });
+  // Add "See All" button
+  const seeAllButton = document.createElement('button');
+  seeAllButton.textContent = 'See All';
+  seeAllButton.className = 'see-all-button';
+  seeAllButton.addEventListener('click', () => handleSeeAll(category));
+  container.appendChild(seeAllButton);
+}
 
-        container.appendChild(movieDiv);
-    });
+function createMovieElement(movie) {
+  const movieDiv = document.createElement('div');
+  movieDiv.className = 'movie';
+  movieDiv.tabIndex = 0;
+
+  if (movie.poster_path) {
+      const image = document.createElement('img');
+      image.src = `https://image.tmdb.org/t/p/w500/${movie.poster_path}`;
+      image.alt = `${movie.title || movie.name} Poster`;
+      image.className = 'movie-poster';
+      movieDiv.appendChild(image);
+  }
+
+  movieDiv.addEventListener('click', () => showMovieDetails(movie));
+  movieDiv.addEventListener('keypress', (event) => {
+      if (event.key === 'Enter') {
+          showMovieDetails(movie);
+      }
+  });
+
+  return movieDiv;
+}
+
+function handleSeeAll(category) {
+  // Use the existing searchMedia function to show all movies in the category
+  searchMedia(category, 'movie');
 }
 
 // Show movie details in modal
@@ -85,43 +104,57 @@ async function getMovieDetails(tmdbId, mediaType) {
 
 // Display movie details in modal
 function displayMovieDetails(movie, imdbId, mediaType) {
-    const modalContent = document.getElementById('movie-details');
-    const title = movie.title || movie.name;
-    const releaseDate = movie.release_date || movie.first_air_date;
-    const overview = movie.overview;
-    const voteAverage = movie.vote_average;
-    const director = movie.credits.crew.find(person => person.job === 'Director')?.name || 'N/A';
-    const cast = movie.credits.cast.slice(0, 5).map(actor => actor.name).join(', ');
-    const trailer = movie.videos.results.find(video => video.type === 'Trailer');
+  const modalContent = document.getElementById('movie-details');
+  const title = movie.title || movie.name;
+  const releaseDate = movie.release_date || movie.first_air_date;
+  const overview = movie.overview;
+  const voteAverage = movie.vote_average;
+  const director = movie.credits.crew.find(person => person.job === 'Director')?.name || 'N/A';
+  const cast = movie.credits.cast.slice(0, 3).map(actor => actor.name).join(', '); // Limit to top 3 cast members
+  const trailer = movie.videos.results.find(video => video.type === 'Trailer');
 
-    let trailerHtml = '';
-    let trailerLink = '';
-    if (trailer) {
-        trailerLink = `https://www.youtube.com/watch?v=${trailer.key}`;
-        trailerHtml = `
-            <h3>Trailer</h3>
-            <iframe width="560" height="315" src="https://www.youtube.com/embed/${trailer.key}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
-        `;
-    }
+  let trailerHtml = '';
+  let trailerLink = '';
+  if (trailer) {
+      trailerLink = `https://www.youtube.com/watch?v=${trailer.key}`;
+      trailerHtml = `
+          <iframe width="100%" height="100%" src="https://www.youtube.com/embed/${trailer.key}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+      `;
+  }
 
-    let watchLink = imdbId 
-        ? `https://vidsrc.xyz/embed/${mediaType}?imdb=${imdbId}`
-        : `https://vidsrc.xyz/embed/${mediaType}?tmdb=${movie.id}`;
+  let watchLink = imdbId 
+      ? `https://vidsrc.xyz/embed/${mediaType}?imdb=${imdbId}`
+      : `https://vidsrc.xyz/embed/${mediaType}?tmdb=${movie.id}`;
 
-    modalContent.innerHTML = `
-        <h2>${title}</h2>
-        <p><strong>Release Date:</strong> ${releaseDate}</p>
-        <p><strong>Director:</strong> ${director}</p>
-        <p><strong>Cast:</strong> ${cast}</p>
-        <p><strong>Rating:</strong> ${voteAverage}/10</p>
-        <h3>Overview</h3>
-        <p>${overview}</p>
-        ${trailerHtml}
-        <div class="watch-options">
-            <a href="${watchLink}" target="_blank" class="watch-link">Watch Full ${mediaType === 'tv' ? 'Show' : 'Movie'}</a>
-            ${trailer ? `<a href="${trailerLink}" target="_blank" class="watch-link trailer-link">Watch Trailer</a>` : ''}
-        </div>
-    `;
+  // Truncate overview if it's too long
+  const truncatedOverview = overview.length > 200 ? overview.substring(0, 200) + '...' : overview;
+
+  modalContent.innerHTML = `
+      <span class="close">&times;</span>
+      <div class="modal-grid">
+          <div class="modal-info">
+              <h2>${title}</h2>
+              <p><strong>Release Date:</strong> ${releaseDate}</p>
+              <p><strong>Director:</strong> ${director}</p>
+              <p><strong>Cast:</strong> ${cast}</p>
+              <p><strong>Rating:</strong> ${voteAverage}/10</p>
+              <h3>Overview</h3>
+              <p>${truncatedOverview}</p>
+              <div class="watch-options">
+                  <a href="${watchLink}" target="_blank" class="watch-link">Watch Full ${mediaType === 'tv' ? 'Show' : 'Movie'}</a>
+                  ${trailer ? `<a href="${trailerLink}" target="_blank" class="watch-link trailer-link">Watch Trailer</a>` : ''}
+              </div>
+          </div>
+          <div class="modal-media">
+              ${trailerHtml}
+          </div>
+      </div>
+  `;
+
+  // Reattach close button event listener
+  document.querySelector('.close').addEventListener('click', () => {
+      document.getElementById('movie-modal').style.display = 'none';
+  });
 }
 
 // Search for movies or TV shows
@@ -163,11 +196,11 @@ function clearSearch() {
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
-    // Load initial content
-    fetchContent('movie/popular', 'featured-content');
-    fetchContent('trending/all/day', 'trending-content');
-    fetchContent('movie/top_rated', 'popular-movies');
-    fetchContent('tv/top_rated', 'popular-tv');
+  // Load initial content
+  fetchContent('movie/popular', 'featured-content', 'Popular Movies');
+  fetchContent('trending/all/day', 'trending-content', 'Trending');
+  fetchContent('movie/top_rated', 'top-rated-content', 'Top Rated');
+  fetchContent('tv/popular', 'popular-tv-content', 'Popular TV Shows');
 
     // Search form event listener
     document.getElementById('search-form').addEventListener('submit', (e) => {
@@ -241,21 +274,65 @@ function handleKeyNavigation(event) {
     event.preventDefault();
 }
 
-document.addEventListener('keydown', handleKeyNavigation);
+// Add this function to your existing code
+function initializeSearchInput() {
+  const searchInput = document.getElementById('search-input');
+  const searchForm = document.getElementById('search-form');
 
-const backToTopButton = document.getElementById('back-to-top');
+  if (searchInput) {
+      // Ensure the input is enabled and focusable
+      searchInput.disabled = false;
+      searchInput.readOnly = false;
 
-window.addEventListener('scroll', () => {
-    if (window.pageYOffset > 300) {
-        backToTopButton.style.display = 'block';
-    } else {
-        backToTopButton.style.display = 'none';
-    }
-});
+      // Add event listeners for debugging
+      searchInput.addEventListener('focus', () => {
+          console.log('Search input focused');
+      });
 
-backToTopButton.addEventListener('click', () => {
-    window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-    });
+      searchInput.addEventListener('blur', () => {
+          console.log('Search input blurred');
+      });
+
+      searchInput.addEventListener('input', (event) => {
+          console.log('Input event:', event.target.value);
+      });
+
+      // Prevent arrow key navigation from interfering with typing
+      searchInput.addEventListener('keydown', (event) => {
+          if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+              event.stopPropagation();
+          }
+      });
+  } else {
+      console.error('Search input not found');
+  }
+
+  if (searchForm) {
+      searchForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const query = searchInput.value;
+          console.log('Search submitted:', query);
+          // Your existing search logic here
+      });
+  } else {
+      console.error('Search form not found');
+  }
+}
+
+// Modify your existing DOMContentLoaded event listener
+document.addEventListener('DOMContentLoaded', () => {
+  // Your existing code here...
+
+  // Initialize search input
+  initializeSearchInput();
+
+  // Modify handleKeyNavigation function
+  window.handleKeyNavigation = (event) => {
+      // Don't interfere with typing in the search input
+      if (document.activeElement.id === 'search-input') {
+          return;
+      }
+      
+      // Your existing handleKeyNavigation code here...
+  };
 });
