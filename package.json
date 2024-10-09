@@ -2,7 +2,7 @@
   "name": "@noriginmedia/norigin-spatial-navigation",
   "version": "2.2.1",
   "description": "React hooks based Spatial Navigation solution",
-  "homepage": "https://braincandydan.github.io/i-like-boobs",
+  "homepage": "https://github.com/NoriginMedia/norigin-spatial-navigation#readme",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -36,7 +36,6 @@
   "bugs": {
     "url": "https://github.com/NoriginMedia/norigin-spatial-navigation/issues"
   },
-  "homepage": "https://github.com/NoriginMedia/norigin-spatial-navigation#readme",
   "peerDependencies": {
     "react": ">=16.8.0"
   },
@@ -61,6 +60,7 @@
     "eslint-plugin-react": "^7.29.4",
     "eslint-plugin-react-hooks": "^4.4.0",
     "file-loader": "^6.2.0",
+    "gh-pages": "^6.1.1",
     "html-webpack-plugin": "^5.5.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
