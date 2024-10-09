@@ -2,26 +2,26 @@
   "name": "@noriginmedia/norigin-spatial-navigation",
   "version": "2.2.1",
   "description": "React hooks based Spatial Navigation solution",
-  "homepage": "https://braincandydan.github.io/i-like-boobs",
+  "homepage": "https://braincandydan.github.io/i-like-boobs/demo",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist"
   ],
-  "scripts": {
-    "eslint": "eslint src",
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "build:lib": "webpack --config webpack.config.prod.js",
-    "prepublishOnly": "npm run eslint",
-    "prepare": "npm run build:lib",
-    "publish": "npm publish --access public",
-    "test": "react-scripts test",
-    "test:coverage": "react-scripts test --coverage",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d build",
-    "eject": "react-scripts eject"
-  },
+"scripts": {
+  "eslint": "eslint src",
+  "start": "cd demo && react-scripts start",
+  "build": "npm run build:lib && cd demo && react-scripts build",
+  "build:lib": "webpack --config webpack.config.prod.js",
+  "prepublishOnly": "npm run eslint",
+  "prepare": "npm run build:lib",
+  "publish": "npm publish --access public",
+  "test": "react-scripts test",
+  "test:coverage": "react-scripts test --coverage",
+  "predeploy": "npm run build",
+  "deploy": "gh-pages -d demo/build",
+  "eject": "react-scripts eject"
+},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/braincandydan/i-like-boobs.git"
