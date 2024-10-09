@@ -16,6 +16,8 @@
     "publish": "npm publish --access public",
     "test": "jest",
     "test:coverage": "jest --collect-coverage"
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build"
   },
   "repository": {
     "type": "git",
