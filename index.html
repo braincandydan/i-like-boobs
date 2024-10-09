@@ -1,77 +1,29 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamFlix</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <title>NotFlix</title>
+  <style>
+    html, body, div, span, applet, object, iframe,
+    h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+    a, abbr, acronym, address, big, cite, code,
+    del, dfn, em, img, ins, kbd, q, s, samp,
+    small, strike, strong, sub, sup, tt, var,
+    b, u, i, center,
+    dl, dt, dd, ol, ul, li,
+    fieldset, form, label, legend,
+    table, caption, tbody, tfoot, thead, tr, th, td,
+    article, aside, canvas, details, embed,
+    figure, figcaption, footer, header, hgroup,
+    menu, nav, output, ruby, section, summary,
+    time, mark, audio, video {
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+  </style>
 </head>
 <body>
-  <header>
-    <div class="header-content">
-      <h1>StreamFlix</h1>
-      <nav>
-        <ul>
-          <li><a href="#home" class="active">Home</a></li>
-          <li><a href="#movies">Movies</a></li>
-          <li><a href="#tv-shows">TV Shows</a></li>
-        </ul>
-      </nav>
-      <form id="search-form">
-        <input type="text" id="search-input" placeholder="Search...">
-        <select id="media-type">
-          <option value="multi">All</option>
-          <option value="movie">Movies</option>
-          <option value="tv">TV Shows</option>
-        </select>
-        <button type="submit">Search</button>
-      </form>
-    </div>
-    <div>
-      <p>to fix: - search not expanding</p>
-    </div>
-  </header>
-
-    <main>
-        <section id="home">
-            <h2>Featured</h2>
-            <div id="featured-content" class="content-row"></div>
-
-            <h2>Trending Now</h2>
-            <div id="trending-content" class="content-row"></div>
-
-            <h2>Popular Movies</h2>
-            <div id="popular-movies" class="content-row"></div>
-
-            <h2>Popular TV Shows</h2>
-            <div id="popular-tv" class="content-row"></div>
-        </section>
-
-        <section id="movies">
-            <h2>Movies</h2>
-            <div id="movies-content" class="content-row"></div>
-        </section>
-
-        <section id="tv-shows">
-            <h2>TV Shows</h2>
-            <div id="tv-shows-content" class="content-row"></div>
-        </section>
-
-        <section id="search-results" style="display: none;">
-            <h2>Search Results</h2>
-            <div id="search-results-content" class="content-row"></div>
-        </section>
-    </main>
-
-    <div id="movie-modal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <div id="movie-details"></div>
-        </div>
-    </div>
-    <button id="back-to-top" style="display: none;">Back to Top</button>
-
-
-    <script src="script.js"></script>
+  <div id="root"></div>
 </body>
 </html>
