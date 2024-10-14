@@ -1,0 +1,90 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    background-color: #141414;
+    color: #ffffff;
+}
+
+#person-container {
+    display: flex;
+    height: calc(100vh - 60px); /* Adjust based on your header height */
+    overflow: hidden;
+}
+
+.person-details {
+    width: 300px;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.person-details img {
+    width: 100%;
+    border-radius: 10px;
+}
+
+.person-details h1 {
+    margin-top: 10px;
+}
+
+.works-container {
+    flex-grow: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.works-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 20px;
+}
+
+.work-item {
+    text-align: center;
+    text-decoration: none;
+    color: #ffffff;
+}
+
+.work-item img {
+    width: 100%;
+    border-radius: 5px;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.pagination button {
+    margin: 0 10px;
+    padding: 5px 10px;
+    background-color: #e50914;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.pagination button:disabled {
+    background-color: #5c5c5c;
+    cursor: not-allowed;
+}
+
+.back-link {
+    display: inline-block;
+    margin-top: 20px;
+    color: #e50914;
+    text-decoration: none;
+}
+
+/* Focus styles for keyboard navigation */
+a:focus, button:focus {
+    outline: 2px solid #e50914;
+    outline-offset: 2px;
+}
+
+.work-item:focus {
+    outline: 2px solid #e50914;
+    outline-offset: 2px;
+}

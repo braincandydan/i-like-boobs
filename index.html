@@ -7,54 +7,56 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <div class="header-content">
-      <h1>StreamFlix</h1>
-      <nav>
-        <ul>
-          <li><a href="#home" class="active">Home</a></li>
-          <li><a href="#movies">Movies</a></li>
-          <li><a href="#tv-shows">TV Shows</a></li>
-        </ul>
-      </nav>
-      <form id="search-form">
-        <input type="text" id="search-input" placeholder="Search...">
-        <select id="media-type">
-          <option value="multi">All</option>
-          <option value="movie">Movies</option>
-          <option value="tv">TV Shows</option>
-        </select>
-        <button type="submit">Search</button>
-      </form>
-    </div>
-    <div>
-      <p>to fix: - search not expanding</p>
-    </div>
-  </header>
+    <header>
+        <div class="header-content">
+            <h1 tabindex="0">StreamFlix</h1>
+            <nav>
+                <ul>
+                    <li><a href="#home" class="active" tabindex="0">Home</a></li>
+                </ul>
+            </nav>
+            <div id="search-container">
+                <button id="search-toggle" aria-label="Toggle search" tabindex="0">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <span>Search</span>
+                </button>
+                <form id="search-form" style="display: none;">
+                    <input type="text" id="search-input" placeholder="Search..." tabindex="0">
+                    <select id="media-type" tabindex="0">
+                        <option value="multi">All</option>
+                        <option value="movie">Movies</option>
+                        <option value="tv">TV Shows</option>
+                    </select>
+                    <button type="submit" tabindex="0">Search</button>
+                </form>
+            </div>
+        </div>
+    </header>
 
     <main>
         <section id="home">
-            <h2>Featured</h2>
-            <div id="featured-content" class="content-row"></div>
+            <div class="content-section">
+                <h2>Featured</h2>
+                <div id="featured-content" class="content-row"></div>
+            </div>
 
-            <h2>Trending Now</h2>
-            <div id="trending-content" class="content-row"></div>
+            <div class="content-section">
+                <h2>Trending Now</h2>
+                <div id="trending-content" class="content-row"></div>
+            </div>
 
-            <h2>Popular Movies</h2>
-            <div id="popular-movies" class="content-row"></div>
+            <div class="content-section">
+                <h2>Popular Movies</h2>
+                <div id="popular-movies" class="content-row"></div>
+            </div>
 
-            <h2>Popular TV Shows</h2>
-            <div id="popular-tv" class="content-row"></div>
-        </section>
-
-        <section id="movies">
-            <h2>Movies</h2>
-            <div id="movies-content" class="content-row"></div>
-        </section>
-
-        <section id="tv-shows">
-            <h2>TV Shows</h2>
-            <div id="tv-shows-content" class="content-row"></div>
+            <div class="content-section">
+                <h2>Popular TV Shows</h2>
+                <div id="popular-tv" class="content-row"></div>
+            </div>
         </section>
 
         <section id="search-results" style="display: none;">
@@ -71,7 +73,7 @@
     </div>
     <button id="back-to-top" style="display: none;">Back to Top</button>
 
-
     <script src="script.js"></script>
+    <script src="navigation.js"></script>
 </body>
 </html>

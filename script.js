@@ -2,58 +2,72 @@ const apiKey = '6f2345080ac02f962901b6baa3723f58';
 const accessToken = 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI2ZjIzNDUwODBhYzAyZjk2MjkwMWI2YmFhMzcyM2Y1OCIsInN1YiI6IjY1NmFhZDExZjBmNTBlZDEwNWIzNTM0YyIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Z-oU6dL94w36cr2WWJ8P7lR4-5qskfqFYXj82I3kGng';
 
 // Fetch content for a specific category
-async function fetchContent(endpoint, containerId) {
+async function fetchContent(endpoint, containerId, title) {
     const url = `https://api.themoviedb.org/3/${endpoint}?api_key=${apiKey}`;
     try {
         const response = await fetch(url);
         const data = await response.json();
-        displayMovies(data.results.slice(0, 10), containerId);
+        
+        let contentSection = document.getElementById(containerId).closest('.content-section');
+        if (!contentSection) {
+            contentSection = document.createElement('div');
+            contentSection.className = 'content-section';
+            document.getElementById('home').appendChild(contentSection);
+        }
+        
+        const titleElement = contentSection.querySelector('h2') || document.createElement('h2');
+        titleElement.textContent = title;
+        if (!titleElement.parentNode) {
+            contentSection.insertBefore(titleElement, contentSection.firstChild);
+        }
+        
+        let contentRow = document.getElementById(containerId);
+        if (!contentRow) {
+            contentRow = document.createElement('div');
+            contentRow.className = 'content-row';
+            contentRow.id = containerId;
+            contentSection.appendChild(contentRow);
+        }
+        
+        displayMovies(data.results.slice(0, 20), containerId);
     } catch (error) {
         console.error(`Error fetching ${endpoint}:`, error);
     }
 }
 
 // Display movies in the specified container
-function displayMovies(moviesData, containerId, category) {
-  const container = document.getElementById(containerId);
-  container.innerHTML = '';
+function displayMovies(moviesData, containerId) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
 
-  const moviesToShow = moviesData.slice(0, 4);
-
-  moviesToShow.forEach(movie => {
-      const movieDiv = createMovieElement(movie);
-      container.appendChild(movieDiv);
-  });
-
-  // Add "See All" button
-  const seeAllButton = document.createElement('button');
-  seeAllButton.textContent = 'See All';
-  seeAllButton.className = 'see-all-button';
-  seeAllButton.addEventListener('click', () => handleSeeAll(category));
-  container.appendChild(seeAllButton);
+    moviesData.forEach(movie => {
+        const movieDiv = createMovieElement(movie);
+        container.appendChild(movieDiv);
+    });
 }
 
 function createMovieElement(movie) {
-  const movieDiv = document.createElement('div');
-  movieDiv.className = 'movie';
-  movieDiv.tabIndex = 0;
+    const movieDiv = document.createElement('div');
+    movieDiv.className = 'movie';
+    movieDiv.tabIndex = 0;  // Make sure this line is present
+    movieDiv.movieData = movie;
 
-  if (movie.poster_path) {
-      const image = document.createElement('img');
-      image.src = `https://image.tmdb.org/t/p/w500/${movie.poster_path}`;
-      image.alt = `${movie.title || movie.name} Poster`;
-      image.className = 'movie-poster';
-      movieDiv.appendChild(image);
-  }
+    if (movie.poster_path) {
+        const image = document.createElement('img');
+        image.src = `https://image.tmdb.org/t/p/w500/${movie.poster_path}`;
+        image.alt = `${movie.title || movie.name} Poster`;
+        image.className = 'movie-poster';
+        movieDiv.appendChild(image);
+    }
 
-  movieDiv.addEventListener('click', () => showMovieDetails(movie));
-  movieDiv.addEventListener('keypress', (event) => {
-      if (event.key === 'Enter') {
-          showMovieDetails(movie);
-      }
-  });
+    movieDiv.addEventListener('click', () => showMovieDetails(movie));
+    movieDiv.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            showMovieDetails(movie);
+        }
+    });
 
-  return movieDiv;
+    return movieDiv;
 }
 
 function handleSeeAll(category) {
@@ -64,13 +78,10 @@ function handleSeeAll(category) {
 // Show movie details in modal
 async function showMovieDetails(movie) {
     const mediaType = movie.media_type || (movie.first_air_date ? 'tv' : 'movie');
-    const movieDetails = await getMovieDetails(movie.id, mediaType);
-    const imdbId = await getImdbId(movie.id, mediaType);
+    const id = movie.id;
     
-    if (movieDetails) {
-        displayMovieDetails(movieDetails, imdbId, mediaType);
-        document.getElementById('movie-modal').style.display = 'block';
-    }
+    // Navigate to the details page
+    window.location.href = `details.html?type=${mediaType}&id=${id}`;
 }
 
 // Get IMDB ID
@@ -219,13 +230,135 @@ function clearSearch() {
     showAllSections();
 }
 
+// Navigation-related code
+let currentFocus = null;
+
+function initializeNavigation() {
+    const firstFocusableElement = document.querySelector('.movie, button, input, select, #search-toggle, nav ul li a');
+    if (firstFocusableElement) {
+        firstFocusableElement.focus();
+        currentFocus = firstFocusableElement;
+    }
+    document.addEventListener('keydown', handleKeyNavigation);
+}
+
+function handleKeyNavigation(event) {
+    // Don't interfere with typing in the search input
+    if (document.activeElement.id === 'search-input') {
+        return;
+    }
+
+    const focusableElements = document.querySelectorAll('h1, nav ul li a, #search-toggle, #search-input, #media-type, #search-form button, .movie');
+    const focusArray = Array.from(focusableElements);
+
+    if (!currentFocus) {
+        currentFocus = focusArray[0];
+        currentFocus.focus();
+        return;
+    }
+
+    const currentIndex = focusArray.indexOf(currentFocus);
+
+    switch(event.keyCode) {
+        case 37: // Left arrow
+            event.preventDefault();
+            if (currentIndex > 0) {
+                currentFocus = focusArray[currentIndex - 1];
+            }
+            break;
+        case 39: // Right arrow
+            event.preventDefault();
+            if (currentIndex < focusArray.length - 1) {
+                currentFocus = focusArray[currentIndex + 1];
+            }
+            break;
+        case 38: // Up arrow
+            event.preventDefault();
+            currentFocus = findVerticalElement(focusArray, currentIndex, -1) || currentFocus;
+            break;
+        case 40: // Down arrow
+            event.preventDefault();
+            currentFocus = findVerticalElement(focusArray, currentIndex, 1) || currentFocus;
+            break;
+        case 13: // Enter
+            if (currentFocus.tagName === 'A' || currentFocus.tagName === 'BUTTON') {
+                currentFocus.click();
+            } else if (currentFocus.classList.contains('movie')) {
+                showMovieDetails(currentFocus.movieData);
+            }
+            event.preventDefault();
+            return;
+    }
+
+    currentFocus.focus();
+    ensureElementIsVisible(currentFocus);
+}
+
+// Add this function to handle the Fire TV Back button globally
+function handleFireTVBack(event) {
+    if (event.keyCode === 10008) {
+        if (window.history.length > 1) {
+            window.history.back();
+        }
+        event.preventDefault();
+    }
+}
+
+// Add this new function to find the next vertical element
+function findVerticalElement(elements, currentIndex, direction) {
+    const currentRect = elements[currentIndex].getBoundingClientRect();
+    const currentCenterX = currentRect.left + currentRect.width / 2;
+    const currentY = currentRect.top + (direction > 0 ? currentRect.height : 0);
+
+    let closestElement = null;
+    let closestDistance = Infinity;
+
+    for (let i = 0; i < elements.length; i++) {
+        if (i === currentIndex) continue;
+
+        const rect = elements[i].getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const y = rect.top + (direction < 0 ? rect.height : 0);
+
+        // Check if the element is in the correct direction (above or below)
+        if ((direction > 0 && y <= currentY) || (direction < 0 && y >= currentY)) continue;
+
+        const verticalDistance = Math.abs(y - currentY);
+        const horizontalDistance = Math.abs(centerX - currentCenterX);
+
+        // Prioritize vertical alignment, then horizontal proximity
+        const distance = verticalDistance * 1000 + horizontalDistance;
+
+        if (distance < closestDistance) {
+            closestDistance = distance;
+            closestElement = elements[i];
+        }
+    }
+
+    return closestElement || elements[currentIndex];
+}
+
+function ensureElementIsVisible(element) {
+    const container = element.closest('.content-row');
+    if (container) {
+        const containerRect = container.getBoundingClientRect();
+        const elementRect = element.getBoundingClientRect();
+        
+        if (elementRect.right > containerRect.right) {
+            container.scrollLeft += elementRect.right - containerRect.right + 20; // 20px extra for padding
+        } else if (elementRect.left < containerRect.left) {
+            container.scrollLeft -= containerRect.left - elementRect.left + 20; // 20px extra for padding
+        }
+    }
+}
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
-  // Load initial content
-  fetchContent('movie/popular', 'featured-content', 'Popular Movies');
-  fetchContent('trending/all/day', 'trending-content', 'Trending');
-  fetchContent('movie/top_rated', 'top-rated-content', 'Top Rated');
-  fetchContent('tv/popular', 'popular-tv-content', 'Popular TV Shows');
+    // Load initial content
+    fetchContent('movie/popular', 'featured-content', 'Featured');
+    fetchContent('trending/all/day', 'trending-content', 'Trending Now');
+    fetchContent('movie/popular', 'popular-movies', 'Popular Movies');
+    fetchContent('tv/popular', 'popular-tv', 'Popular TV Shows');
 
     // Search form event listener
     document.getElementById('search-form').addEventListener('submit', (e) => {
@@ -258,46 +391,32 @@ document.addEventListener('DOMContentLoaded', () => {
             modal.style.display = 'none';
         }
     });
+
+    const searchToggle = document.getElementById('search-toggle');
+    const searchForm = document.getElementById('search-form');
+
+    searchToggle.addEventListener('click', () => {
+      searchForm.classList.toggle('active');
+      if (searchForm.classList.contains('active')) {
+        document.getElementById('search-input').focus();
+      }
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!searchForm.contains(event.target) && !searchToggle.contains(event.target)) {
+        searchForm.classList.remove('active');
+      }
+    });
+
+    // Initialize navigation
+    initializeNavigation();
+
+    // Initialize search input
+    initializeSearchInput();
+
+    // Add this to your DOMContentLoaded event listener
+    document.addEventListener('keydown', handleFireTVBack);
 });
-
-let currentFocus = null;
-
-function handleKeyNavigation(event) {
-    const focusableElements = document.querySelectorAll('.movie, button, input, select');
-    const focusArray = Array.from(focusableElements);
-
-    if (!currentFocus) {
-        currentFocus = focusArray[0];
-        currentFocus.focus();
-        return;
-    }
-
-    const currentIndex = focusArray.indexOf(currentFocus);
-
-    switch(event.key) {
-        case 'ArrowRight':
-            if (currentIndex < focusArray.length - 1) {
-                currentFocus = focusArray[currentIndex + 1];
-            }
-            break;
-        case 'ArrowLeft':
-            if (currentIndex > 0) {
-                currentFocus = focusArray[currentIndex - 1];
-            }
-            break;
-        case 'ArrowUp':
-            const upIndex = Math.max(0, currentIndex - 5);
-            currentFocus = focusArray[upIndex];
-            break;
-        case 'ArrowDown':
-            const downIndex = Math.min(focusArray.length - 1, currentIndex + 5);
-            currentFocus = focusArray[downIndex];
-            break;
-    }
-
-    currentFocus.focus();
-    event.preventDefault();
-}
 
 // Add this function to your existing code
 function initializeSearchInput() {
@@ -343,24 +462,6 @@ function initializeSearchInput() {
       console.error('Search form not found');
   }
 }
-
-// Modify your existing DOMContentLoaded event listener
-document.addEventListener('DOMContentLoaded', () => {
-  // Your existing code here...
-
-  // Initialize search input
-  initializeSearchInput();
-
-  // Modify handleKeyNavigation function
-  window.handleKeyNavigation = (event) => {
-      // Don't interfere with typing in the search input
-      if (document.activeElement.id === 'search-input') {
-          return;
-      }
-      
-      // Your existing handleKeyNavigation code here...
-  };
-});
 
 async function searchDirectorWorks(directorId, directorName) {
   const url = `https://api.themoviedb.org/3/person/${directorId}/combined_credits?api_key=${apiKey}&language=en-US`;
@@ -460,3 +561,6 @@ function displayPersonWorks(works, personName, role) {
     // Scroll to the top of the page
     window.scrollTo(0, 0);
 }
+
+// Make showMovieDetails available globally
+window.showMovieDetails = showMovieDetails;

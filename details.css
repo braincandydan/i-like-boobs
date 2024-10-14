@@ -1,0 +1,200 @@
+body {
+    background-color: #141414;
+    color: #ffffff;
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+}
+
+#details-container {
+    display: flex;
+    min-height: 100vh;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.details-grid {
+    display: flex;
+    width: 100%;
+    gap: 30px;
+    flex-wrap: wrap;
+}
+
+.details-left {
+    flex: 0 0 300px;
+    display: flex;
+    flex-direction: column;
+}
+
+.details-right {
+    flex: 1;
+    min-width: 300px;
+}
+
+.details-poster img {
+    width: 100%;
+    height: auto;
+    border-radius: 10px;
+    object-fit: cover;
+}
+
+.details-info {
+    margin-top: 20px;
+}
+
+.details-info h1 {
+    font-size: 2em;
+    margin: 0 0 0px 0;
+}
+
+.details-info p {
+    margin: 5px 0;
+    font-size: 0.9em;
+}
+
+.watch-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.watch-link, .back-link {
+    display: inline-block;
+    text-align: center;
+    padding: 12px 24px;
+    font-size: 1em;
+    text-decoration: none;
+    border-radius: 5px;
+    transition: background-color 0.3s ease;
+}
+
+.watch-link {
+    background-color: #e50914;
+    color: #ffffff;
+}
+
+.watch-link:hover {
+    background-color: #f40612;
+}
+
+.back-link {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+}
+
+.back-link:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+.overview-section {
+    margin-bottom: 30px;
+}
+
+.overview-section h2 {
+    font-size: 1.5em;
+    margin-bottom: 0px;
+}
+
+.cast-section h2 {
+    font-size: 1.5em;
+    margin-bottom: 0px;
+}
+
+.section-container {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 30px;
+}
+
+.section-header {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+    margin-right: 20px;
+    font-size: 1.5em;
+    white-space: nowrap;
+}
+
+.cast-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.cast-member {
+    flex: 0 0 150px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: background-color 0.3s ease;
+}
+
+.cast-member:hover, .cast-member:focus {
+    background-color: rgba(255, 255, 255, 0.2);
+    outline: 2px solid #e50914;
+    outline-offset: 2px;
+}
+
+.cast-member img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+}
+
+.cast-member-info {
+    padding: 10px;
+    text-align: center;
+}
+
+.cast-member-info a {
+    display: block;
+    font-size: 1em;
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #ffffff;
+    text-decoration: none;
+}
+
+.cast-member-info p {
+    font-size: 0.9em;
+    margin: 0;
+    color: #cccccc;
+}
+
+@media (max-width: 768px) {
+    .details-grid {
+        flex-direction: column;
+    }
+
+    .details-left, .details-right {
+        flex: 1 1 auto;
+    }
+}
+
+/* Scrollbar styling */
+.details-right::-webkit-scrollbar {
+    width: 8px;
+}
+
+.details-right::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.details-right::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+}
+
+.details-right::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Focus styles for keyboard navigation */
+[tabindex="0"]:focus {
+    outline: 2px solid #e50914;
+    outline-offset: 2px;
+}
+
+/* ... (rest of the styles remain the same) */
