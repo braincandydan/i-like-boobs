@@ -199,9 +199,9 @@ async function searchMedia(query, mediaType) {
     try {
         const response = await fetch(url);
         const data = await response.json();
-        hideAllSections();
         displayMovies(data.results, 'search-results-content');
         document.getElementById('search-results').style.display = 'block';
+        document.getElementById('home').style.display = 'none';
     } catch (error) {
         console.error('Error searching:', error);
     }
@@ -367,8 +367,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const mediaType = document.getElementById('media-type').value;
         if (query.trim() !== '') {
             searchMedia(query, mediaType);
-        } else {
-            clearSearch();
         }
     });
 
@@ -420,47 +418,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Add this function to your existing code
 function initializeSearchInput() {
-  const searchInput = document.getElementById('search-input');
-  const searchForm = document.getElementById('search-form');
+    const searchInput = document.getElementById('search-input');
+    const searchForm = document.getElementById('search-form');
 
-  if (searchInput) {
-      // Ensure the input is enabled and focusable
-      searchInput.disabled = false;
-      searchInput.readOnly = false;
+    if (searchInput) {
+        // Ensure the input is enabled and focusable
+        searchInput.disabled = false;
+        searchInput.readOnly = false;
 
-      // Add event listeners for debugging
-      searchInput.addEventListener('focus', () => {
-          console.log('Search input focused');
-      });
+        // Add event listeners for debugging
+        searchInput.addEventListener('focus', () => {
+            console.log('Search input focused');
+        });
 
-      searchInput.addEventListener('blur', () => {
-          console.log('Search input blurred');
-      });
+        searchInput.addEventListener('blur', () => {
+            console.log('Search input blurred');
+        });
 
-      searchInput.addEventListener('input', (event) => {
-          console.log('Input event:', event.target.value);
-      });
+        searchInput.addEventListener('input', (event) => {
+            console.log('Input event:', event.target.value);
+        });
 
-      // Prevent arrow key navigation from interfering with typing
-      searchInput.addEventListener('keydown', (event) => {
-          if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
-              event.stopPropagation();
-          }
-      });
-  } else {
-      console.error('Search input not found');
-  }
+        // Prevent arrow key navigation from interfering with typing
+        searchInput.addEventListener('keydown', (event) => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+                event.stopPropagation();
+            }
+        });
+    } else {
+        console.error('Search input not found');
+    }
 
-  if (searchForm) {
-      searchForm.addEventListener('submit', (e) => {
-          e.preventDefault();
-          const query = searchInput.value;
-          console.log('Search submitted:', query);
-          // Your existing search logic here
-      });
-  } else {
-      console.error('Search form not found');
-  }
+    if (searchForm) {
+        searchForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const query = searchInput.value;
+            const mediaType = document.getElementById('media-type').value;
+            console.log('Search submitted:', query, 'Media type:', mediaType);
+            if (query.trim() !== '') {
+                searchMedia(query, mediaType);
+            } else {
+                clearSearch();
+            }
+        });
+    } else {
+        console.error('Search form not found');
+    }
 }
 
 async function searchDirectorWorks(directorId, directorName) {
