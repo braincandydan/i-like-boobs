@@ -20,6 +20,7 @@ header {
 .header-content {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   max-width: 1800px;
   margin: 0 auto;
 }
@@ -28,7 +29,6 @@ h1 {
   margin: 0;
   font-size: 2em;
   color: #e50914;
-  margin-right: 20px;
 }
 
 nav ul {
@@ -68,6 +68,7 @@ nav ul li a {
 }
 
 #search-form {
+  display: none;
   position: absolute;
   top: 100%;
   right: 0;
@@ -77,35 +78,59 @@ nav ul li a {
 }
 
 #search-form.active {
-  display: flex !important;
+  display: flex;
 }
 
 @media (max-width: 767px) {
+  .header-content {
+    flex-wrap: wrap;
+  }
+
+  h1 {
+    font-size: 1.5em;
+    margin-bottom: 10px;
+  }
+
+  nav {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  nav ul {
+    justify-content: space-between;
+  }
+
+  nav ul li {
+    margin-right: 0;
+  }
+
+  #search-container {
+    width: 100%;
+  }
+
+  #search-toggle {
+    width: 100%;
+    justify-content: center;
+  }
+
   #search-form {
     width: 100%;
     left: 0;
   }
-}
 
-#search-input,
-#media-type,
-#search-form button {
-  padding: 10px;
-  font-size: 1em;
-  margin-right: 10px;
-}
-
-#search-form button {
-  background-color: #e50914;
-  color: #fff;
-  border: none;
-  cursor: pointer;
+  #search-input,
+  #media-type,
+  #search-form button {
+    width: 100%;
+    margin-right: 0;
+    margin-bottom: 5px;
+  }
 }
 
 /* Main content styles */
 main {
-  margin-top: 100px;
-  padding: 20px;
+  margin-top: 60px;
+  padding: 10px;
   max-width: 1800px;
   margin-left: auto;
   margin-right: auto;
@@ -114,7 +139,7 @@ main {
 .content-section {
   display: flex;
   align-items: flex-start;
-  margin-bottom: 40px;
+  margin-bottom: 10px;
 }
 
 .content-section h2 {
@@ -122,8 +147,8 @@ main {
   text-orientation: mixed;
   transform: rotate(180deg);
   margin: 0;
-  padding-right: 20px;
-  font-size: 1.5em;
+  padding-right: 10px;
+  font-size: 1.2em;
   white-space: nowrap;
   color: #e50914;
 }
@@ -133,15 +158,15 @@ main {
   overflow-x: auto;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
-  padding: 20px 0;
-  height: 300px;
+  padding: 10px 0;
+  height: 200px;
   align-items: flex-start;
 }
 
 .movie {
   flex: 0 0 auto;
-  width: 200px;
-  margin-right: 20px;
+  width: 120px;
+  margin-right: 10px;
   transition: all 0.3s ease;
   position: relative;
   z-index: 1;
@@ -149,7 +174,7 @@ main {
 
 .movie img {
   width: 100%;
-  height: 280px;
+  height: 180px;
   object-fit: cover;
   border-radius: 5px;
   transition: all 0.3s ease;
@@ -265,16 +290,40 @@ main {
 
 /* Mobile styles */
 @media (max-width: 767px) {
+  main {
+    margin-top: 50px;
+    padding: 5px;
+  }
+
+  .content-section {
+    flex-direction: column;
+    margin-bottom: 5px;
+  }
+
+  .content-section h2 {
+    writing-mode: horizontal-tb;
+    transform: none;
+    padding-right: 0;
+    padding-bottom: 5px;
+    font-size: 1em;
+  }
+
   .content-row {
-    grid-template-columns: repeat(2, 1fr);
+    height: 160px;
+    padding: 5px 0;
+  }
+
+  .movie {
+    width: 100px;
+    margin-right: 5px;
   }
 
   .movie img {
-    height: 180px;
+    height: 150px;
   }
 
   h2 {
-    font-size: 1.5em;
+    font-size: 1.2em;
   }
 
   .header-content {
@@ -283,11 +332,11 @@ main {
   }
 
   nav ul {
-    margin-top: 10px;
+    margin-top: 5px;
   }
 
   #search-form {
-    margin-top: 10px;
+    margin-top: 5px;
     width: 100%;
   }
 
@@ -296,7 +345,8 @@ main {
   #search-form button {
     width: 100%;
     margin-right: 0;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
+    padding: 5px;
   }
 }
 

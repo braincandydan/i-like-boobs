@@ -393,6 +393,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchToggle = document.getElementById('search-toggle');
     const searchForm = document.getElementById('search-form');
 
+    // Ensure search form is closed by default
+    searchForm.classList.remove('active');
+
     searchToggle.addEventListener('click', () => {
       searchForm.classList.toggle('active');
       if (searchForm.classList.contains('active')) {
