@@ -137,10 +137,10 @@ main {
   margin-right: auto;
 }
 
+/* Content section styles */
 .content-section {
-  display: flex;
-  align-items: flex-start;
   margin-bottom: 20px;
+  overflow: hidden; /* Contain the scrolling row */
 }
 
 .content-section h2 {
@@ -154,6 +154,7 @@ main {
   color: #e50914;
 }
 
+/* Content row styles */
 .content-row {
   display: flex;
   overflow-x: auto;
@@ -161,6 +162,7 @@ main {
   -webkit-overflow-scrolling: touch;
   padding: 10px 0;
   scroll-snap-type: x mandatory;
+  white-space: nowrap; /* Prevent wrapping */
 }
 
 .movie {
@@ -294,7 +296,7 @@ main {
 
   .content-section {
     flex-direction: column;
-    margin-bottom: 5px;
+    margin-bottom: 10px;
     overflow-x: hidden; /* Hide horizontal overflow */
   }
 
@@ -312,7 +314,7 @@ main {
     overflow-x: auto; /* Allow horizontal scrolling */
     -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
     scroll-snap-type: x mandatory; /* Enable scroll snapping */
-    padding-bottom: 20px; /* Add some padding to show scrollbar */
+    padding-bottom: 10px; /* Reduce padding to show less of scrollbar */
   }
 
   .movie {
