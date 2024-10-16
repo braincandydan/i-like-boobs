@@ -573,6 +573,11 @@ window.showMovieDetails = showMovieDetails;
 
 // Add this new function to handle Fire TV remote inputs
 function handleFireTVRemote(event) {
+    // Only handle Fire TV remote inputs if we're likely on a TV
+    if (!isLikelyTV()) {
+        return false;
+    }
+
     let handled = false;
 
     switch (event.keyCode) {
@@ -589,27 +594,22 @@ function handleFireTVRemote(event) {
             handled = true;
             break;
         case 21: // KEYCODE_DPAD_LEFT
-            // Handle left action
             handleKeyNavigation({ keyCode: 37, preventDefault: () => {} });
             handled = true;
             break;
         case 22: // KEYCODE_DPAD_RIGHT
-            // Handle right action
             handleKeyNavigation({ keyCode: 39, preventDefault: () => {} });
             handled = true;
             break;
         case 19: // KEYCODE_DPAD_UP
-            // Handle up action
             handleKeyNavigation({ keyCode: 38, preventDefault: () => {} });
             handled = true;
             break;
         case 20: // KEYCODE_DPAD_DOWN
-            // Handle down action
             handleKeyNavigation({ keyCode: 40, preventDefault: () => {} });
             handled = true;
             break;
         case 4: // KEYCODE_BACK
-            // Handle back action
             if (window.history.length > 1) {
                 window.history.back();
             }
@@ -626,6 +626,11 @@ function handleFireTVRemote(event) {
 
 // Update the existing handleKeyNavigation function
 function handleKeyNavigation(event) {
+    // Only use keyboard navigation if we're not on a TV-like device
+    if (isLikelyTV()) {
+        return;
+    }
+
     // Don't interfere with typing in the search input
     if (document.activeElement.id === 'search-input') {
         return;
@@ -686,9 +691,11 @@ function handleKeyNavigation(event) {
 document.addEventListener('DOMContentLoaded', () => {
     // ... existing code ...
 
-    // Add event listener for Fire TV remote
+    // Add event listener for Fire TV remote and keyboard
     document.addEventListener('keydown', (event) => {
-        if (!handleFireTVRemote(event)) {
+        if (isLikelyTV()) {
+            handleFireTVRemote(event);
+        } else {
             handleKeyNavigation(event);
         }
     });
@@ -697,3 +704,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ... rest of the existing code ...
+
+// Add this function to detect if we're likely on a TV
+function isLikelyTV() {
+    // Most TVs have a width of 1920px or more
+    return window.innerWidth >= 1920;
+}
