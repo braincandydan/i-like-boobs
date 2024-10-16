@@ -570,3 +570,130 @@ function displayPersonWorks(works, personName, role) {
 
 // Make showMovieDetails available globally
 window.showMovieDetails = showMovieDetails;
+
+// Add this new function to handle Fire TV remote inputs
+function handleFireTVRemote(event) {
+    let handled = false;
+
+    switch (event.keyCode) {
+        case 13: // KEYCODE_DPAD_CENTER
+        case 66: // KEYCODE_BUTTON_A
+            // Handle selections
+            if (currentFocus) {
+                if (currentFocus.tagName === 'A' || currentFocus.tagName === 'BUTTON') {
+                    currentFocus.click();
+                } else if (currentFocus.classList.contains('movie')) {
+                    showMovieDetails(currentFocus.movieData);
+                }
+            }
+            handled = true;
+            break;
+        case 21: // KEYCODE_DPAD_LEFT
+            // Handle left action
+            handleKeyNavigation({ keyCode: 37, preventDefault: () => {} });
+            handled = true;
+            break;
+        case 22: // KEYCODE_DPAD_RIGHT
+            // Handle right action
+            handleKeyNavigation({ keyCode: 39, preventDefault: () => {} });
+            handled = true;
+            break;
+        case 19: // KEYCODE_DPAD_UP
+            // Handle up action
+            handleKeyNavigation({ keyCode: 38, preventDefault: () => {} });
+            handled = true;
+            break;
+        case 20: // KEYCODE_DPAD_DOWN
+            // Handle down action
+            handleKeyNavigation({ keyCode: 40, preventDefault: () => {} });
+            handled = true;
+            break;
+        case 4: // KEYCODE_BACK
+            // Handle back action
+            if (window.history.length > 1) {
+                window.history.back();
+            }
+            handled = true;
+            break;
+    }
+
+    if (handled) {
+        event.preventDefault();
+    }
+
+    return handled;
+}
+
+// Update the existing handleKeyNavigation function
+function handleKeyNavigation(event) {
+    // Don't interfere with typing in the search input
+    if (document.activeElement.id === 'search-input') {
+        return;
+    }
+
+    const focusableElements = document.querySelectorAll('h1, nav ul li a, #search-toggle, #search-input, #media-type, #search-form button, .movie');
+    const focusArray = Array.from(focusableElements);
+
+    if (!currentFocus) {
+        currentFocus = focusArray[0];
+        currentFocus.focus();
+        return;
+    }
+
+    const currentIndex = focusArray.indexOf(currentFocus);
+
+    switch(event.keyCode) {
+        case 37: // Left arrow
+        case 21: // KEYCODE_DPAD_LEFT
+            event.preventDefault();
+            if (currentIndex > 0) {
+                currentFocus = focusArray[currentIndex - 1];
+            }
+            break;
+        case 39: // Right arrow
+        case 22: // KEYCODE_DPAD_RIGHT
+            event.preventDefault();
+            if (currentIndex < focusArray.length - 1) {
+                currentFocus = focusArray[currentIndex + 1];
+            }
+            break;
+        case 38: // Up arrow
+        case 19: // KEYCODE_DPAD_UP
+            event.preventDefault();
+            currentFocus = findVerticalElement(focusArray, currentIndex, -1) || currentFocus;
+            break;
+        case 40: // Down arrow
+        case 20: // KEYCODE_DPAD_DOWN
+            event.preventDefault();
+            currentFocus = findVerticalElement(focusArray, currentIndex, 1) || currentFocus;
+            break;
+        case 13: // Enter
+        case 66: // KEYCODE_BUTTON_A
+            if (currentFocus.tagName === 'A' || currentFocus.tagName === 'BUTTON') {
+                currentFocus.click();
+            } else if (currentFocus.classList.contains('movie')) {
+                showMovieDetails(currentFocus.movieData);
+            }
+            event.preventDefault();
+            return;
+    }
+
+    currentFocus.focus();
+    ensureElementIsVisible(currentFocus);
+}
+
+// Update the DOMContentLoaded event listener
+document.addEventListener('DOMContentLoaded', () => {
+    // ... existing code ...
+
+    // Add event listener for Fire TV remote
+    document.addEventListener('keydown', (event) => {
+        if (!handleFireTVRemote(event)) {
+            handleKeyNavigation(event);
+        }
+    });
+
+    // ... rest of the existing code ...
+});
+
+// ... rest of the existing code ...
