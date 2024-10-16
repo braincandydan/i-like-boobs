@@ -686,3 +686,98 @@ document.addEventListener('keydown', handleKeyNavigation);
 
 // Remove or comment out the handleFireTVRemote function as it's no longer needed
 // function handleFireTVRemote(event) { ... }
+
+// Disable default focus outline
+document.addEventListener('DOMContentLoaded', () => {
+    const style = document.createElement('style');
+    style.textContent = `
+        *:focus {
+            outline: none !important;
+        }
+    `;
+    document.head.appendChild(style);
+});
+
+// Prevent default behavior for mouse events
+function preventDefaultForMouseEvents(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return; // Allow mouse events for input fields
+    }
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+// Add event listeners to prevent mouse interaction
+['click', 'mousedown', 'mouseup', 'mousemove'].forEach(eventType => {
+    document.addEventListener(eventType, preventDefaultForMouseEvents, { capture: true });
+});
+
+// Custom focus handler
+function customFocusHandler(element) {
+    if (element) {
+        element.classList.add('custom-focus');
+    }
+}
+
+// Custom blur handler
+function customBlurHandler(element) {
+    if (element) {
+        element.classList.remove('custom-focus');
+    }
+}
+
+// Update your CSS to include a custom focus style
+const customFocusStyle = `
+    .custom-focus {
+        outline: 2px solid #007bff !important;
+        outline-offset: 2px;
+    }
+`;
+document.head.insertAdjacentHTML('beforeend', `<style>${customFocusStyle}</style>`);
+
+// Modify your navigation function to use custom focus
+function navigateDirection(direction) {
+    const focusableElements = getFocusableElements();
+    const currentIndex = focusableElements.indexOf(document.activeElement);
+    let nextIndex;
+
+    // ... (rest of the navigation logic)
+
+    if (nextIndex !== undefined && nextIndex !== currentIndex) {
+        customBlurHandler(document.activeElement);
+        customFocusHandler(focusableElements[nextIndex]);
+        focusableElements[nextIndex].focus();
+        ensureElementIsVisible(focusableElements[nextIndex]);
+    }
+}
+
+// Update handleKeyNavigation to include Enter key functionality
+function handleKeyNavigation(event) {
+    switch(event.keyCode) {
+        case 37: // Left arrow
+        case 21: // KEYCODE_DPAD_LEFT
+            navigateDirection('left');
+            break;
+        case 39: // Right arrow
+        case 22: // KEYCODE_DPAD_RIGHT
+            navigateDirection('right');
+            break;
+        case 38: // Up arrow
+        case 19: // KEYCODE_DPAD_UP
+            navigateDirection('up');
+            break;
+        case 40: // Down arrow
+        case 20: // KEYCODE_DPAD_DOWN
+            navigateDirection('down');
+            break;
+        case 13: // Enter
+        case 66: // KEYCODE_BUTTON_A
+            if (document.activeElement) {
+                document.activeElement.click();
+            }
+            break;
+    }
+    event.preventDefault();
+}
+
+document.addEventListener('keydown', handleKeyNavigation);
