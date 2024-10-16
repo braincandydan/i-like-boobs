@@ -781,3 +781,68 @@ function handleKeyNavigation(event) {
 }
 
 document.addEventListener('keydown', handleKeyNavigation);
+
+// Disable mouse interactions
+function disableMouseInteractions(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return; // Allow mouse events for input fields
+    }
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+// Disable cursor
+document.body.style.cursor = 'none';
+
+// Prevent default behavior for mouse events
+['click', 'mousedown', 'mouseup', 'mousemove', 'contextmenu'].forEach(eventType => {
+    document.addEventListener(eventType, disableMouseInteractions, { capture: true });
+});
+
+// Prevent scrolling
+document.body.style.overflow = 'hidden';
+
+// Disable text selection
+document.body.style.userSelect = 'none';
+
+// Disable drag and drop
+document.body.addEventListener('dragstart', (e) => e.preventDefault());
+
+// Focus on the first focusable element when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    const firstFocusableElement = document.querySelector('a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (firstFocusableElement) {
+        firstFocusableElement.focus();
+    }
+});
+
+// Handle keyboard navigation
+function handleKeyNavigation(event) {
+    switch(event.keyCode) {
+        case 37: // Left arrow
+        case 21: // KEYCODE_DPAD_LEFT
+            navigateDirection('left');
+            break;
+        case 39: // Right arrow
+        case 22: // KEYCODE_DPAD_RIGHT
+            navigateDirection('right');
+            break;
+        case 38: // Up arrow
+        case 19: // KEYCODE_DPAD_UP
+            navigateDirection('up');
+            break;
+        case 40: // Down arrow
+        case 20: // KEYCODE_DPAD_DOWN
+            navigateDirection('down');
+            break;
+        case 13: // Enter
+        case 66: // KEYCODE_BUTTON_A
+            if (document.activeElement) {
+                document.activeElement.click();
+            }
+            break;
+    }
+    event.preventDefault();
+}
+
+document.addEventListener('keydown', handleKeyNavigation);
