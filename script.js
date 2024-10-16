@@ -1,9 +1,6 @@
 const apiKey = '6f2345080ac02f962901b6baa3723f58';
 const accessToken = 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI2ZjIzNDUwODBhYzAyZjk2MjkwMWI2YmFhMzcyM2Y1OCIsInN1YiI6IjY1NmFhZDExZjBmNTBlZDEwNWIzNTM0YyIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Z-oU6dL94w36cr2WWJ8P7lR4-5qskfqFYXj82I3kGng';
 
-// Global flag to control cursor-based navigation
-let cursorNavigationEnabled = false;
-
 // Fetch content for a specific category
 async function fetchContent(endpoint, containerId, title) {
     const url = `https://api.themoviedb.org/3/${endpoint}?api_key=${apiKey}`;
@@ -358,7 +355,7 @@ function ensureElementIsVisible(element) {
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     // Load initial content
-    fetchContent('movie/popular', 'featured-content', 'Featured Hi');
+    fetchContent('movie/popular', 'featured-content', 'Featured');
     fetchContent('trending/all/day', 'trending-content', 'Trending Now');
     fetchContent('movie/popular', 'popular-movies', 'Popular Movies');
     fetchContent('tv/popular', 'popular-tv', 'Popular TV Shows');
@@ -420,9 +417,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add this to your DOMContentLoaded event listener
     document.addEventListener('keydown', handleFireTVBack);
-
-    // Add mousemove event listener for all devices, but it won't do anything unless enabled
-    document.addEventListener('mousemove', handleMouseMove);
 });
 
 // Add this function to your existing code
@@ -577,310 +571,129 @@ function displayPersonWorks(works, personName, role) {
 // Make showMovieDetails available globally
 window.showMovieDetails = showMovieDetails;
 
-// Function to handle mouse movement (now disabled by default)
-function handleMouseMove(event) {
-    if (!cursorNavigationEnabled) return;
+// Add this new function to handle Fire TV remote inputs
+function handleFireTVRemote(event) {
+    let handled = false;
 
-    const currentTime = Date.now();
-    // Ignore rapid movements (adjust the time threshold as needed)
-    if (currentTime - lastMoveTime < 100) return;
-
-    const newPosition = [event.clientX, event.clientY];
-    const movement = [
-        newPosition[0] - cursorPosition[0],
-        newPosition[1] - cursorPosition[1]
-    ];
-
-    // Determine the primary direction of movement
-    if (Math.abs(movement[0]) > Math.abs(movement[1])) {
-        // Horizontal movement
-        if (movement[0] > 0) {
-            navigateDirection('right');
-        } else {
-            navigateDirection('left');
-        }
-    } else {
-        // Vertical movement
-        if (movement[1] > 0) {
-            navigateDirection('down');
-        } else {
-            navigateDirection('up');
-        }
-    }
-
-    // Update cursor position and last move time
-    cursorPosition = newPosition;
-    lastMoveTime = currentTime;
-}
-
-// Function to navigate in a given direction
-function navigateDirection(direction) {
-    const focusableElements = getFocusableElements();
-    const currentIndex = focusableElements.indexOf(document.activeElement);
-    let nextIndex;
-
-    switch (direction) {
-        case 'left':
-            nextIndex = Math.max(0, currentIndex - 1);
+    switch (event.keyCode) {
+        case 13: // KEYCODE_DPAD_CENTER
+        case 66: // KEYCODE_BUTTON_A
+            // Handle selections
+            if (currentFocus) {
+                if (currentFocus.tagName === 'A' || currentFocus.tagName === 'BUTTON') {
+                    currentFocus.click();
+                } else if (currentFocus.classList.contains('movie')) {
+                    showMovieDetails(currentFocus.movieData);
+                }
+            }
+            handled = true;
             break;
-        case 'right':
-            nextIndex = Math.min(focusableElements.length - 1, currentIndex + 1);
+        case 21: // KEYCODE_DPAD_LEFT
+            // Handle left action
+            handleKeyNavigation({ keyCode: 37, preventDefault: () => {} });
+            handled = true;
             break;
-        case 'up':
-            nextIndex = findVerticalElement(focusableElements, currentIndex, -1);
+        case 22: // KEYCODE_DPAD_RIGHT
+            // Handle right action
+            handleKeyNavigation({ keyCode: 39, preventDefault: () => {} });
+            handled = true;
             break;
-        case 'down':
-            nextIndex = findVerticalElement(focusableElements, currentIndex, 1);
+        case 19: // KEYCODE_DPAD_UP
+            // Handle up action
+            handleKeyNavigation({ keyCode: 38, preventDefault: () => {} });
+            handled = true;
+            break;
+        case 20: // KEYCODE_DPAD_DOWN
+            // Handle down action
+            handleKeyNavigation({ keyCode: 40, preventDefault: () => {} });
+            handled = true;
+            break;
+        case 4: // KEYCODE_BACK
+            // Handle back action
+            if (window.history.length > 1) {
+                window.history.back();
+            }
+            handled = true;
             break;
     }
 
-    if (nextIndex !== undefined && nextIndex !== currentIndex) {
-        focusableElements[nextIndex].focus();
-        ensureElementIsVisible(focusableElements[nextIndex]);
+    if (handled) {
+        event.preventDefault();
     }
-}
 
-// Function to get all focusable elements
-function getFocusableElements() {
-    return Array.from(document.querySelectorAll('a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])'));
-}
-
-// Function to enable/disable cursor-based navigation
-function toggleCursorNavigation(enable) {
-    cursorNavigationEnabled = enable;
+    return handled;
 }
 
 // Update the existing handleKeyNavigation function
 function handleKeyNavigation(event) {
-    // Use keyboard navigation on all devices now
+    // Don't interfere with typing in the search input
+    if (document.activeElement.id === 'search-input') {
+        return;
+    }
+
+    const focusableElements = document.querySelectorAll('h1, nav ul li a, #search-toggle, #search-input, #media-type, #search-form button, .movie');
+    const focusArray = Array.from(focusableElements);
+
+    if (!currentFocus) {
+        currentFocus = focusArray[0];
+        currentFocus.focus();
+        return;
+    }
+
+    const currentIndex = focusArray.indexOf(currentFocus);
+
     switch(event.keyCode) {
         case 37: // Left arrow
         case 21: // KEYCODE_DPAD_LEFT
-            navigateDirection('left');
+            event.preventDefault();
+            if (currentIndex > 0) {
+                currentFocus = focusArray[currentIndex - 1];
+            }
             break;
         case 39: // Right arrow
         case 22: // KEYCODE_DPAD_RIGHT
-            navigateDirection('right');
+            event.preventDefault();
+            if (currentIndex < focusArray.length - 1) {
+                currentFocus = focusArray[currentIndex + 1];
+            }
             break;
         case 38: // Up arrow
         case 19: // KEYCODE_DPAD_UP
-            navigateDirection('up');
+            event.preventDefault();
+            currentFocus = findVerticalElement(focusArray, currentIndex, -1) || currentFocus;
             break;
         case 40: // Down arrow
         case 20: // KEYCODE_DPAD_DOWN
-            navigateDirection('down');
+            event.preventDefault();
+            currentFocus = findVerticalElement(focusArray, currentIndex, 1) || currentFocus;
             break;
         case 13: // Enter
         case 66: // KEYCODE_BUTTON_A
-            if (document.activeElement) {
-                document.activeElement.click();
+            if (currentFocus.tagName === 'A' || currentFocus.tagName === 'BUTTON') {
+                currentFocus.click();
+            } else if (currentFocus.classList.contains('movie')) {
+                showMovieDetails(currentFocus.movieData);
             }
-            break;
+            event.preventDefault();
+            return;
     }
 
-    event.preventDefault();
+    currentFocus.focus();
+    ensureElementIsVisible(currentFocus);
 }
 
-// Remove the isLikelyTV check from the keydown event listener
-document.addEventListener('keydown', handleKeyNavigation);
-
-// Remove or comment out the handleFireTVRemote function as it's no longer needed
-// function handleFireTVRemote(event) { ... }
-
-// Disable default focus outline
+// Update the DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', () => {
-    const style = document.createElement('style');
-    style.textContent = `
-        *:focus {
-            outline: none !important;
+    // ... existing code ...
+
+    // Add event listener for Fire TV remote
+    document.addEventListener('keydown', (event) => {
+        if (!handleFireTVRemote(event)) {
+            handleKeyNavigation(event);
         }
-    `;
-    document.head.appendChild(style);
+    });
+
+    // ... rest of the existing code ...
 });
 
-// Prevent default behavior for mouse events
-function preventDefaultForMouseEvents(e) {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-        return; // Allow mouse events for input fields
-    }
-    e.preventDefault();
-    e.stopPropagation();
-}
-
-// Add event listeners to prevent mouse interaction
-['click', 'mousedown', 'mouseup', 'mousemove'].forEach(eventType => {
-    document.addEventListener(eventType, preventDefaultForMouseEvents, { capture: true });
-});
-
-// Custom focus handler
-function customFocusHandler(element) {
-    if (element) {
-        element.classList.add('custom-focus');
-    }
-}
-
-// Custom blur handler
-function customBlurHandler(element) {
-    if (element) {
-        element.classList.remove('custom-focus');
-    }
-}
-
-// Update your CSS to include a custom focus style
-const customFocusStyle = `
-    .custom-focus {
-        outline: 2px solid #007bff !important;
-        outline-offset: 2px;
-    }
-`;
-document.head.insertAdjacentHTML('beforeend', `<style>${customFocusStyle}</style>`);
-
-// Modify your navigation function to use custom focus
-function navigateDirection(direction) {
-    const focusableElements = getFocusableElements();
-    const currentIndex = focusableElements.indexOf(document.activeElement);
-    let nextIndex;
-
-    // ... (rest of the navigation logic)
-
-    if (nextIndex !== undefined && nextIndex !== currentIndex) {
-        customBlurHandler(document.activeElement);
-        customFocusHandler(focusableElements[nextIndex]);
-        focusableElements[nextIndex].focus();
-        ensureElementIsVisible(focusableElements[nextIndex]);
-    }
-}
-
-// Update handleKeyNavigation to include Enter key functionality
-function handleKeyNavigation(event) {
-    switch(event.keyCode) {
-        case 37: // Left arrow
-        case 21: // KEYCODE_DPAD_LEFT
-            navigateDirection('left');
-            break;
-        case 39: // Right arrow
-        case 22: // KEYCODE_DPAD_RIGHT
-            navigateDirection('right');
-            break;
-        case 38: // Up arrow
-        case 19: // KEYCODE_DPAD_UP
-            navigateDirection('up');
-            break;
-        case 40: // Down arrow
-        case 20: // KEYCODE_DPAD_DOWN
-            navigateDirection('down');
-            break;
-        case 13: // Enter
-        case 66: // KEYCODE_BUTTON_A
-            if (document.activeElement) {
-                document.activeElement.click();
-            }
-            break;
-    }
-    event.preventDefault();
-}
-
-document.addEventListener('keydown', handleKeyNavigation);
-
-// Disable mouse interactions
-function disableMouseInteractions(e) {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-        return; // Allow mouse events for input fields
-    }
-    e.preventDefault();
-    e.stopPropagation();
-}
-
-// Disable cursor
-document.body.style.cursor = 'none';
-
-// Prevent default behavior for mouse events
-['click', 'mousedown', 'mouseup', 'mousemove', 'contextmenu'].forEach(eventType => {
-    document.addEventListener(eventType, disableMouseInteractions, { capture: true });
-});
-
-// Prevent scrolling
-document.body.style.overflow = 'hidden';
-
-// Disable text selection
-document.body.style.userSelect = 'none';
-
-// Disable drag and drop
-document.body.addEventListener('dragstart', (e) => e.preventDefault());
-
-// Focus on the first focusable element when the page loads
-document.addEventListener('DOMContentLoaded', () => {
-    const firstFocusableElement = document.querySelector('a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
-    if (firstFocusableElement) {
-        firstFocusableElement.focus();
-    }
-});
-
-// Handle keyboard navigation
-function handleKeyNavigation(event) {
-    switch(event.keyCode) {
-        case 37: // Left arrow
-        case 21: // KEYCODE_DPAD_LEFT
-            navigateDirection('left');
-            break;
-        case 39: // Right arrow
-        case 22: // KEYCODE_DPAD_RIGHT
-            navigateDirection('right');
-            break;
-        case 38: // Up arrow
-        case 19: // KEYCODE_DPAD_UP
-            navigateDirection('up');
-            break;
-        case 40: // Down arrow
-        case 20: // KEYCODE_DPAD_DOWN
-            navigateDirection('down');
-            break;
-        case 13: // Enter
-        case 66: // KEYCODE_BUTTON_A
-            if (document.activeElement) {
-                document.activeElement.click();
-            }
-            break;
-    }
-    event.preventDefault();
-}
-
-document.addEventListener('keydown', handleKeyNavigation);
-
-// Disable all mouse interactions
-function disableAllMouseInteractions(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    return false;
-}
-
-// Completely disable the cursor
-document.documentElement.style.cursor = 'none';
-
-// Prevent ALL mouse events
-['click', 'mousedown', 'mouseup', 'mousemove', 'mouseover', 'mouseout', 
- 'contextmenu', 'dblclick', 'wheel', 'mousewheel'].forEach(eventType => {
-    document.addEventListener(eventType, disableAllMouseInteractions, { capture: true });
-});
-
-// Disable text selection
-document.body.style.userSelect = 'none';
-document.body.style.webkitUserSelect = 'none';
-document.body.style.msUserSelect = 'none';
-document.body.style.mozUserSelect = 'none';
-
-// Prevent scrolling
-document.body.style.overflow = 'hidden';
-
-// Disable drag and drop
-document.body.addEventListener('dragstart', disableAllMouseInteractions, { capture: true });
-
-// Focus on the first focusable element when the page loads
-document.addEventListener('DOMContentLoaded', () => {
-    const firstFocusableElement = document.querySelector('a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
-    if (firstFocusableElement) {
-        firstFocusableElement.focus();
-    }
-});
-
-// Handle keyboard navigation (keep your existing handleKeyNavigation function)
+// ... rest of the existing code ...
