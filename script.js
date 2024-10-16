@@ -710,3 +710,115 @@ function isLikelyTV() {
     // Most TVs have a width of 1920px or more
     return window.innerWidth >= 1920;
 }
+
+// Global variables to store cursor position
+let cursorPosition = [0, 0];
+let lastMoveTime = 0;
+
+// Function to handle mouse movement
+function handleMouseMove(event) {
+    const currentTime = Date.now();
+    // Ignore rapid movements (adjust the time threshold as needed)
+    if (currentTime - lastMoveTime < 100) return;
+
+    const newPosition = [event.clientX, event.clientY];
+    const movement = [
+        newPosition[0] - cursorPosition[0],
+        newPosition[1] - cursorPosition[1]
+    ];
+
+    // Determine the primary direction of movement
+    if (Math.abs(movement[0]) > Math.abs(movement[1])) {
+        // Horizontal movement
+        if (movement[0] > 0) {
+            navigateDirection('right');
+        } else {
+            navigateDirection('left');
+        }
+    } else {
+        // Vertical movement
+        if (movement[1] > 0) {
+            navigateDirection('down');
+        } else {
+            navigateDirection('up');
+        }
+    }
+
+    // Update cursor position and last move time
+    cursorPosition = newPosition;
+    lastMoveTime = currentTime;
+}
+
+// Function to navigate in a given direction
+function navigateDirection(direction) {
+    const focusableElements = getFocusableElements();
+    const currentIndex = focusableElements.indexOf(document.activeElement);
+    let nextIndex;
+
+    switch (direction) {
+        case 'left':
+            nextIndex = Math.max(0, currentIndex - 1);
+            break;
+        case 'right':
+            nextIndex = Math.min(focusableElements.length - 1, currentIndex + 1);
+            break;
+        case 'up':
+            nextIndex = findVerticalElement(focusableElements, currentIndex, -1);
+            break;
+        case 'down':
+            nextIndex = findVerticalElement(focusableElements, currentIndex, 1);
+            break;
+    }
+
+    if (nextIndex !== undefined && nextIndex !== currentIndex) {
+        focusableElements[nextIndex].focus();
+        ensureElementIsVisible(focusableElements[nextIndex]);
+    }
+}
+
+// Function to get all focusable elements
+function getFocusableElements() {
+    return Array.from(document.querySelectorAll('a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])'));
+}
+
+// Update the DOMContentLoaded event listener
+document.addEventListener('DOMContentLoaded', () => {
+    // ... existing code ...
+
+    // Add mousemove event listener for non-TV devices
+    if (!isLikelyTV()) {
+        document.addEventListener('mousemove', handleMouseMove);
+    }
+
+    // ... rest of the existing code ...
+});
+
+// Update the existing handleKeyNavigation function
+function handleKeyNavigation(event) {
+    // Only use keyboard navigation if we're not on a TV-like device
+    if (isLikelyTV()) {
+        return;
+    }
+
+    switch(event.keyCode) {
+        case 37: // Left arrow
+            navigateDirection('left');
+            break;
+        case 39: // Right arrow
+            navigateDirection('right');
+            break;
+        case 38: // Up arrow
+            navigateDirection('up');
+            break;
+        case 40: // Down arrow
+            navigateDirection('down');
+            break;
+        case 13: // Enter
+            if (document.activeElement) {
+                document.activeElement.click();
+            }
+            break;
+    }
+
+    event.preventDefault();
+}
