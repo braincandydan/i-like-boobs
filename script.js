@@ -358,7 +358,7 @@ function ensureElementIsVisible(element) {
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     // Load initial content
-    fetchContent('movie/popular', 'featured-content', 'Featured');
+    fetchContent('movie/popular', 'featured-content', 'Featured Hi');
     fetchContent('trending/all/day', 'trending-content', 'Trending Now');
     fetchContent('movie/popular', 'popular-movies', 'Popular Movies');
     fetchContent('tv/popular', 'popular-tv', 'Popular TV Shows');
