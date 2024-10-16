@@ -846,3 +846,41 @@ function handleKeyNavigation(event) {
 }
 
 document.addEventListener('keydown', handleKeyNavigation);
+
+// Disable all mouse interactions
+function disableAllMouseInteractions(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
+}
+
+// Completely disable the cursor
+document.documentElement.style.cursor = 'none';
+
+// Prevent ALL mouse events
+['click', 'mousedown', 'mouseup', 'mousemove', 'mouseover', 'mouseout', 
+ 'contextmenu', 'dblclick', 'wheel', 'mousewheel'].forEach(eventType => {
+    document.addEventListener(eventType, disableAllMouseInteractions, { capture: true });
+});
+
+// Disable text selection
+document.body.style.userSelect = 'none';
+document.body.style.webkitUserSelect = 'none';
+document.body.style.msUserSelect = 'none';
+document.body.style.mozUserSelect = 'none';
+
+// Prevent scrolling
+document.body.style.overflow = 'hidden';
+
+// Disable drag and drop
+document.body.addEventListener('dragstart', disableAllMouseInteractions, { capture: true });
+
+// Focus on the first focusable element when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    const firstFocusableElement = document.querySelector('a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (firstFocusableElement) {
+        firstFocusableElement.focus();
+    }
+});
+
+// Handle keyboard navigation (keep your existing handleKeyNavigation function)
