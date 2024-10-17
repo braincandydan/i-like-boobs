@@ -234,7 +234,8 @@ function clearSearch() {
 let currentFocus = null;
 
 function initializeNavigation() {
-    disableMouseInteractions();
+    enableMouseInteractions();
+    disableMousePointer();
 
     const firstFocusableElement = document.querySelector('.movie, button, input, select, #search-toggle, nav ul li a');
     if (firstFocusableElement) {
@@ -244,36 +245,65 @@ function initializeNavigation() {
     document.addEventListener('keydown', handleKeyNavigation);
 }
 
-function disableMouseInteractions() {
-    document.body.style.cursor = 'none'; // Hide the cursor
-
-    // Prevent all mouse events
-    const events = ['click', 'dblclick', 'mousedown', 'mouseup', 'mousemove', 'mouseover', 'mouseout', 'mouseenter', 'mouseleave', 'contextmenu', 'wheel'];
+function enableMouseInteractions() {
+    document.body.style.pointerEvents = 'auto';
     
-    events.forEach(event => {
-        document.addEventListener(event, (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-        }, { capture: true, passive: false });
-    });
-
-    // Prevent focus on all elements
-    const allElements = document.getElementsByTagName('*');
-    for (let element of allElements) {
-        element.tabIndex = -1;
-    }
-
-    // Re-enable tabIndex for focusable elements
-    const focusableElements = document.querySelectorAll('.movie, button, input, select, #search-toggle, nav ul li a');
-    focusableElements.forEach(el => {
-        el.tabIndex = 0;
-    });
-
-    // Disable pointer events on all elements
-    document.body.style.pointerEvents = 'none';
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('click', handleMouseClick);
 }
 
-// Modify the handleKeyNavigation function
+function disableMousePointer() {
+    document.body.style.cursor = 'none';
+}
+
+function handleMouseMove(event) {
+    const focusableElements = document.querySelectorAll('.movie, button, input, select, #search-toggle, nav ul li a');
+    const focusArray = Array.from(focusableElements);
+    
+    let closestElement = null;
+    let closestDistance = Infinity;
+
+    focusArray.forEach(element => {
+        const rect = element.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const distance = Math.hypot(event.clientX - centerX, event.clientY - centerY);
+        
+        if (distance < closestDistance) {
+            closestDistance = distance;
+            closestElement = element;
+        }
+    });
+
+    if (closestElement && closestElement !== currentFocus) {
+        currentFocus = closestElement;
+        currentFocus.focus();
+        ensureElementIsVisible(currentFocus);
+        
+        // Move the mouse cursor to the center of the focused element
+        const rect = currentFocus.getBoundingClientRect();
+        const centerX = Math.round(rect.left + rect.width / 2);
+        const centerY = Math.round(rect.top + rect.height / 2);
+        
+        // Use requestAnimationFrame to smooth out the cursor movement
+        requestAnimationFrame(() => {
+            window.moveTo(window.screenX + centerX - event.clientX, window.screenY + centerY - event.clientY);
+        });
+    }
+}
+
+function handleMouseClick(event) {
+    if (currentFocus) {
+        if (currentFocus.tagName === 'A' || currentFocus.tagName === 'BUTTON') {
+            currentFocus.click();
+        } else if (currentFocus.classList.contains('movie')) {
+            showMovieDetails(currentFocus.movieData);
+        }
+        event.preventDefault();
+    }
+}
+
+// Modify the existing handleKeyNavigation function
 function handleKeyNavigation(event) {
     if (document.activeElement.id === 'search-input') {
         return;
