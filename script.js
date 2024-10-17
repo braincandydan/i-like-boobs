@@ -234,6 +234,8 @@ function clearSearch() {
 let currentFocus = null;
 
 function initializeNavigation() {
+    disableMouseInteractions();
+
     const firstFocusableElement = document.querySelector('.movie, button, input, select, #search-toggle, nav ul li a');
     if (firstFocusableElement) {
         firstFocusableElement.focus();
@@ -242,13 +244,42 @@ function initializeNavigation() {
     document.addEventListener('keydown', handleKeyNavigation);
 }
 
+function disableMouseInteractions() {
+    document.body.style.cursor = 'none'; // Hide the cursor
+
+    // Prevent all mouse events
+    const events = ['click', 'dblclick', 'mousedown', 'mouseup', 'mousemove', 'mouseover', 'mouseout', 'mouseenter', 'mouseleave', 'contextmenu', 'wheel'];
+    
+    events.forEach(event => {
+        document.addEventListener(event, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        }, { capture: true, passive: false });
+    });
+
+    // Prevent focus on all elements
+    const allElements = document.getElementsByTagName('*');
+    for (let element of allElements) {
+        element.tabIndex = -1;
+    }
+
+    // Re-enable tabIndex for focusable elements
+    const focusableElements = document.querySelectorAll('.movie, button, input, select, #search-toggle, nav ul li a');
+    focusableElements.forEach(el => {
+        el.tabIndex = 0;
+    });
+
+    // Disable pointer events on all elements
+    document.body.style.pointerEvents = 'none';
+}
+
+// Modify the handleKeyNavigation function
 function handleKeyNavigation(event) {
-    // Don't interfere with typing in the search input
     if (document.activeElement.id === 'search-input') {
         return;
     }
 
-    const focusableElements = document.querySelectorAll('h1, nav ul li a, #search-toggle, #search-input, #media-type, #search-form button, .movie');
+    const focusableElements = document.querySelectorAll('.movie, button, input, select, #search-toggle, nav ul li a');
     const focusArray = Array.from(focusableElements);
 
     if (!currentFocus) {
@@ -258,27 +289,24 @@ function handleKeyNavigation(event) {
     }
 
     const currentIndex = focusArray.indexOf(currentFocus);
+    let newIndex = currentIndex;
 
     switch(event.keyCode) {
         case 37: // Left arrow
             event.preventDefault();
-            if (currentIndex > 0) {
-                currentFocus = focusArray[currentIndex - 1];
-            }
+            newIndex = Math.max(0, currentIndex - 1);
             break;
         case 39: // Right arrow
             event.preventDefault();
-            if (currentIndex < focusArray.length - 1) {
-                currentFocus = focusArray[currentIndex + 1];
-            }
+            newIndex = Math.min(focusArray.length - 1, currentIndex + 1);
             break;
         case 38: // Up arrow
             event.preventDefault();
-            currentFocus = findVerticalElement(focusArray, currentIndex, -1) || currentFocus;
+            newIndex = findAdjacentVerticalElement(focusArray, currentIndex, -1);
             break;
         case 40: // Down arrow
             event.preventDefault();
-            currentFocus = findVerticalElement(focusArray, currentIndex, 1) || currentFocus;
+            newIndex = findAdjacentVerticalElement(focusArray, currentIndex, 1);
             break;
         case 13: // Enter
             if (currentFocus.tagName === 'A' || currentFocus.tagName === 'BUTTON') {
@@ -290,52 +318,25 @@ function handleKeyNavigation(event) {
             return;
     }
 
-    currentFocus.focus();
-    ensureElementIsVisible(currentFocus);
-}
-
-// Add this function to handle the Fire TV Back button globally
-function handleFireTVBack(event) {
-    if (event.keyCode === 10008) {
-        if (window.history.length > 1) {
-            window.history.back();
-        }
-        event.preventDefault();
+    if (newIndex !== currentIndex) {
+        currentFocus = focusArray[newIndex];
+        currentFocus.focus();
+        ensureElementIsVisible(currentFocus);
     }
 }
 
-// Add this new function to find the next vertical element
-function findVerticalElement(elements, currentIndex, direction) {
-    const currentRect = elements[currentIndex].getBoundingClientRect();
-    const currentCenterX = currentRect.left + currentRect.width / 2;
-    const currentY = currentRect.top + (direction > 0 ? currentRect.height : 0);
+function findAdjacentVerticalElement(elements, currentIndex, direction) {
+    // Calculate the new index based on direction
+    let newIndex = currentIndex + direction;
 
-    let closestElement = null;
-    let closestDistance = Infinity;
-
-    for (let i = 0; i < elements.length; i++) {
-        if (i === currentIndex) continue;
-
-        const rect = elements[i].getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const y = rect.top + (direction < 0 ? rect.height : 0);
-
-        // Check if the element is in the correct direction (above or below)
-        if ((direction > 0 && y <= currentY) || (direction < 0 && y >= currentY)) continue;
-
-        const verticalDistance = Math.abs(y - currentY);
-        const horizontalDistance = Math.abs(centerX - currentCenterX);
-
-        // Prioritize vertical alignment, then horizontal proximity
-        const distance = verticalDistance * 1000 + horizontalDistance;
-
-        if (distance < closestDistance) {
-            closestDistance = distance;
-            closestElement = elements[i];
-        }
+    // Ensure the new index is within bounds
+    if (newIndex < 0) {
+        newIndex = 0; // Prevent going above the first element
+    } else if (newIndex >= elements.length) {
+        newIndex = elements.length - 1; // Prevent going below the last element
     }
 
-    return closestElement || elements[currentIndex];
+    return newIndex; // Return the new index directly
 }
 
 function ensureElementIsVisible(element) {
@@ -345,9 +346,9 @@ function ensureElementIsVisible(element) {
         const elementRect = element.getBoundingClientRect();
         
         if (elementRect.right > containerRect.right) {
-            container.scrollLeft += elementRect.right - containerRect.right + 20; // 20px extra for padding
+            container.scrollLeft += elementRect.right - containerRect.right + 20;
         } else if (elementRect.left < containerRect.left) {
-            container.scrollLeft -= containerRect.left - elementRect.left + 20; // 20px extra for padding
+            container.scrollLeft -= containerRect.left - elementRect.left + 20;
         }
     }
 }
@@ -425,26 +426,14 @@ function initializeSearchInput() {
     const searchForm = document.getElementById('search-form');
 
     if (searchInput) {
-        // Ensure the input is enabled and focusable
         searchInput.disabled = false;
         searchInput.readOnly = false;
 
-        // Add event listeners for debugging
-        searchInput.addEventListener('focus', () => {
-            console.log('Search input focused');
-        });
-
-        searchInput.addEventListener('blur', () => {
-            console.log('Search input blurred');
-        });
-
-        searchInput.addEventListener('input', (event) => {
-            console.log('Input event:', event.target.value);
-        });
-
-        // Prevent arrow key navigation from interfering with typing
         searchInput.addEventListener('keydown', (event) => {
-            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                submitSearch();
+            } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
                 event.stopPropagation();
             }
         });
@@ -455,17 +444,22 @@ function initializeSearchInput() {
     if (searchForm) {
         searchForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const query = searchInput.value;
-            const mediaType = document.getElementById('media-type').value;
-            console.log('Search submitted:', query, 'Media type:', mediaType);
-            if (query.trim() !== '') {
-                searchMedia(query, mediaType);
-            } else {
-                clearSearch();
-            }
+            submitSearch();
         });
     } else {
         console.error('Search form not found');
+    }
+}
+
+function submitSearch() {
+    const searchInput = document.getElementById('search-input');
+    const mediaType = document.getElementById('media-type').value;
+    const query = searchInput.value;
+    console.log('Search submitted:', query, 'Media type:', mediaType);
+    if (query.trim() !== '') {
+        searchMedia(query, mediaType);
+    } else {
+        clearSearch();
     }
 }
 
@@ -626,12 +620,11 @@ function handleFireTVRemote(event) {
 
 // Update the existing handleKeyNavigation function
 function handleKeyNavigation(event) {
-    // Don't interfere with typing in the search input
     if (document.activeElement.id === 'search-input') {
         return;
     }
 
-    const focusableElements = document.querySelectorAll('h1, nav ul li a, #search-toggle, #search-input, #media-type, #search-form button, .movie');
+    const focusableElements = document.querySelectorAll('.movie, button, input, select, #search-toggle, nav ul li a');
     const focusArray = Array.from(focusableElements);
 
     if (!currentFocus) {
@@ -641,34 +634,26 @@ function handleKeyNavigation(event) {
     }
 
     const currentIndex = focusArray.indexOf(currentFocus);
+    let newIndex = currentIndex;
 
     switch(event.keyCode) {
         case 37: // Left arrow
-        case 21: // KEYCODE_DPAD_LEFT
             event.preventDefault();
-            if (currentIndex > 0) {
-                currentFocus = focusArray[currentIndex - 1];
-            }
+            newIndex = Math.max(0, currentIndex - 1);
             break;
         case 39: // Right arrow
-        case 22: // KEYCODE_DPAD_RIGHT
             event.preventDefault();
-            if (currentIndex < focusArray.length - 1) {
-                currentFocus = focusArray[currentIndex + 1];
-            }
+            newIndex = Math.min(focusArray.length - 1, currentIndex + 1);
             break;
         case 38: // Up arrow
-        case 19: // KEYCODE_DPAD_UP
             event.preventDefault();
-            currentFocus = findVerticalElement(focusArray, currentIndex, -1) || currentFocus;
+            newIndex = findAdjacentVerticalElement(focusArray, currentIndex, -1);
             break;
         case 40: // Down arrow
-        case 20: // KEYCODE_DPAD_DOWN
             event.preventDefault();
-            currentFocus = findVerticalElement(focusArray, currentIndex, 1) || currentFocus;
+            newIndex = findAdjacentVerticalElement(focusArray, currentIndex, 1);
             break;
         case 13: // Enter
-        case 66: // KEYCODE_BUTTON_A
             if (currentFocus.tagName === 'A' || currentFocus.tagName === 'BUTTON') {
                 currentFocus.click();
             } else if (currentFocus.classList.contains('movie')) {
@@ -678,8 +663,39 @@ function handleKeyNavigation(event) {
             return;
     }
 
-    currentFocus.focus();
-    ensureElementIsVisible(currentFocus);
+    if (newIndex !== currentIndex) {
+        currentFocus = focusArray[newIndex];
+        currentFocus.focus();
+        ensureElementIsVisible(currentFocus);
+    }
+}
+
+function findAdjacentVerticalElement(elements, currentIndex, direction) {
+    // Calculate the new index based on direction
+    let newIndex = currentIndex + direction;
+
+    // Ensure the new index is within bounds
+    if (newIndex < 0) {
+        newIndex = 0; // Prevent going above the first element
+    } else if (newIndex >= elements.length) {
+        newIndex = elements.length - 1; // Prevent going below the last element
+    }
+
+    return newIndex; // Return the new index directly
+}
+
+function ensureElementIsVisible(element) {
+    const container = element.closest('.content-row');
+    if (container) {
+        const containerRect = container.getBoundingClientRect();
+        const elementRect = element.getBoundingClientRect();
+        
+        if (elementRect.right > containerRect.right) {
+            container.scrollLeft += elementRect.right - containerRect.right + 20;
+        } else if (elementRect.left < containerRect.left) {
+            container.scrollLeft -= containerRect.left - elementRect.left + 20;
+        }
+    }
 }
 
 // Update the DOMContentLoaded event listener
@@ -697,3 +713,83 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ... rest of the existing code ...
+
+document.addEventListener('DOMContentLoaded', () => {
+    let currentFocusIndex = 0;
+
+    function updateFocus(index) {
+        const focusableElements = document.querySelectorAll('.movie, button, input, select, #search-toggle, nav ul li a');
+        if (index >= 0 && index < focusableElements.length) {
+            focusableElements[currentFocusIndex].blur(); // Remove focus from the current element
+            currentFocusIndex = index;
+            focusableElements[currentFocusIndex].focus(); // Set focus to the new element
+        }
+    }
+
+    function findAdjacentVerticalElement(elements, currentIndex, direction) {
+        const currentElement = elements[currentIndex];
+        const currentRect = currentElement.getBoundingClientRect();
+        const currentCenterX = currentRect.left + currentRect.width / 2;
+
+        let closestElement = null;
+        let closestDistance = Infinity;
+
+        for (let i = 0; i < elements.length; i++) {
+            if (i === currentIndex) continue;
+
+            const rect = elements[i].getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+
+            // Check if the element is in the correct vertical direction
+            if ((direction > 0 && rect.top <= currentRect.top) || (direction < 0 && rect.top >= currentRect.top)) continue;
+
+            const verticalDistance = Math.abs(rect.top - currentRect.top);
+            const horizontalDistance = Math.abs(centerX - currentCenterX);
+
+            // Prioritize vertical distance, but consider horizontal distance as a tiebreaker
+            const distance = verticalDistance * 1000 + horizontalDistance;
+
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestElement = i;
+            }
+        }
+
+        return closestElement !== null ? closestElement : currentIndex;
+    }
+
+    document.addEventListener('keydown', (event) => {
+        const focusableElements = document.querySelectorAll('.movie, button, input, select, #search-toggle, nav ul li a');
+        switch (event.keyCode) {
+            case 37: // Left arrow
+                event.preventDefault();
+                updateFocus(currentFocusIndex - 1);
+                break;
+            case 39: // Right arrow
+                event.preventDefault();
+                updateFocus(currentFocusIndex + 1);
+                break;
+            case 38: // Up arrow
+                event.preventDefault();
+                const upIndex = findAdjacentVerticalElement(focusableElements, currentFocusIndex, -1);
+                updateFocus(upIndex);
+                break;
+            case 40: // Down arrow
+                event.preventDefault();
+                const downIndex = findAdjacentVerticalElement(focusableElements, currentFocusIndex, 1);
+                updateFocus(downIndex);
+                break;
+            case 13: // Enter
+                if (focusableElements[currentFocusIndex].tagName === 'A' || focusableElements[currentFocusIndex].tagName === 'BUTTON') {
+                    focusableElements[currentFocusIndex].click();
+                } else if (focusableElements[currentFocusIndex].classList.contains('movie')) {
+                    showMovieDetails(focusableElements[currentFocusIndex].movieData);
+                }
+                event.preventDefault();
+                break;
+        }
+    });
+
+    // Initialize focus on the first focusable element
+    updateFocus(0);
+});
