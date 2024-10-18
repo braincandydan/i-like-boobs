@@ -48,10 +48,14 @@ async function searchMedia(query, mediaType) {
 function displaySearchResults(results) {
     const searchResultsContent = document.getElementById('search-results-content');
     searchResultsContent.innerHTML = '';
-    results.forEach(result => {
-        const movieElement = createMovieElement(result);
-        searchResultsContent.appendChild(movieElement);
-    });
+    if (results.length === 0) {
+        searchResultsContent.innerHTML = '<p>No results found.</p>';
+    } else {
+        results.forEach(result => {
+            const movieElement = createMovieElement(result);
+            searchResultsContent.appendChild(movieElement);
+        });
+    }
 }
 
 function createMovieElement(movie) {
@@ -137,7 +141,7 @@ function handleMouseClick(event) {
 }
 
 function initializeNavigation() {
-    const firstFocusableElement = document.querySelector('.movie, button, input, select, #search-toggle, nav ul li a');
+    const firstFocusableElement = document.querySelector('#search-input, #media-type, #search-form button, .movie');
     if (firstFocusableElement) {
         firstFocusableElement.focus();
         currentFocus = firstFocusableElement;
