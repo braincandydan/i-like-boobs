@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamFlix - Search</title>
+    <link rel="stylesheet" href="style.css">
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script src="analytics.js"></script>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <nav>
+                <ul>
+                    <li><a href="index.html" tabindex="0"><h1 tabindex="0">StreamFlix</h1></a></li>
+                    <li>
+                        <div id="search-container">
+                            <form id="search-form">
+                                <input type="text" id="search-input" placeholder="Search..." tabindex="0">
+                                <select id="media-type" tabindex="0">
+                                    <option value="multi">All</option>
+                                    <option value="movie">Movies</option>
+                                    <option value="tv">TV Shows</option>
+                                </select>
+                                <button type="submit" tabindex="0">Search</button>
+                            </form>
+                        </div>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section id="search-results">
+            <h2>Search Results</h2>
+            <div id="search-results-content" class="content-row"></div>
+        </section>
+    </main>
+
+    <div id="movie-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="movie-details"></div>
+        </div>
+    </div>
+    <button id="back-to-top" style="display: none;">Back to Top</button>
+
+    <script src="script.js"></script>
+    <script src="search.js"></script>
+</body>
+</html>
