@@ -738,3 +738,24 @@ html {
     text-align: center;
     margin-bottom: 1rem;
 }
+
+.movie {
+    margin: 10px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    width: 200px;
+    display: inline-block;
+    vertical-align: top;
+}
+
+.movie-poster {
+    max-width: 100%;
+    height: auto;
+}
+
+#search-results-content {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
