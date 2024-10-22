@@ -3,14 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamFlix - Search</title>
-    <link rel="stylesheet" href="style.css">
+    <title>NotFlix - Search</title>
+    <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/search.css">
 </head>
 <body>
     <div class="search-page-container">
         <aside class="search-sidebar">
             <div class="logo-container">
-                <h1>StreamFlix</h1>
+                <a href="index.html">
+                    <h1>NotFlix</h1>
+                </a>
             </div>
             <div class="search-form-container">
                 <form id="search-form">
@@ -23,13 +26,19 @@
                     <button type="submit">Search</button>
                 </form>
             </div>
+            <!-- Genre navigation moved here -->
+            <nav class="genre-navigation">
+                <h3>Genres</h3>
+                <ul id="genre-list">
+                    <!-- Genre links will be dynamically inserted here -->
+                </ul>
+            </nav>
         </aside>
         <main class="search-results-container">
             <h2>Search Results</h2>
             <div id="search-results-content"></div>
         </main>
     </div>
-
-    <script src="search.js"></script>
+    <script src="scripts/search.js"></script>
 </body>
 </html>

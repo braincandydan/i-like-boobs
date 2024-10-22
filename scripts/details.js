@@ -48,7 +48,7 @@ function displayDetails(item, mediaType) {
     const posterPath = item.poster_path;
     const voteAverage = item.vote_average;
     const director = item.credits.crew.find(person => person.job === 'Director');
-    const cast = item.credits.cast.slice(0, 8);
+    const cast = item.credits.cast.slice(0, 16);
     const trailer = item.videos.results.find(video => video.type === 'Trailer');
     const imdbId = item.external_ids.imdb_id;
 

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NotFlix</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style/style.css">
 
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
     <script src="analytics.js"></script>
@@ -12,10 +12,9 @@
 <body>
     <header>
         <div class="header-content">
-            
             <nav>
                 <ul>
-                    <li><a href="#home" class="active" tabindex="0"><h1 tabindex="0">NotFlix</h1></a></li>
+                    <li><a href="index.html" class="active" tabindex="0"><h1 tabindex="0">NotFlix</h1></a></li>
                     <li>
                         <div id="search-container">
                             <a href="search.html" id="search-toggle" aria-label="Go to search page" tabindex="0">
@@ -27,9 +26,21 @@
                             </a>
                         </div>
                     </li>
+                    <li>
+                        <div id="genre-container">
+                            <select id="genre-dropdown" aria-label="Select genre" tabindex="0">
+                                <option value="">Genre</option>
+                                <option value="28">Action</option>
+                                <option value="35">Comedy</option>
+                                <option value="18">Drama</option>
+                                <option value="27">Horror</option>
+                                <option value="10749">Romance</option>
+                                <option value="878">Sci-Fi</option>
+                            </select>
+                        </div>
+                    </li>
                 </ul>
             </nav>
-           
         </div>
     </header>
 
@@ -70,8 +81,9 @@
     </div>
     <button id="back-to-top" style="display: none;">Back to Top</button>
 
-    <script src="script.js"></script>
+    <script src="scripts/script.js"></script>
     <script src="navigation.js"></script>
 
 </body>
 </html>
+ 

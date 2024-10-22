@@ -37,10 +37,14 @@ nav ul {
   padding: 0;
   display: flex;
   margin: 0;
+  align-items: center; /* Center items vertically */
+  justify-content: center; /* Center items horizontally */
 }
 
 nav ul li {
   margin-right: 20px;
+  display: flex; /* Ensure li items are flex containers */
+  align-items: center; /* Center content vertically */
 }
 
 nav ul li a {
@@ -50,6 +54,7 @@ nav ul li a {
 }
 
 #search-container {
+  position: relative;
   display: flex;
   align-items: center;
 }
@@ -62,10 +67,29 @@ nav ul li a {
   color: #ffffff;
   cursor: pointer;
   font-size: 1em;
+  padding: 8px 12px;
+  border-radius: 4px;
+  transition: background-color 0.3s ease;
+}
+
+#search-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 #search-toggle svg {
-  margin-right: 5px;
+  margin-right: 8px;
+  width: 20px;
+  height: 20px;
+}
+
+#search-toggle span {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  #search-toggle span {
+    display: inline;
+  }
 }
 
 #search-form {
@@ -119,15 +143,10 @@ main {
 .movie {
   flex: 0 0 auto;
   width: 120px;
-  margin-right: 10px;
+  
   scroll-snap-align: start;
-}
-
-.movie img {
-  width: 100%;
-  height: 180px;
-  object-fit: cover;
-  border-radius: 5px;
+  cursor: pointer;
+  transition: transform 0.2s;
 }
 
 .movie:hover,
@@ -503,11 +522,11 @@ html {
 }
 
 .search-form-container {
-    flex-grow: 1;
+   
 }
 
 .search-results-container {
-    flex-grow: 1;
+    
     padding: 20px;
     overflow-y: auto;
 }
@@ -683,6 +702,11 @@ html {
 }
 
 #search-section {
+    display: flex;
+    flex-direction: column;
+    justify-content: center; /* Center vertically */
+    align-items: center; /* Center horizontally */
+    height: 100vh; /* Full viewport height */
     text-align: center;
     padding: 2rem 0;
 }
@@ -710,9 +734,7 @@ html {
 }
 
 #media-type {
-    padding: 0.5rem;
     font-size: 1rem;
-    border: 1px solid #ccc;
     border-radius: 4px;
 }
 
@@ -740,13 +762,10 @@ html {
 }
 
 .movie {
-    margin: 10px;
-    padding: 10px;
-    border: 1px solid #ccc;
     border-radius: 5px;
-    width: 200px;
     display: inline-block;
     vertical-align: top;
+    width: 200px;
 }
 
 .movie-poster {
@@ -759,3 +778,86 @@ html {
     flex-wrap: wrap;
     justify-content: flex-start;
 }
+
+.movie {
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.movie:hover, .movie:focus {
+    transform: scale(1.05);
+}
+
+.movie-details {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.details-content {
+    background-color: white;
+    padding: 20px;
+    border-radius: 10px;
+    max-width: 800px;
+    width: 90%;
+    max-height: 90%;
+    overflow-y: auto;
+    display: flex;
+    gap: 20px;
+}
+
+.details-poster {
+    max-width: 300px;
+    height: auto;
+}
+
+.details-text {
+    flex: 1;
+}
+
+.close-details {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: #f44336;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+.close-details:hover {
+    background-color: #d32f2f;
+}
+
+/* Add these styles for smooth scrolling */
+.content-row {
+  scroll-behavior: smooth;
+}
+
+/* Add a class for the scroll zones */
+.scroll-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50px;
+  z-index: 10;
+}
+
+.scroll-zone-left {
+  left: 0;
+}
+
+.scroll-zone-right {
+  right: 0;
+}
+
+
