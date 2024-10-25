@@ -81,9 +81,10 @@ async function searchMedia(query, mediaType, genreId = '') {
         if (data.results && data.results.length > 0) {
             displaySearchResults(data.results);
             updatePagination();
-        } else {
-            displayErrorMessage('No results found for your search.');
-        }
+        } 
+        // else {
+        //     displayErrorMessage('No results found for your search.');
+        // }
     } catch (error) {
         console.error('Error in searchMedia:', error);
         displayErrorMessage('An error occurred while searching. Please try again.');

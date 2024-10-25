@@ -99,16 +99,23 @@ h1 {
     }
 
     .search-sidebar {
-        width: 100%;
+        width: 30%;
         padding: 10px;
+        position: absolute;
+        z-index: 10;
     }
 
     .search-form-container {
         margin-bottom: 20px;
+        
     }
 
     .search-results-container {
         padding: 10px;
+        position: absolute;
+        z-index: 0;
+        margin-left:32%;
+
     }
 
     #search-form {
