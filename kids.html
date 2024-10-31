@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-PRRSZTDC');</script>
+    <!-- End Google Tag Manager -->
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kids</title>
+    <link rel="stylesheet" href="style/kids.css">
+
+</head>
+<body>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-PRRSZTDC"
+    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+
+    <header>
+        <div class="header-content">
+            <nav>
+                <ul>
+                    <li><a href="index.html" class="active" tabindex="0"><h1 tabindex="0">Kids</h1></a></li>
+                    <li>
+                        <div id="search-container">
+                            <a href="search.html" id="search-toggle" aria-label="Go to search page" tabindex="0">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                                <span>Search</span>
+                            </a>
+                            
+                        </div>
+                    </li>
+                    
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section id="home">
+            <div class="content-section">
+                <h2>Featured Hi</h2>
+                <div id="featured-content" class="content-row"></div>
+            </div>
+
+            <div class="content-section">
+                <h2>Trending Now</h2>
+                <div id="trending-content" class="content-row"></div>
+            </div>
+
+            <div class="content-section">
+                <h2>Popular Movies</h2>
+                <div id="popular-movies" class="content-row"></div>
+            </div>
+
+            <div class="content-section">
+                <h2>Popular TV Shows</h2>
+                <div id="popular-tv" class="content-row"></div>
+            </div>
+        </section>
+
+        <section id="search-results" style="display: none;">
+            <h2>Search Results</h2>
+            <div id="search-results-content" class="content-row"></div>
+        </section>
+    </main>
+
+    <div id="movie-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="movie-details"></div>
+        </div>
+    </div>
+    <button id="back-to-top" style="display: none;">Back to Top</button>
+
+    <script src="scripts/kids-script.js"></script>
+    <script src="navigation.js"></script>
+
+</body>
+</html>
+ 
