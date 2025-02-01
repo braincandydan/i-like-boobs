@@ -47,10 +47,10 @@ function createContentRow(containerId) {
 
 function createMovieCard(movie) {
     const movieElement = document.createElement('div');
-    // Add the content-item class for TV navigation
     movieElement.classList.add('content-item');
-    // Make sure it's focusable
     movieElement.setAttribute('tabindex', '0');
+    movieElement.setAttribute('role', 'button');
+    movieElement.setAttribute('aria-label', movie.title || movie.name);
     
     const imageUrl = movie.poster_path
         ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
@@ -64,9 +64,11 @@ function createMovieCard(movie) {
         </div>
     `;
 
-    // Add click event listener
-    movieElement.addEventListener('click', () => {
-        showMovieDetails(movie);
+    // Add keyboard event listener instead of click
+    movieElement.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            showMovieDetails(movie);
+        }
     });
 
     return movieElement;

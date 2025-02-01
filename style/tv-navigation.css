@@ -3,12 +3,34 @@
     outline: none;
 }
 
+/* Hide cursor and prevent mouse interaction */
+* {
+    cursor: none !important;
+}
+
+body {
+    pointer-events: none;
+    font-size: 1.2em;
+    padding: 20px;
+    background-color: #141414;
+    color: #ffffff;
+}
+
+/* Only allow interaction with focusable elements */
+a[href], button, input, select, [tabindex="0"] {
+    pointer-events: auto;
+}
+
+/* Enhance focus styles for TV navigation */
 .nav-item:focus, 
 .content-item:focus {
     transform: scale(1.1);
-    box-shadow: 0 0 0 3px #e50914;
+    box-shadow: 0 0 0 4px #e50914;
     z-index: 100;
     transition: all 0.2s ease;
+    /* Make focus more visible for TV */
+    outline: 3px solid #ffffff;
+    outline-offset: 2px;
 }
 
 .tv-grid {
@@ -23,14 +45,6 @@
     cursor: pointer;
     border-radius: 4px;
     overflow: hidden;
-}
-
-/* Ensure content is visible on TV */
-body {
-    font-size: 1.2em;
-    padding: 20px;
-    background-color: #141414;
-    color: #ffffff;
 }
 
 /* Optimize select dropdown for TV */
