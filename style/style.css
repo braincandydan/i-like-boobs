@@ -860,4 +860,27 @@ html {
   right: 0;
 }
 
+.content-item {
+    position: relative;
+    width: 200px;
+    margin: 10px;
+    transition: transform 0.3s ease;
+}
+
+.content-item img {
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+}
+
+.content-item:hover,
+.content-item:focus {
+    transform: scale(1.05);
+    z-index: 2;
+}
+
+.content-item .movie-info {
+    padding: 10px;
+}
+
 

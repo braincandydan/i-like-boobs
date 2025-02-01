@@ -26,7 +26,7 @@ function displayMovies(moviesData, containerId, title) {
 
     contentRow.innerHTML = '';
     moviesData.forEach(movie => {
-        contentRow.appendChild(createMovieElement(movie));
+        contentRow.appendChild(createMovieCard(movie));
     });
 }
 
@@ -45,26 +45,31 @@ function createContentRow(containerId) {
     return row;
 }
 
-function createMovieElement(movie) {
-    const movieDiv = document.createElement('div');
-    movieDiv.className = 'movie';
-    movieDiv.tabIndex = 0;
-    movieDiv.movieData = movie;
+function createMovieCard(movie) {
+    const movieElement = document.createElement('div');
+    // Add the content-item class for TV navigation
+    movieElement.classList.add('content-item');
+    // Make sure it's focusable
+    movieElement.setAttribute('tabindex', '0');
+    
+    const imageUrl = movie.poster_path
+        ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
+        : 'path/to/placeholder-image.jpg';
 
-    if (movie.poster_path) {
-        const image = document.createElement('img');
-        image.src = `https://image.tmdb.org/t/p/w500/${movie.poster_path}`;
-        image.alt = `${movie.title || movie.name} Poster`;
-        image.className = 'movie-poster';
-        movieDiv.appendChild(image);
-    }
+    movieElement.innerHTML = `
+        <img src="${imageUrl}" alt="${movie.title || movie.name}">
+        <div class="movie-info">
+            <h3>${movie.title || movie.name}</h3>
+            <span class="rating">${movie.vote_average}</span>
+        </div>
+    `;
 
-    movieDiv.addEventListener('click', () => showMovieDetails(movie));
-    movieDiv.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter') showMovieDetails(movie);
+    // Add click event listener
+    movieElement.addEventListener('click', () => {
+        showMovieDetails(movie);
     });
 
-    return movieDiv;
+    return movieElement;
 }
 
 // Show movie details (navigate to details page)

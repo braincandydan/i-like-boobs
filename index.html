@@ -13,6 +13,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NotFlix</title>
     <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/tv-navigation.css">
 
 </head>
 <body>
@@ -24,23 +25,22 @@
     <header>
         <div class="header-content">
             <nav>
-                <ul>
-                    <li><a href="index.html" class="active" tabindex="0"><h1 tabindex="0">NotFlix</h1></a></li>
+                <ul class="nav-items">
+                    <li><a href="index.html" class="nav-item" tabindex="0"><h1>NotFlix</h1></a></li>
                     <li>
                         <div id="search-container">
-                            <a href="search.html" id="search-toggle" aria-label="Go to search page" tabindex="0">
+                            <a href="search.html" id="search-toggle" class="nav-item" aria-label="Go to search page" tabindex="0">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <circle cx="11" cy="11" r="8"></circle>
                                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                                 </svg>
                                 <span>Search</span>
                             </a>
-                            <a href="https://alivegore.com/">Porn For Vlad</a>
                         </div>
                     </li>
                     <li>
                         <div id="genre-container">
-                            <select id="genre-dropdown" aria-label="Select genre" tabindex="0">
+                            <select id="genre-dropdown" class="nav-item" aria-label="Select genre" tabindex="0">
                                 <option value="">Genre</option>
                                 <option value="28">Action</option>
                                 <option value="35">Comedy</option>
@@ -59,23 +59,23 @@
     <main>
         <section id="home">
             <div class="content-section">
-                <h2>Featured Hi</h2>
-                <div id="featured-content" class="content-row"></div>
+                <h2>Featured</h2>
+                <div id="featured-content" class="content-row tv-grid"></div>
             </div>
 
             <div class="content-section">
                 <h2>Trending Now</h2>
-                <div id="trending-content" class="content-row"></div>
+                <div id="trending-content" class="content-row tv-grid"></div>
             </div>
 
             <div class="content-section">
                 <h2>Popular Movies</h2>
-                <div id="popular-movies" class="content-row"></div>
+                <div id="popular-movies" class="content-row tv-grid"></div>
             </div>
 
             <div class="content-section">
                 <h2>Popular TV Shows</h2>
-                <div id="popular-tv" class="content-row"></div>
+                <div id="popular-tv" class="content-row tv-grid"></div>
             </div>
         </section>
 
@@ -94,6 +94,7 @@
     <button id="back-to-top" style="display: none;">Back to Top</button>
 
     <script src="scripts/script.js"></script>
+    <script src="scripts/tv-navigation.js"></script>
     <script src="navigation.js"></script>
 
 </body>
