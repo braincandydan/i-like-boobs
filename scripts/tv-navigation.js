@@ -1,7 +1,22 @@
+// Check if device is Fire TV
+function isFireTV() {
+    const userAgent = navigator.userAgent.toLowerCase();
+    return (
+        userAgent.includes('silk') && 
+        (userAgent.includes('tv') || userAgent.includes('android'))
+    );
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Prevent default mouse behavior
-    document.addEventListener('mousemove', e => e.preventDefault());
-    document.addEventListener('click', e => e.preventDefault());
+    // Only initialize TV navigation if on Fire TV
+    if (!isFireTV()) {
+        // Remove TV-specific styles if not on Fire TV
+        document.documentElement.classList.remove('tv-mode');
+        return;
+    }
+
+    // Add TV mode class to enable TV-specific styles
+    document.documentElement.classList.add('tv-mode');
     
     // Initialize first focusable element
     const firstFocusable = document.querySelector('.nav-item');
@@ -9,7 +24,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle D-pad navigation
     document.addEventListener('keydown', (e) => {
-        e.preventDefault(); // Prevent all default keyboard behavior
+        // Only prevent default for arrow keys and enter
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
+            e.preventDefault();
+        }
+        
         const currentElement = document.activeElement;
         
         switch (e.key) {
@@ -48,32 +67,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Update the navigation functions to be more TV-friendly
 function findNextFocusableElement(current, direction) {
-    const focusableElements = Array.from(document.querySelectorAll('a[href], button, input, select, [tabindex="0"]'));
+    const searchResults = document.getElementById('search-results-content');
+    let focusableElements;
+    
+    if (searchResults && searchResults.contains(current)) {
+        // If we're in search results, only consider elements within it
+        focusableElements = Array.from(searchResults.querySelectorAll('.content-item[tabindex="0"]'));
+    } else {
+        // Otherwise use all focusable elements
+        focusableElements = Array.from(document.querySelectorAll('a[href], button, input, select, [tabindex="0"]'));
+    }
+    
     const currentIndex = focusableElements.indexOf(current);
     
     switch (direction) {
         case 'up': {
-            // Find the nearest element above
-            const currentRect = current.getBoundingClientRect();
-            const aboveElements = focusableElements.filter(el => {
-                const rect = el.getBoundingClientRect();
-                return rect.bottom <= currentRect.top;
-            });
-            return aboveElements[aboveElements.length - 1] || focusableElements[0];
+            return focusableElements[currentIndex - 1] || current;
         }
         case 'down': {
-            // Find the nearest element below
-            const currentRect = current.getBoundingClientRect();
-            const belowElements = focusableElements.filter(el => {
-                const rect = el.getBoundingClientRect();
-                return rect.top >= currentRect.bottom;
-            });
-            return belowElements[0] || focusableElements[focusableElements.length - 1];
+            return focusableElements[currentIndex + 1] || current;
         }
-        case 'left':
-            return focusableElements[currentIndex - 1] || focusableElements[focusableElements.length - 1];
-        case 'right':
-            return focusableElements[currentIndex + 1] || focusableElements[0];
+        case 'left': {
+            return focusableElements[currentIndex - 1] || current;
+        }
+        case 'right': {
+            return focusableElements[currentIndex + 1] || current;
+        }
     }
 }
 
@@ -82,6 +101,25 @@ function navigateVertically(element, direction) {
     if (nextElement) {
         nextElement.focus();
         ensureElementVisible(nextElement);
+        
+        // Auto-scroll the search results container if we're on the search page
+        const searchResults = document.getElementById('search-results-content');
+        if (searchResults && searchResults.contains(nextElement)) {
+            const containerRect = searchResults.getBoundingClientRect();
+            const elementRect = nextElement.getBoundingClientRect();
+            
+            if (direction === 'down' && elementRect.bottom > containerRect.bottom) {
+                searchResults.scrollBy({
+                    top: elementRect.height,
+                    behavior: 'smooth'
+                });
+            } else if (direction === 'up' && elementRect.top < containerRect.top) {
+                searchResults.scrollBy({
+                    top: -elementRect.height,
+                    behavior: 'smooth'
+                });
+            }
+        }
     }
 }
 
@@ -112,18 +150,18 @@ function ensureElementVisible(element) {
 }
 
 function handleEnter(element) {
-    if (element.tagName === 'A' || element.classList.contains('content-item')) {
-        // Simulate a click with keyboard event
-        const enterEvent = new KeyboardEvent('keydown', {
-            key: 'Enter',
-            code: 'Enter',
-            keyCode: 13,
-            which: 13,
-            bubbles: true
+    if (element.tagName === 'A') {
+        element.click();
+    } else if (element.classList.contains('content-item')) {
+        // Trigger click event on the element
+        const clickEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window
         });
-        element.dispatchEvent(enterEvent);
+        element.dispatchEvent(clickEvent);
     } else if (element.tagName === 'SELECT') {
-        element.click(); // Open the select dropdown
+        element.click();
     }
 }
 

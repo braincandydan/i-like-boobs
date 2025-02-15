@@ -64,7 +64,11 @@ function createMovieCard(movie) {
         </div>
     `;
 
-    // Add keyboard event listener instead of click
+    // Add both click and keydown event listeners
+    movieElement.addEventListener('click', () => {
+        showMovieDetails(movie);
+    });
+
     movieElement.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             showMovieDetails(movie);

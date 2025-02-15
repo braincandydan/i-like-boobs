@@ -5,7 +5,7 @@
 
 /* Hide cursor and prevent mouse interaction */
 * {
-    cursor: none !important;
+    /* cursor: none !important; */
 }
 
 body {
@@ -16,9 +16,16 @@ body {
     color: #ffffff;
 }
 
-/* Only allow interaction with focusable elements */
-a[href], button, input, select, [tabindex="0"] {
+/* Allow interaction with specific elements */
+a[href], button, input, select, [tabindex="0"], 
+#search-form, #search-input, #search-toggle, #genre-dropdown {
     pointer-events: auto;
+    cursor: pointer;
+}
+
+/* Update cursor hiding to exclude form elements */
+*:not(input, select, button) {
+    /* cursor: none !important; */
 }
 
 /* Enhance focus styles for TV navigation */
@@ -60,4 +67,75 @@ select.nav-item {
 /* Make scrolling smooth for TV navigation */
 .content-row {
     scroll-behavior: smooth;
+}
+
+/* Only apply TV-specific styles when in TV mode */
+.tv-mode * {
+    cursor: none !important;
+}
+
+.tv-mode body {
+    pointer-events: none;
+    font-size: 1.2em;
+    padding: 20px;
+}
+
+.tv-mode a[href], 
+.tv-mode button, 
+.tv-mode input, 
+.tv-mode select, 
+.tv-mode [tabindex="0"], 
+.tv-mode #search-form, 
+.tv-mode #search-input, 
+.tv-mode #search-toggle, 
+.tv-mode #genre-dropdown {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+/* Rest of the existing styles, prefixed with .tv-mode */
+.tv-mode .nav-item:focus, 
+.tv-mode .content-item:focus {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 4px #e50914;
+    z-index: 100;
+    transition: all 0.2s ease;
+    outline: 3px solid #ffffff;
+    outline-offset: 2px;
+}
+
+/* Add TV-specific styles for search results */
+.tv-mode #search-results-content {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 20px;
+    scroll-behavior: smooth;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.tv-mode .content-item {
+    margin-bottom: 20px;
+}
+
+/* Ensure focused items are visible */
+.tv-mode .content-item:focus {
+    position: relative;
+    z-index: 2;
+}
+
+/* Make scrollbar visible in TV mode for visual feedback */
+.tv-mode #search-results-content::-webkit-scrollbar {
+    width: 10px;
+    display: block;
+}
+
+.tv-mode #search-results-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.tv-mode #search-results-content::-webkit-scrollbar-thumb {
+    background: rgba(229, 9, 20, 0.8);
+    border-radius: 5px;
 } 
