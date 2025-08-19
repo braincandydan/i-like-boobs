@@ -3,6 +3,7 @@ import Layout from '../../../layouts/Layout.astro';
 import Navbar from '../../../components/Navbar.astro';
 import WatchlistButton from '../../../components/WatchlistButton';
 import { fetchFromTMDB, tmdbEndpoints, getImageUrl, formatDate, formatRuntime } from '../../../lib/tmdb';
+import { createUrl } from '../../../lib/utils';
 
 export async function getStaticPaths() {
   // Generate static paths for popular movies
@@ -126,7 +127,7 @@ const posterUrl = getImageUrl(movie.poster_path, 'w500');
           
           <div class="flex flex-wrap gap-4">
             <a 
-              href={`/watch?type=movie&id=${movie.id}&title=${encodeURIComponent(movie.title)}`}
+              href={createUrl(`/watch?type=movie&id=${movie.id}&title=${encodeURIComponent(movie.title)}`)}
               class="btn-primary text-lg px-8 py-3 no-underline"
             >
               <i class="fas fa-play mr-2"></i>

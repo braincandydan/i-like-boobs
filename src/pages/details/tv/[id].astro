@@ -3,6 +3,7 @@ import Layout from '../../../layouts/Layout.astro';
 import Navbar from '../../../components/Navbar.astro';
 import WatchlistButton from '../../../components/WatchlistButton';
 import { fetchFromTMDB, tmdbEndpoints, getImageUrl, formatDate } from '../../../lib/tmdb';
+import { createUrl } from '../../../lib/utils';
 
 export async function getStaticPaths() {
   // Generate static paths for popular TV shows
@@ -104,7 +105,7 @@ const posterUrl = getImageUrl(show.poster_path, 'w500');
           
           <div class="flex flex-wrap gap-4">
             <a 
-              href={`/watch?type=tv&id=${show.id}&title=${encodeURIComponent(show.name)}`}
+              href={createUrl(`/watch?type=tv&id=${show.id}&title=${encodeURIComponent(show.name)}`)}
               class="btn-primary text-lg px-8 py-3 no-underline"
             >
               <i class="fas fa-play mr-2"></i>
