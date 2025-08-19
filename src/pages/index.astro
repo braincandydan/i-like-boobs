@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import Navbar from '../components/Navbar.astro';
 import MovieCard from '../components/MovieCard.astro';
 import { fetchFromTMDB, tmdbEndpoints } from '../lib/tmdb';
+import { createUrl } from '../lib/utils';
 
 // Fetch data at build time
 const [trendingData, popularMoviesData, topRatedData, popularTvData, upcomingData] = await Promise.all([
