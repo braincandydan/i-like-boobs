@@ -1,0 +1,43 @@
+---
+import '../styles/global.css';
+
+export interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = "NotFlix - Your favorite movies and TV shows" } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content={description} />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    
+    <!-- Security headers for popup blocking -->
+    <meta http-equiv="Content-Security-Policy" content="frame-ancestors 'self'; frame-src 'self' https://vidsrc.xyz https://vidsrc.cc https://multiembed.mov https://embed.su https://vidsrc.to https://vidsrc.me https://vidsrc.pro; object-src 'none';" />
+    <meta http-equiv="X-Frame-Options" content="SAMEORIGIN" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="Referrer-Policy" content="no-referrer-when-downgrade" />
+    
+    <!-- Preconnect to external domains -->
+    <link rel="preconnect" href="https://api.themoviedb.org">
+    <link rel="preconnect" href="https://image.tmdb.org">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  </head>
+  <body class="bg-gray-900 text-white">
+    <slot />
+    
+    <!-- Initialize auth on page load -->
+    <script>
+      import { initAuth } from '../stores/auth';
+      initAuth();
+    </script>
+  </body>
+</html>

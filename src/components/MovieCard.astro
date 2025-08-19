@@ -1,0 +1,77 @@
+---
+import { getImageUrl } from '../lib/tmdb';
+import WatchlistButton from './WatchlistButton';
+
+export interface Props {
+  movie: {
+    id: number;
+    title?: string;
+    name?: string;
+    poster_path?: string;
+    vote_average: number;
+    release_date?: string;
+    first_air_date?: string;
+    media_type?: 'movie' | 'tv';
+  };
+  mediaType?: 'movie' | 'tv';
+}
+
+const { movie, mediaType = 'movie' } = Astro.props;
+
+const title = movie.title || movie.name;
+const releaseDate = movie.release_date || movie.first_air_date;
+const itemMediaType = movie.media_type || mediaType;
+const posterUrl = getImageUrl(movie.poster_path, 'w500');
+const detailsUrl = `/details/${itemMediaType}/${movie.id}`;
+
+function formatDate(dateString: string) {
+  if (!dateString) return 'Unknown';
+  const date = new Date(dateString);
+  return date.getFullYear().toString();
+}
+---
+
+<div class="movie-card group">
+  <a href={detailsUrl} class="block">
+    <div class="relative">
+      <img 
+        src={posterUrl} 
+        alt={title}
+        class="movie-poster"
+        loading="lazy"
+      />
+      
+      <!-- Rating Badge -->
+      <div class="absolute top-2 left-2 bg-black bg-opacity-70 text-yellow-400 px-2 py-1 rounded text-sm font-semibold">
+        {movie.vote_average.toFixed(1)}
+      </div>
+      
+      <!-- Watchlist Button -->
+      <WatchlistButton 
+        movieId={movie.id}
+        mediaType={itemMediaType}
+        title={title}
+        posterPath={movie.poster_path}
+        client:visible
+      />
+      
+      <!-- Hover Overlay -->
+      <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-60 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
+        <div class="text-center p-4">
+          <i class="fas fa-play text-2xl text-white mb-2"></i>
+          <p class="text-white text-sm">View Details</p>
+        </div>
+      </div>
+    </div>
+  </a>
+  
+  <!-- Movie Info -->
+  <div class="p-3">
+    <h3 class="font-semibold text-white truncate mb-1" title={title}>
+      {title}
+    </h3>
+    <p class="text-gray-400 text-sm">
+      {formatDate(releaseDate)} • {itemMediaType === 'tv' ? 'TV Show' : 'Movie'}
+    </p>
+  </div>
+</div>

@@ -1,0 +1,926 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/Navbar.astro';
+
+// In static mode, we'll handle URL parameters client-side
+// The server-side code will just render the basic structure
+---
+
+<Layout title="Watch - NotFlix">
+  <Navbar />
+  
+  <!-- Loading Screen -->
+  <div id="loading-screen" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="text-center py-20">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+      <p class="text-white">Loading video player...</p>
+    </div>
+  </div>
+
+  <!-- Error Screen -->
+  <div id="error-screen" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 hidden">
+    <div class="text-center py-20">
+      <i class="fas fa-exclamation-triangle text-6xl text-red-600 mb-6"></i>
+      <h1 class="text-3xl font-bold text-white mb-4">Content Not Found</h1>
+      <p class="text-gray-400 mb-8">
+        No movie or TV show ID provided in the URL.
+      </p>
+      <a href="/" class="btn-primary">
+        <i class="fas fa-home mr-2"></i>
+        Back to Home
+      </a>
+    </div>
+  </div>
+
+  <!-- Video Player Section -->
+  <div id="player-container" class="relative w-full hidden">
+    <!-- Player Header -->
+    <div class="bg-black bg-opacity-50 p-4">
+      <div class="max-w-7xl mx-auto flex items-center justify-between">
+        <div class="flex items-center space-x-4">
+          <a id="back-link" href="/" class="text-white hover:text-red-600 transition-colors">
+            <i class="fas fa-arrow-left text-xl"></i>
+          </a>
+          <h1 id="video-title" class="text-xl font-bold text-white">
+            Loading...
+          </h1>
+        </div>
+        
+        <!-- Server Selection -->
+        <div class="flex items-center space-x-2">
+          <span class="text-white text-sm">Server:</span>
+          <select id="server-select" class="bg-gray-800 text-white px-3 py-1 rounded text-sm">
+            <option value="">Loading...</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Video Player -->
+    <div class="relative w-full" style="padding-bottom: 56.25%; height: 0;">
+      <iframe
+        id="video-player"
+        src=""
+        class="absolute top-0 left-0 w-full h-full"
+        frameborder="0"
+        allowfullscreen
+        sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-top-navigation-by-user-activation allow-popups"
+        allow="autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        referrerpolicy="no-referrer"
+        title="Video Player"
+      ></iframe>
+      
+      <!-- Anti-popup protective overlay (disabled to allow video controls) -->
+      <div id="protective-overlay" class="absolute inset-0 bg-transparent z-10 pointer-events-none hidden"></div>
+      
+      <!-- Server loading indicator -->
+      <div id="server-loading" class="absolute inset-0 flex items-center justify-center bg-black/60 text-white z-25 hidden">
+        <div class="text-center">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+          <p>Loading server...</p>
+        </div>
+      </div>
+      
+      <!-- Custom video controls overlay -->
+      <div id="custom-controls" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 opacity-0 hover:opacity-100 transition-opacity duration-300 z-20">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-4">
+            <button id="play-pause-btn" class="text-white hover:text-red-600 transition-colors">
+              <i class="fas fa-play text-2xl"></i>
+            </button>
+            <button id="volume-btn" class="text-white hover:text-red-600 transition-colors">
+              <i class="fas fa-volume-up text-xl"></i>
+            </button>
+            <span id="time-display" class="text-white text-sm">0:00 / 0:00</span>
+          </div>
+          
+          <div class="flex items-center space-x-4">
+            <button id="quality-btn" class="text-white hover:text-red-600 transition-colors text-sm px-2 py-1 border border-white/30 rounded">
+              HD
+            </button>
+            <button onclick="toggleFullscreen()" class="text-white hover:text-red-600 transition-colors">
+              <i class="fas fa-expand text-xl"></i>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Progress bar -->
+        <div class="mt-3">
+          <div class="w-full bg-white/30 rounded-full h-1 cursor-pointer" id="progress-container">
+            <div class="bg-red-600 h-1 rounded-full transition-all duration-150" id="progress-bar" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Player Controls & Info -->
+    <div class="bg-gray-900 p-4">
+      <div class="max-w-7xl mx-auto">
+        <div class="flex flex-col md:flex-row gap-6">
+          <!-- Movie Info -->
+          <div class="flex-1">
+            <h2 id="content-title" class="text-2xl font-bold text-white mb-2">Loading...</h2>
+            <p id="content-overview" class="text-gray-300 text-sm leading-relaxed mb-4"></p>
+            
+            <!-- Episode Selector for TV Shows -->
+            <div id="episode-controls" class="flex flex-col gap-4 mb-4 hidden">
+              <div class="flex flex-wrap gap-4">
+                <div class="flex items-center space-x-2">
+                  <label class="text-white text-sm font-medium">Season:</label>
+                  <select id="season-select" class="bg-gray-800 text-white px-3 py-2 rounded text-sm border border-gray-600 focus:border-red-600 focus:outline-none">
+                    <option value="1">Season 1</option>
+                  </select>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <label class="text-white text-sm font-medium">Episode:</label>
+                  <select id="episode-select" class="bg-gray-800 text-white px-3 py-2 rounded text-sm border border-gray-600 focus:border-red-600 focus:outline-none">
+                    <option value="1">Episode 1</option>
+                  </select>
+                </div>
+                <button id="load-episode-btn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm transition-colors">
+                  <i class="fas fa-play mr-2"></i>
+                  Load Episode
+                </button>
+              </div>
+              
+              <!-- Episode Info -->
+              <div id="episode-info" class="bg-gray-800 rounded-lg p-3 hidden">
+                <h4 id="episode-title" class="text-white font-semibold mb-1"></h4>
+                <p id="episode-overview" class="text-gray-300 text-sm"></p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Action Buttons -->
+          <div class="flex flex-col space-y-2 md:w-64">
+            <a id="details-link" href="/" class="btn-secondary text-center">
+              <i class="fas fa-info-circle mr-2"></i>
+              View Details
+            </a>
+            <button onclick="toggleFullscreen()" class="btn-secondary">
+              <i class="fas fa-expand mr-2"></i>
+              Fullscreen
+            </button>
+            <button onclick="reportIssue()" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded text-sm">
+              <i class="fas fa-flag mr-2"></i>
+              Report Issue
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Popup Block Notification -->
+  <div id="popup-notification" class="fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 hidden">
+    <div class="flex items-center">
+      <i class="fas fa-shield-alt mr-2"></i>
+      <span>Popup blocked!</span>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  /* Additional iframe protection styles */
+  #video-player {
+    pointer-events: auto;
+    /* Prevent selection of iframe content */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+  
+  /* Popup notification animation */
+  #popup-notification {
+    transition: all 0.3s ease-in-out;
+    transform: translateX(100%);
+  }
+  
+  #popup-notification.show {
+    transform: translateX(0);
+  }
+  
+  /* Prevent drag and drop on video player */
+  #video-player {
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    user-drag: none;
+  }
+</style>
+
+<script>
+  // Show popup blocked notification
+  function showPopupBlockedNotification() {
+    const notification = document.getElementById('popup-notification');
+    if (notification) {
+      notification.classList.remove('hidden');
+      notification.classList.add('show');
+      
+      setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+          notification.classList.add('hidden');
+        }, 300);
+      }, 3000);
+    }
+  }
+  
+  // Minimal popup blocking - only log attempts for debugging
+  const originalWindowOpen = window.open;
+  window.open = function(url, name, specs) {
+    console.log('Popup attempt detected:', url);
+    // Allow all popups for now to ensure video controls work
+    return originalWindowOpen.call(window, url, name, specs);
+  };
+  
+  // Block popunder attempts
+  window.addEventListener('beforeunload', (e) => {
+    // Prevent any popunder attempts on page unload
+    e.preventDefault();
+  });
+  
+  // Block focus/blur popup tricks
+  let userInteracted = false;
+  document.addEventListener('click', () => { userInteracted = true; }, { once: true });
+  
+  window.addEventListener('blur', (e) => {
+    if (!userInteracted) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.focus();
+    }
+  });
+  
+  // Wait for DOM to be ready
+  document.addEventListener('DOMContentLoaded', () => {
+    initializeWatchPage();
+    setupPopupBlocker();
+  });
+  
+  function initializeWatchPage() {
+    // Get URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const type = urlParams.get('type') || 'movie';
+    const id = urlParams.get('id');
+    const title = urlParams.get('title') || 'Unknown';
+    const season = urlParams.get('season') || '1';
+    const episode = urlParams.get('episode') || '1';
+    
+    // Get DOM elements
+    const loadingScreen = document.getElementById('loading-screen');
+    const errorScreen = document.getElementById('error-screen');
+    const playerContainer = document.getElementById('player-container');
+    const videoPlayer = document.getElementById('video-player');
+    const serverSelect = document.getElementById('server-select');
+    const videoTitle = document.getElementById('video-title');
+    const contentTitle = document.getElementById('content-title');
+    const backLink = document.getElementById('back-link');
+    const detailsLink = document.getElementById('details-link');
+    
+    // Check if we have required parameters
+    if (!id) {
+      showError();
+      return;
+    }
+    
+    // Hide loading, show player
+    loadingScreen.classList.add('hidden');
+    playerContainer.classList.remove('hidden');
+    
+    // Build VidSrc CC URL as primary (auto-playing correctly)
+    const buildVidSrcUrl = (type, id, season, episode) => {
+      if (type === 'movie') {
+        return `https://vidsrc.cc/v2/embed/movie/${id}?autoplay=1`;
+      } else if (type === 'tv') {
+        return `https://vidsrc.cc/v2/embed/tv/${id}/${season}/${episode}?autoplay=1`;
+      }
+      return '';
+    };
+    
+    const primaryUrl = buildVidSrcUrl(type, id, season, episode);
+    
+    // Server priority: VidSrc CC (auto-playing correctly) → VidSrc XYZ → Others
+    const alternativeServers = [
+      { name: 'VidSrc CC', url: `https://vidsrc.cc/v2/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}?autoplay=1` },
+      { 
+        name: 'VidSrc XYZ', 
+        url: type === 'movie' 
+          ? `https://vidsrc.xyz/embed/movie?tmdb=${id}&autoplay=1`
+          : `https://vidsrc.xyz/embed/tv?tmdb=${id}&season=${season}&episode=${episode}&autoplay=1&autonext=1`
+      },
+      { name: 'SuperEmbed', url: `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1` },
+      { name: 'EmbedSu', url: `https://embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}` },
+      { name: 'VidSrc.to', url: `https://vidsrc.to/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}` },
+      { name: 'VidSrc.me', url: `https://vidsrc.me/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}` }
+    ];
+    
+    // Update video player
+    videoPlayer.src = primaryUrl;
+    
+    // Update titles
+    const displayTitle = type === 'tv' ? `${title} S${season}E${episode}` : title;
+    videoTitle.textContent = displayTitle;
+    contentTitle.textContent = title;
+    document.title = `Watch ${title} - NotFlix`;
+    
+    // Update navigation links
+    backLink.href = `/details/${type}/${id}`;
+    detailsLink.href = `/details/${type}/${id}`;
+    
+    // Populate server select
+    serverSelect.innerHTML = '';
+    alternativeServers.forEach((server, index) => {
+      const option = document.createElement('option');
+      option.value = server.url;
+      option.textContent = server.name;
+      option.selected = index === 0;
+      serverSelect.appendChild(option);
+    });
+    
+    // Set up server switching with error handling
+    let currentServerIndex = 0;
+    
+    function loadServer(index) {
+      if (index < alternativeServers.length) {
+        const server = alternativeServers[index];
+        const serverLoading = document.getElementById('server-loading');
+        
+        console.log(`Loading server: ${server.name} - ${server.url}`);
+        
+        // Show loading indicator
+        serverLoading.classList.remove('hidden');
+        
+        // Update server
+        videoPlayer.src = server.url;
+        serverSelect.selectedIndex = index;
+        currentServerIndex = index;
+        
+        // Hide loading after 3 seconds (or when video loads)
+        setTimeout(() => {
+          serverLoading.classList.add('hidden');
+        }, 3000);
+      }
+    }
+    
+    // Hide loading indicator when video loads successfully
+    videoPlayer.addEventListener('load', () => {
+      const serverLoading = document.getElementById('server-loading');
+      serverLoading.classList.add('hidden');
+    });
+    
+    // Auto-switch to next server on load error
+    videoPlayer.addEventListener('error', () => {
+      console.log(`Server ${alternativeServers[currentServerIndex].name} failed, trying next...`);
+      if (currentServerIndex < alternativeServers.length - 1) {
+        setTimeout(() => {
+          loadServer(currentServerIndex + 1);
+        }, 2000);
+      } else {
+        console.log('All servers failed');
+        showServerError();
+      }
+    });
+    
+    serverSelect.addEventListener('change', (e) => {
+      const selectedIndex = e.target.selectedIndex;
+      loadServer(selectedIndex);
+    });
+    
+    function showServerError() {
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'absolute inset-0 flex items-center justify-center bg-black/80 text-white z-30';
+      errorDiv.innerHTML = `
+        <div class="text-center p-8">
+          <i class="fas fa-exclamation-triangle text-6xl text-yellow-500 mb-4"></i>
+          <h3 class="text-2xl font-bold mb-4">Media Unavailable</h3>
+          <p class="text-gray-300 mb-6">This content is currently unavailable. Try switching servers or check back later.</p>
+          <button onclick="location.reload()" class="btn-primary">
+            <i class="fas fa-redo mr-2"></i>
+            Retry
+          </button>
+        </div>
+      `;
+      videoPlayer.parentElement.appendChild(errorDiv);
+    }
+    
+    // Set up TV show episode controls if needed
+    if (type === 'tv') {
+      setupTVControls(id, season, episode);
+    }
+    
+    // Set up custom video controls overlay
+    setupCustomControls();
+  }
+  
+  function setupCustomControls() {
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    const volumeBtn = document.getElementById('volume-btn');
+    const qualityBtn = document.getElementById('quality-btn');
+    const progressContainer = document.getElementById('progress-container');
+    const progressBar = document.getElementById('progress-bar');
+    const timeDisplay = document.getElementById('time-display');
+    const customControls = document.getElementById('custom-controls');
+    const videoPlayer = document.getElementById('video-player');
+    
+    let isPlaying = true; // Assume autoplay starts
+    let isMuted = false;
+    let hideControlsTimeout;
+    
+    // Update play/pause button
+    function updatePlayPauseButton() {
+      const icon = playPauseBtn.querySelector('i');
+      if (isPlaying) {
+        icon.className = 'fas fa-pause text-2xl';
+      } else {
+        icon.className = 'fas fa-play text-2xl';
+      }
+    }
+    
+    // Update volume button
+    function updateVolumeButton() {
+      const icon = volumeBtn.querySelector('i');
+      if (isMuted) {
+        icon.className = 'fas fa-volume-mute text-xl';
+      } else {
+        icon.className = 'fas fa-volume-up text-xl';
+      }
+    }
+    
+    // Show controls
+    function showControls() {
+      customControls.style.opacity = '1';
+      clearTimeout(hideControlsTimeout);
+      hideControlsTimeout = setTimeout(hideControls, 3000);
+    }
+    
+    // Hide controls
+    function hideControls() {
+      customControls.style.opacity = '0';
+    }
+    
+    // Mouse movement on video shows controls
+    videoPlayer.parentElement.addEventListener('mousemove', showControls);
+    videoPlayer.parentElement.addEventListener('mouseleave', hideControls);
+    
+    // Protective overlay against small popups
+    const protectiveOverlay = document.getElementById('protective-overlay');
+    let overlayActive = false;
+    
+    function activateProtectiveOverlay() {
+      if (!overlayActive) {
+        protectiveOverlay.style.pointerEvents = 'auto';
+        protectiveOverlay.style.backgroundColor = 'rgba(0,0,0,0.1)';
+        overlayActive = true;
+        
+        // Show notification
+        showPopupBlockedNotification();
+        
+        // Deactivate after 3 seconds
+        setTimeout(() => {
+          protectiveOverlay.style.pointerEvents = 'none';
+          protectiveOverlay.style.backgroundColor = 'transparent';
+          overlayActive = false;
+        }, 3000);
+      }
+    }
+    
+    // Detect suspicious elements (small divs that might be ads)
+    function detectSuspiciousElements() {
+      const iframe = videoPlayer;
+      try {
+        // Monitor for new elements added to the page that might be popup ads
+        const observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            mutation.addedNodes.forEach((node) => {
+              if (node.nodeType === 1) { // Element node
+                const element = node;
+                // Check for suspicious popup characteristics
+                if (element.style && (
+                  element.style.position === 'fixed' || 
+                  element.style.position === 'absolute' ||
+                  element.style.zIndex > 1000
+                )) {
+                  console.log('Suspicious element detected:', element);
+                  activateProtectiveOverlay();
+                }
+              }
+            });
+          });
+        });
+        
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+      } catch (e) {
+        console.log('Could not set up mutation observer');
+      }
+    }
+    
+    // Start monitoring
+    detectSuspiciousElements();
+    
+    // Play/Pause functionality
+    playPauseBtn.addEventListener('click', () => {
+      try {
+        // Try to control iframe video if possible
+        const iframe = videoPlayer.contentWindow;
+        if (iframe) {
+          if (isPlaying) {
+            iframe.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+          } else {
+            iframe.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+          }
+        }
+      } catch (e) {
+        console.log('Cannot control iframe video directly');
+      }
+      
+      isPlaying = !isPlaying;
+      updatePlayPauseButton();
+      showControls();
+    });
+    
+    // Volume control
+    volumeBtn.addEventListener('click', () => {
+      try {
+        const iframe = videoPlayer.contentWindow;
+        if (iframe) {
+          if (isMuted) {
+            iframe.postMessage('{"event":"command","func":"unMute","args":""}', '*');
+          } else {
+            iframe.postMessage('{"event":"command","func":"mute","args":""}', '*');
+          }
+        }
+      } catch (e) {
+        console.log('Cannot control iframe volume directly');
+      }
+      
+      isMuted = !isMuted;
+      updateVolumeButton();
+      showControls();
+    });
+    
+    // Quality selector (visual only - actual quality depends on source)
+    qualityBtn.addEventListener('click', () => {
+      const qualities = ['HD', '720p', '480p', 'Auto'];
+      const currentQuality = qualityBtn.textContent;
+      const currentIndex = qualities.indexOf(currentQuality);
+      const nextIndex = (currentIndex + 1) % qualities.length;
+      qualityBtn.textContent = qualities[nextIndex];
+      showControls();
+    });
+    
+    // Progress bar simulation (since we can't get real progress from iframe)
+    let simulatedProgress = 0;
+    let progressInterval;
+    
+    function startProgressSimulation() {
+      progressInterval = setInterval(() => {
+        if (isPlaying && simulatedProgress < 100) {
+          simulatedProgress += 0.1; // Very slow progress
+          progressBar.style.width = simulatedProgress + '%';
+          
+          // Update time display (simulated)
+          const elapsed = Math.floor(simulatedProgress * 1.2); // Simulate 120 minutes max
+          const elapsedMinutes = Math.floor(elapsed / 60);
+          const elapsedSeconds = elapsed % 60;
+          const totalMinutes = 120; // Assume 2 hour movie
+          timeDisplay.textContent = `${elapsedMinutes}:${elapsedSeconds.toString().padStart(2, '0')} / ${totalMinutes}:00`;
+        }
+      }, 1000);
+    }
+    
+    // Progress bar click to seek (visual only)
+    progressContainer.addEventListener('click', (e) => {
+      const rect = progressContainer.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const percentage = (clickX / rect.width) * 100;
+      simulatedProgress = percentage;
+      progressBar.style.width = percentage + '%';
+      showControls();
+    });
+    
+    // Start simulated progress
+    startProgressSimulation();
+    
+    // Keyboard controls
+    document.addEventListener('keydown', (e) => {
+      switch(e.code) {
+        case 'Space':
+          e.preventDefault();
+          playPauseBtn.click();
+          break;
+        case 'KeyM':
+          e.preventDefault();
+          volumeBtn.click();
+          break;
+        case 'KeyF':
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+      }
+    });
+    
+    // Initialize button states
+    updatePlayPauseButton();
+    updateVolumeButton();
+  }
+  
+  function showError() {
+    const loadingScreen = document.getElementById('loading-screen');
+    const errorScreen = document.getElementById('error-screen');
+    const playerContainer = document.getElementById('player-container');
+    
+    loadingScreen.classList.add('hidden');
+    playerContainer.classList.add('hidden');
+    errorScreen.classList.remove('hidden');
+  }
+  
+  async function setupTVControls(id, currentSeason, currentEpisode) {
+    const episodeControls = document.getElementById('episode-controls');
+    const seasonSelect = document.getElementById('season-select');
+    const episodeSelect = document.getElementById('episode-select');
+    const loadEpisodeBtn = document.getElementById('load-episode-btn');
+    const episodeInfo = document.getElementById('episode-info');
+    const episodeTitle = document.getElementById('episode-title');
+    const episodeOverview = document.getElementById('episode-overview');
+    
+    episodeControls.classList.remove('hidden');
+    
+    // Try to get real TV show data from TMDB
+    let tvShowData = null;
+    try {
+      const response = await fetch(`https://api.themoviedb.org/3/tv/${id}?api_key=${import.meta.env.PUBLIC_TMDB_API_KEY}`);
+      if (response.ok) {
+        tvShowData = await response.json();
+      }
+    } catch (e) {
+      console.log('Could not fetch TV show data:', e);
+    }
+    
+    // Populate season options
+    seasonSelect.innerHTML = '';
+    const maxSeasons = tvShowData?.number_of_seasons || 10;
+    for (let i = 1; i <= maxSeasons; i++) {
+      const option = document.createElement('option');
+      option.value = i;
+      option.textContent = `Season ${i}`;
+      option.selected = i == currentSeason;
+      seasonSelect.appendChild(option);
+    }
+    
+    // Populate episode options
+    async function updateEpisodeOptions(selectedSeason) {
+      episodeSelect.innerHTML = '';
+      
+      // Try to get real episode data
+      let seasonData = null;
+      try {
+        const response = await fetch(`https://api.themoviedb.org/3/tv/${id}/season/${selectedSeason}?api_key=${import.meta.env.PUBLIC_TMDB_API_KEY}`);
+        if (response.ok) {
+          seasonData = await response.json();
+        }
+      } catch (e) {
+        console.log('Could not fetch season data:', e);
+      }
+      
+      const episodes = seasonData?.episodes || [];
+      const maxEpisodes = episodes.length || 24;
+      
+      for (let i = 1; i <= maxEpisodes; i++) {
+        const option = document.createElement('option');
+        option.value = i;
+        const episodeData = episodes[i - 1];
+        option.textContent = episodeData?.name ? `${i}. ${episodeData.name}` : `Episode ${i}`;
+        option.selected = i == currentEpisode;
+        episodeSelect.appendChild(option);
+      }
+      
+      // Update episode info if available
+      updateEpisodeInfo(selectedSeason, episodeSelect.value, episodes);
+    }
+    
+    function updateEpisodeInfo(season, episode, episodes = []) {
+      const episodeData = episodes[episode - 1];
+      if (episodeData) {
+        episodeTitle.textContent = `S${season}E${episode}: ${episodeData.name}`;
+        episodeOverview.textContent = episodeData.overview || 'No description available.';
+        episodeInfo.classList.remove('hidden');
+      } else {
+        episodeInfo.classList.add('hidden');
+      }
+    }
+    
+    await updateEpisodeOptions(currentSeason);
+    
+    // Handle episode changes (without auto-loading)
+    episodeSelect.addEventListener('change', () => {
+      const episodes = seasonSelect.value === currentSeason ? [] : []; // Would need to store episodes data
+      updateEpisodeInfo(seasonSelect.value, episodeSelect.value, episodes);
+    });
+    
+    seasonSelect.addEventListener('change', async () => {
+      await updateEpisodeOptions(seasonSelect.value);
+    });
+    
+    // Load episode button handler
+    loadEpisodeBtn.addEventListener('click', () => {
+      const newSeason = seasonSelect.value;
+      const newEpisode = episodeSelect.value;
+      
+      // Update URL without reloading
+      const url = new URL(window.location);
+      url.searchParams.set('season', newSeason);
+      url.searchParams.set('episode', newEpisode);
+      window.history.pushState({}, '', url);
+      
+      // Update video player with VidSrc.xyz format
+      const videoPlayer = document.getElementById('video-player');
+      const newUrl = `https://vidsrc.xyz/embed/tv?tmdb=${id}&season=${newSeason}&episode=${newEpisode}&autoplay=1&autonext=1`;
+      videoPlayer.src = newUrl;
+      
+      // Update title
+      const title = new URLSearchParams(window.location.search).get('title') || 'Unknown';
+      document.getElementById('video-title').textContent = `${title} S${newSeason}E${newEpisode}`;
+      
+      // Update all server options
+      const serverSelect = document.getElementById('server-select');
+      const servers = Array.from(serverSelect.options);
+      servers.forEach((option, index) => {
+        const serverName = option.textContent;
+        if (serverName === 'VidSrc XYZ') {
+          option.value = `https://vidsrc.xyz/embed/tv?tmdb=${id}&season=${newSeason}&episode=${newEpisode}&autoplay=1&autonext=1`;
+        } else if (serverName === 'VidSrc CC') {
+          option.value = `https://vidsrc.cc/v2/embed/tv/${id}/${newSeason}/${newEpisode}?autoplay=1`;
+        } else if (serverName.includes('VidSrc')) {
+          option.value = option.value.replace(/\/tv\/\d+\/\d+\/\d+/, `/tv/${id}/${newSeason}/${newEpisode}`);
+        }
+      });
+      
+      // Show loading indicator
+      const serverLoading = document.getElementById('server-loading');
+      serverLoading.classList.remove('hidden');
+      setTimeout(() => {
+        serverLoading.classList.add('hidden');
+      }, 2000);
+    });
+  }
+  
+  function setupPopupBlocker() {
+    // Additional iframe protection
+    const iframe = document.getElementById('video-player');
+    
+    // Intercept iframe navigation attempts
+    iframe.addEventListener('load', () => {
+      try {
+        // Add additional security headers via meta injection
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        if (iframeDoc) {
+          // Try to inject popup blocking script into iframe (may be blocked by CORS)
+          const script = iframeDoc.createElement('script');
+          script.textContent = `
+            window.open = function() { return null; };
+            document.addEventListener('click', function(e) {
+              if (e.target.tagName === 'A' && e.target.target === '_blank') {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+              }
+            }, true);
+          `;
+          iframeDoc.head?.appendChild(script);
+        }
+      } catch (e) {
+        // CORS will prevent this, but we try anyway
+        console.log('Could not inject into iframe (CORS protected)');
+      }
+    });
+    
+    // Monitor for suspicious activity
+    let clickCount = 0;
+    const clickThreshold = 3;
+    const timeWindow = 2000; // 2 seconds
+    
+    document.addEventListener('click', (e) => {
+      clickCount++;
+      setTimeout(() => { clickCount--; }, timeWindow);
+      
+      if (clickCount > clickThreshold) {
+        console.warn('Suspicious click activity detected - potential ad injection');
+        // Could add visual warning here
+      }
+    });
+    
+    // Block context menus on video player (often used for ad injection)
+    iframe.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      return false;
+    });
+    
+    // Detect and block redirect attempts
+    let lastUrl = window.location.href;
+    setInterval(() => {
+      if (window.location.href !== lastUrl) {
+        // URL changed unexpectedly, might be a redirect attempt
+        console.warn('Unexpected URL change detected');
+        lastUrl = window.location.href;
+      }
+    }, 500);
+  }
+  
+  // Advanced popup detection and blocking
+  function enhancedPopupBlocker() {
+    // Block document.open calls
+    const originalDocOpen = document.open;
+    document.open = function() {
+      console.log('Blocked document.open call');
+      return null;
+    };
+    
+    // Block createElement for popup elements
+    const originalCreateElement = document.createElement;
+    document.createElement = function(tagName) {
+      const element = originalCreateElement.call(document, tagName);
+      
+      if (tagName.toLowerCase() === 'a') {
+        // Intercept link creation and remove target="_blank"
+        const originalSetAttribute = element.setAttribute;
+        element.setAttribute = function(name, value) {
+          if (name === 'target' && value === '_blank') {
+            console.log('Blocked target="_blank" on dynamically created link');
+            showPopupBlockedNotification();
+            return;
+          }
+          return originalSetAttribute.call(this, name, value);
+        };
+      }
+      
+      return element;
+    };
+    
+    // Block form submissions that could open popups
+    document.addEventListener('submit', (e) => {
+      const form = e.target;
+      if (form.target === '_blank') {
+        console.log('Blocked form submission with target="_blank"');
+        showPopupBlockedNotification();
+        e.preventDefault();
+        return false;
+      }
+    });
+  }
+  
+  // Initialize enhanced blocking
+  enhancedPopupBlocker();
+  
+  // Fullscreen functionality
+  function toggleFullscreen() {
+    const videoPlayer = document.getElementById('video-player');
+    const playerContainer = videoPlayer?.parentElement;
+    if (playerContainer) {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        playerContainer.requestFullscreen();
+      }
+    }
+  }
+  
+  // Report issue functionality
+  function reportIssue() {
+    const currentUrl = window.location.href;
+    const title = document.getElementById('content-title')?.textContent || 'Unknown';
+    
+    const message = `Issue Report for: ${title}\nURL: ${currentUrl}\n\nPlease describe the issue:`;
+    
+    if (confirm('Report a playback issue? This will open your email client.')) {
+      window.location.href = `mailto:support@notflix.com?subject=Playback Issue Report&body=${encodeURIComponent(message)}`;
+    }
+  }
+  
+  // Make functions globally available
+  window.toggleFullscreen = toggleFullscreen;
+  window.reportIssue = reportIssue;
+  
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    switch(e.key) {
+      case 'f':
+      case 'F':
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          toggleFullscreen();
+        }
+        break;
+      case 'Escape':
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        }
+        break;
+    }
+  });
+</script>
