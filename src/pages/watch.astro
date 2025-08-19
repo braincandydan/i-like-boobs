@@ -327,9 +327,10 @@ import { createUrl } from '../lib/utils';
     contentTitle.textContent = title;
     document.title = `Watch ${title} - NotFlix`;
     
-    // Update navigation links
-    backLink.href = `/details/${type}/${id}`;
-    detailsLink.href = `/details/${type}/${id}`;
+    // Update navigation links with proper base path
+    const basePath = window.location.pathname.includes('/i-like-boobs') ? '/i-like-boobs/' : '/';
+    backLink.href = basePath + `details/${type}/${id}`;
+    detailsLink.href = basePath + `details/${type}/${id}`;
     
     // Populate server select
     serverSelect.innerHTML = '';
@@ -718,56 +719,70 @@ import { createUrl } from '../lib/utils';
     
     await updateEpisodeOptions(currentSeason);
     
-    // Handle episode changes (without auto-loading)
-    episodeSelect.addEventListener('change', () => {
-      const episodes = seasonSelect.value === currentSeason ? [] : []; // Would need to store episodes data
-      updateEpisodeInfo(seasonSelect.value, episodeSelect.value, episodes);
-    });
-    
-    seasonSelect.addEventListener('change', async () => {
-      await updateEpisodeOptions(seasonSelect.value);
-    });
-    
-    // Load episode button handler
-    loadEpisodeBtn.addEventListener('click', () => {
-      const newSeason = seasonSelect.value;
-      const newEpisode = episodeSelect.value;
-      
+    // Function to load a specific episode
+    function loadEpisode(season, episode) {
       // Update URL without reloading
       const url = new URL(window.location);
-      url.searchParams.set('season', newSeason);
-      url.searchParams.set('episode', newEpisode);
+      url.searchParams.set('season', season);
+      url.searchParams.set('episode', episode);
       window.history.pushState({}, '', url);
       
-      // Update video player with VidSrc.xyz format
+      // Update video player with VidSrc.xyz format (primary with auto-play)
       const videoPlayer = document.getElementById('video-player');
-      const newUrl = `https://vidsrc.xyz/embed/tv?tmdb=${id}&season=${newSeason}&episode=${newEpisode}&autoplay=1&autonext=1`;
+      const newUrl = `https://vidsrc.xyz/embed/tv?tmdb=${id}&season=${season}&episode=${episode}&autoplay=1&autonext=1`;
       videoPlayer.src = newUrl;
       
       // Update title
       const title = new URLSearchParams(window.location.search).get('title') || 'Unknown';
-      document.getElementById('video-title').textContent = `${title} S${newSeason}E${newEpisode}`;
+      document.getElementById('video-title').textContent = `${title} S${season}E${episode}`;
       
-      // Update all server options
+      // Update all server options to reflect new episode
       const serverSelect = document.getElementById('server-select');
       const servers = Array.from(serverSelect.options);
       servers.forEach((option, index) => {
         const serverName = option.textContent;
         if (serverName === 'VidSrc XYZ') {
-          option.value = `https://vidsrc.xyz/embed/tv?tmdb=${id}&season=${newSeason}&episode=${newEpisode}&autoplay=1&autonext=1`;
+          option.value = `https://vidsrc.xyz/embed/tv?tmdb=${id}&season=${season}&episode=${episode}&autoplay=1&autonext=1`;
         } else if (serverName === 'VidSrc CC') {
-          option.value = `https://vidsrc.cc/v2/embed/tv/${id}/${newSeason}/${newEpisode}?autoplay=1`;
+          option.value = `https://vidsrc.cc/v2/embed/tv/${id}/${season}/${episode}?autoplay=1`;
         } else if (serverName.includes('VidSrc')) {
-          option.value = option.value.replace(/\/tv\/\d+\/\d+\/\d+/, `/tv/${id}/${newSeason}/${newEpisode}`);
+          option.value = option.value.replace(/\/tv\/\d+\/\d+\/\d+/, `/tv/${id}/${season}/${episode}`);
         }
       });
       
-      // Show loading indicator
+      // Show brief loading indicator
       const serverLoading = document.getElementById('server-loading');
       serverLoading.classList.remove('hidden');
       setTimeout(() => {
         serverLoading.classList.add('hidden');
-      }, 2000);
+      }, 1000);
+    }
+    
+    // Handle episode changes (with auto-loading)
+    episodeSelect.addEventListener('change', () => {
+      const episodes = seasonSelect.value === currentSeason ? [] : []; // Would need to store episodes data
+      updateEpisodeInfo(seasonSelect.value, episodeSelect.value, episodes);
+      
+      // Auto-play the selected episode
+      const newSeason = seasonSelect.value;
+      const newEpisode = episodeSelect.value;
+      loadEpisode(newSeason, newEpisode);
+    });
+    
+    seasonSelect.addEventListener('change', async () => {
+      await updateEpisodeOptions(seasonSelect.value);
+      
+      // Auto-play first episode of the new season
+      const newSeason = seasonSelect.value;
+      const newEpisode = episodeSelect.value || '1';
+      loadEpisode(newSeason, newEpisode);
+    });
+    
+    // Load episode button handler (now just calls the loadEpisode function)
+    loadEpisodeBtn.addEventListener('click', () => {
+      const newSeason = seasonSelect.value;
+      const newEpisode = episodeSelect.value;
+      loadEpisode(newSeason, newEpisode);
     });
   }
   
