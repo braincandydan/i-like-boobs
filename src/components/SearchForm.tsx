@@ -1,6 +1,21 @@
 import { useState } from 'react';
 import { fetchFromTMDB, tmdbEndpoints, getImageUrl } from '../lib/tmdb';
 
+// Create URL with base path for GitHub Pages
+function createUrl(path: string): string {
+  // Get base path from meta tag or default to '/'
+  const basePath = document.querySelector('meta[name="astro-base"]')?.getAttribute('content') || 
+                   (window.location.pathname.includes('/i-like-boobs') ? '/i-like-boobs/' : '/');
+  
+  // Remove leading slash from path if it exists
+  const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+  
+  // Ensure base ends with slash and combine
+  const baseWithSlash = basePath.endsWith('/') ? basePath : `${basePath}/`;
+  
+  return `${baseWithSlash}${cleanPath}`;
+}
+
 interface SearchResult {
   id: number;
   title?: string;
@@ -113,7 +128,7 @@ export default function SearchForm() {
                   return (
                     <a
                       key={`${item.media_type}-${item.id}`}
-                      href={`/details/${item.media_type}/${item.id}`}
+                      href={createUrl(`/details/${item.media_type}/${item.id}`)}
                       className="group block"
                     >
                       <div className="bg-gray-800 rounded-lg overflow-hidden transition-transform duration-300 group-hover:scale-105 group-hover:shadow-xl">
