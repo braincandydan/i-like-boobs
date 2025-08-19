@@ -437,8 +437,9 @@ const posterUrl = getImageUrl(show.poster_path, 'w500');
           
           // Add click handler to watch episode
           episodeCard.addEventListener('click', () => {
-            const basePath = window.location.pathname.includes('/i-like-boobs') ? '/i-like-boobs/' : '/';
-            const watchUrl = basePath + 'watch?type=tv&id=' + showId + '&title=' + encodeURIComponent(showTitle) + '&season=' + season + '&episode=' + episode.episode_number;
+            const basePath = window.BASE_PATH || '/';
+            const cleanBasePath = basePath.endsWith('/') ? basePath : basePath + '/';
+            const watchUrl = cleanBasePath + 'watch?type=tv&id=' + showId + '&title=' + encodeURIComponent(showTitle) + '&season=' + season + '&episode=' + episode.episode_number;
             window.location.href = watchUrl;
           });
           
@@ -454,8 +455,9 @@ const posterUrl = getImageUrl(show.poster_path, 'w500');
   });
 </script>
 
-<script define:vars={{ showData: { id: show.id, name: show.name, number_of_seasons: show.number_of_seasons }, apiKey: import.meta.env.PUBLIC_TMDB_API_KEY }}>
+<script define:vars={{ showData: { id: show.id, name: show.name, number_of_seasons: show.number_of_seasons }, apiKey: import.meta.env.PUBLIC_TMDB_API_KEY, basePath: import.meta.env.BASE_URL }}>
   // Set global data for episode selector
   window.SHOW_DATA = showData;
   window.TMDB_API_KEY = apiKey;
+  window.BASE_PATH = basePath || '/';
 </script>
