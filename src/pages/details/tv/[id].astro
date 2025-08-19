@@ -139,7 +139,7 @@ const posterUrl = getImageUrl(show.poster_path, 'w500');
   </section>
   
   <!-- Episode Selector Section (Hidden by default) -->
-  <section id="episode-selector" class="bg-gray-800 border-t border-gray-700 overflow-hidden transition-all duration-500 ease-in-out max-h-0 opacity-0">
+  <section id="episode-selector" class="bg-gray-800 border-t border-gray-700 transition-all duration-500 ease-in-out hidden">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div class="flex items-center justify-between mb-6">
         <h2 class="text-3xl font-bold text-white">Episodes</h2>
@@ -154,7 +154,7 @@ const posterUrl = getImageUrl(show.poster_path, 'w500');
       </div>
       
       <!-- Episode Grid -->
-      <div id="episode-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div id="episode-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         <!-- Episodes will be dynamically populated -->
       </div>
       
@@ -352,8 +352,7 @@ const posterUrl = getImageUrl(show.poster_path, 'w500');
     
     async function openEpisodeSelectorPanel() {
       isEpisodeSelectorOpen = true;
-      episodeSelector.style.maxHeight = '1000px';
-      episodeSelector.style.opacity = '1';
+      episodeSelector.classList.remove('hidden');
       
       // Load seasons first
       await loadSeasons();
@@ -364,8 +363,7 @@ const posterUrl = getImageUrl(show.poster_path, 'w500');
     
     function closeEpisodeSelectorPanel() {
       isEpisodeSelectorOpen = false;
-      episodeSelector.style.maxHeight = '0';
-      episodeSelector.style.opacity = '0';
+      episodeSelector.classList.add('hidden');
     }
     
     async function loadSeasons() {
