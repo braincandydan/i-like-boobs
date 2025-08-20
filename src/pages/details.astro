@@ -124,15 +124,20 @@ import { createUrl } from '../lib/utils';
   </div>
 </Layout>
 
-<script define:vars={{ basePath: import.meta.env.BASE_URL || '/' }}>
+<script define:vars={{ 
+  basePath: import.meta.env.BASE_URL || '/', 
+  apiKey: import.meta.env.PUBLIC_TMDB_API_KEY,
+  tmdbBaseUrl: import.meta.env.PUBLIC_TMDB_BASE_URL || 'https://api.themoviedb.org/3',
+  tmdbImageBaseUrl: import.meta.env.PUBLIC_TMDB_IMAGE_BASE_URL || 'https://image.tmdb.org/t/p'
+}}>
   // Global variables
   window.currentContent = null;
   window.basePath = basePath;
   
   // API configuration
-  const API_KEY = import.meta.env.PUBLIC_TMDB_API_KEY;
-  const BASE_URL = import.meta.env.PUBLIC_TMDB_BASE_URL || 'https://api.themoviedb.org/3';
-  const IMAGE_BASE_URL = import.meta.env.PUBLIC_TMDB_IMAGE_BASE_URL || 'https://image.tmdb.org/t/p';
+  const API_KEY = apiKey;
+  const BASE_URL = tmdbBaseUrl;
+  const IMAGE_BASE_URL = tmdbImageBaseUrl;
   
   let currentSeason = 1;
   let isEpisodeSelectorOpen = false;
@@ -448,7 +453,13 @@ import { createUrl } from '../lib/utils';
   // Initialize page
   async function initializePage() {
     try {
+      console.log('Starting page initialization...');
+      console.log('API_KEY available:', !!API_KEY);
+      console.log('BASE_URL:', BASE_URL);
+      
       const urlData = parseUrl();
+      console.log('URL data:', urlData);
+      
       if (!urlData) {
         throw new Error('No content specified');
       }
@@ -456,14 +467,17 @@ import { createUrl } from '../lib/utils';
       contentType = urlData.type;
       contentId = urlData.id;
       
+      console.log('Fetching content for type:', contentType, 'id:', contentId);
       const { content, cast } = await fetchContentData(contentType, contentId);
+      console.log('Content fetched successfully:', content);
+      
       populateContent(content, cast, contentType);
       
       // Hide loading, show content
       document.getElementById('loading-screen').classList.add('hidden');
       document.getElementById('content-wrapper').classList.remove('hidden');
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error in initializePage:', error);
       // Hide loading, show error
       document.getElementById('loading-screen').classList.add('hidden');
       document.getElementById('error-screen').classList.remove('hidden');
