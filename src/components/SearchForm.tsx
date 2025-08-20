@@ -1,19 +1,8 @@
 import { useState } from 'react';
 import { fetchFromTMDB, tmdbEndpoints, getImageUrl } from '../lib/tmdb';
 
-// Create URL with base path for GitHub Pages
-function createUrl(path: string): string {
-  // Get base path from meta tag or default to '/'
-  const basePath = document.querySelector('meta[name="astro-base"]')?.getAttribute('content') || 
-                   (window.location.pathname.includes('/i-like-boobs') ? '/i-like-boobs/' : '/');
-  
-  // Remove leading slash from path if it exists
-  const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-  
-  // Ensure base ends with slash and combine
-  const baseWithSlash = basePath.endsWith('/') ? basePath : `${basePath}/`;
-  
-  return `${baseWithSlash}${cleanPath}`;
+interface SearchFormProps {
+  basePath?: string;
 }
 
 interface SearchResult {
@@ -29,7 +18,17 @@ interface SearchResult {
   media_type: 'movie' | 'tv' | 'person';
 }
 
-export default function SearchForm() {
+export default function SearchForm({ basePath = '/' }: SearchFormProps) {
+  // Create URL with base path for GitHub Pages
+  function createUrl(path: string): string {
+    // Remove leading slash from path if it exists
+    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+    
+    // Ensure base ends with slash and combine
+    const baseWithSlash = basePath.endsWith('/') ? basePath : `${basePath}/`;
+    
+    return `${baseWithSlash}${cleanPath}`;
+  }
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
