@@ -127,7 +127,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                   return (
                     <a
                       key={`${item.media_type}-${item.id}`}
-                      href={createUrl(`/details/${item.media_type}/${item.id}`)}
+                      href={createUrl(`/details?type=${item.media_type}&id=${item.id}`)}
                       className="group block"
                     >
                       <div className="bg-gray-800 rounded-lg overflow-hidden transition-transform duration-300 group-hover:scale-105 group-hover:shadow-xl">

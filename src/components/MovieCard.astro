@@ -23,7 +23,7 @@ const title = movie.title || movie.name;
 const releaseDate = movie.release_date || movie.first_air_date;
 const itemMediaType = movie.media_type || mediaType;
 const posterUrl = getImageUrl(movie.poster_path, 'w500');
-const detailsUrl = createUrl(`/details/${itemMediaType}/${movie.id}`);
+const detailsUrl = createUrl(`/details?type=${itemMediaType}&id=${movie.id}`);
 
 function formatDate(dateString: string) {
   if (!dateString) return 'Unknown';

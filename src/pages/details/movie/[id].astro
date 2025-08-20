@@ -5,41 +5,9 @@ import WatchlistButton from '../../../components/WatchlistButton';
 import { fetchFromTMDB, tmdbEndpoints, getImageUrl, formatDate, formatRuntime } from '../../../lib/tmdb';
 import { createUrl } from '../../../lib/utils';
 
-export async function getStaticPaths() {
-  // Generate static paths for popular movies
-  try {
-    const [popularData, trendingData, topRatedData] = await Promise.all([
-      fetchFromTMDB(tmdbEndpoints.popularMovies),
-      fetchFromTMDB(tmdbEndpoints.trending),
-      fetchFromTMDB(tmdbEndpoints.topRatedMovies),
-    ]);
-    
-    // Combine all movies and get unique IDs
-    const allMovies = [
-      ...popularData.results.slice(0, 20),
-      ...trendingData.results.slice(0, 20),
-      ...topRatedData.results.slice(0, 20)
-    ];
-    
-    // Remove duplicates based on ID
-    const uniqueMovies = allMovies.filter((movie, index, self) => 
-      index === self.findIndex(m => m.id === movie.id)
-    );
-    
-    return uniqueMovies.map(movie => ({
-      params: { id: movie.id.toString() }
-    }));
-  } catch (error) {
-    console.error('Error generating static paths:', error);
-    // Return some fallback popular movie IDs
-    return [
-      { params: { id: '550' } }, // Fight Club
-      { params: { id: '13' } },  // Forrest Gump
-      { params: { id: '680' } }, // Pulp Fiction
-      { params: { id: '155' } }, // The Dark Knight
-      { params: { id: '238' } }, // The Godfather
-    ];
-  }
+export function getStaticPaths() {
+  // Return empty array to enable dynamic routing for any movie ID
+  return [];
 }
 
 const { id } = Astro.params;
