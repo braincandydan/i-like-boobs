@@ -1,6 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Navbar from '../components/Navbar.astro';
+import WatchlistDisplay from '../components/WatchlistDisplay.tsx';
 ---
 
 <Layout title="My Watchlist - NotFlix">
@@ -9,19 +10,6 @@ import Navbar from '../components/Navbar.astro';
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     <h1 class="text-4xl font-bold text-white mb-12">My Watchlist</h1>
     
-    <div class="text-center py-16">
-      <i class="fas fa-heart text-6xl text-gray-600 mb-6"></i>
-      <h2 class="text-2xl font-bold text-white mb-4">Your watchlist is empty</h2>
-      <p class="text-gray-400 mb-8">Sign in and start adding movies and TV shows to your watchlist!</p>
-      
-      <div class="space-x-4">
-        <a href="/auth/signin" class="btn-primary">
-          Sign In
-        </a>
-        <a href="/movies" class="btn-secondary">
-          Browse Movies
-        </a>
-      </div>
-    </div>
+    <WatchlistDisplay client:load />
   </main>
 </Layout>

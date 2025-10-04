@@ -33,8 +33,8 @@ export default function AuthButton() {
     );
   }
 
-  const handleSignOut = async () => {
-    await signOut();
+  const handleSignOut = () => {
+    signOut();
     setShowDropdown(false);
     window.location.href = '/';
   };

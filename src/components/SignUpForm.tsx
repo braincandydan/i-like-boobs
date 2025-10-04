@@ -37,15 +37,15 @@ export default function SignUpForm() {
       return;
     }
 
-    const result = await signUp(formData.email, formData.password, {
+    const result = signUp(formData.email, formData.password, {
       full_name: formData.fullName,
       username: formData.username
     });
     
     if (result.success) {
-      // Show success message and redirect
-      alert('Account created successfully! Please check your email to verify your account.');
-      window.location.href = '/auth/signin';
+      // Show success message and redirect to home (user is automatically signed in)
+      alert('Account created successfully! You are now signed in.');
+      window.location.href = '/';
     } else {
       setError(result.error || 'Sign up failed');
     }

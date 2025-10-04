@@ -38,7 +38,10 @@ const { title, description = "NotFlix - Your favorite movies and TV shows" } = A
     <!-- Initialize auth on page load -->
     <script>
       import { initAuth } from '../stores/auth';
-      initAuth();
+      // Initialize auth when the page loads
+      document.addEventListener('DOMContentLoaded', () => {
+        initAuth();
+      });
     </script>
   </body>
 </html>

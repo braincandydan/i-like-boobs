@@ -12,7 +12,7 @@ export default function SignInForm() {
     setIsLoading(true);
     setError('');
 
-    const result = await signIn(email, password);
+    const result = signIn(email, password);
     
     if (result.success) {
       // Redirect to home page

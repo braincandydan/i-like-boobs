@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
-import { $user, $profile } from '../stores/auth';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { $user } from '../stores/auth';
+import { 
+  addToWatchlist, 
+  removeFromWatchlist, 
+  isInWatchlist, 
+  onStorageChange 
+} from '../lib/localStorage';
 
 interface WatchlistButtonProps {
   movieId: number;
@@ -17,39 +22,37 @@ export default function WatchlistButton({
   posterPath 
 }: WatchlistButtonProps) {
   const user = useStore($user);
-  const [isInWatchlist, setIsInWatchlist] = useState(false);
+  const [isInWatchlistState, setIsInWatchlistState] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      checkWatchlistStatus();
-    }
+    checkWatchlistStatus();
   }, [user, movieId, mediaType]);
 
-  const checkWatchlistStatus = async () => {
-    if (!user || !isSupabaseConfigured() || !supabase) return;
+  // Listen for storage changes to sync across tabs
+  useEffect(() => {
+    const cleanup = onStorageChange(() => {
+      checkWatchlistStatus();
+    });
+    return cleanup;
+  }, [movieId, mediaType]);
+
+  const checkWatchlistStatus = () => {
+    if (!user) {
+      setIsInWatchlistState(false);
+      return;
+    }
 
     try {
-      const { data, error } = await supabase
-        .from('user_watchlist')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('movie_id', movieId)
-        .eq('media_type', mediaType)
-        .single();
-
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.error('Error checking watchlist:', error);
-        return;
-      }
-
-      setIsInWatchlist(!!data);
+      const inWatchlist = isInWatchlist(movieId, mediaType);
+      setIsInWatchlistState(inWatchlist);
     } catch (error) {
       console.error('Error checking watchlist:', error);
+      setIsInWatchlistState(false);
     }
   };
 
-  const toggleWatchlist = async (e: React.MouseEvent) => {
+  const toggleWatchlist = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -59,39 +62,30 @@ export default function WatchlistButton({
       return;
     }
 
-    if (!isSupabaseConfigured() || !supabase) {
-      alert('Authentication not configured');
-      return;
-    }
-
     setIsLoading(true);
 
     try {
-      if (isInWatchlist) {
+      if (isInWatchlistState) {
         // Remove from watchlist
-        const { error } = await supabase
-          .from('user_watchlist')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('movie_id', movieId)
-          .eq('media_type', mediaType);
-
-        if (error) throw error;
-        setIsInWatchlist(false);
+        const success = removeFromWatchlist(movieId, mediaType);
+        if (success) {
+          setIsInWatchlistState(false);
+        } else {
+          console.error('Failed to remove from watchlist');
+        }
       } else {
         // Add to watchlist
-        const { error } = await supabase
-          .from('user_watchlist')
-          .insert({
-            user_id: user.id,
-            movie_id: movieId,
-            media_type: mediaType,
-            title,
-            poster_path: posterPath,
-          });
-
-        if (error) throw error;
-        setIsInWatchlist(true);
+        const success = addToWatchlist({
+          movieId,
+          mediaType,
+          title,
+          posterPath,
+        });
+        if (success) {
+          setIsInWatchlistState(true);
+        } else {
+          console.error('Failed to add to watchlist');
+        }
       }
     } catch (error) {
       console.error('Error toggling watchlist:', error);
@@ -104,8 +98,8 @@ export default function WatchlistButton({
     <button
       onClick={toggleWatchlist}
       disabled={isLoading}
-      className={`watchlist-btn ${isInWatchlist ? 'added' : ''}`}
-      title={isInWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+      className={`watchlist-btn ${isInWatchlistState ? 'added' : ''}`}
+      title={isInWatchlistState ? 'Remove from watchlist' : 'Add to watchlist'}
     >
       {isLoading ? (
         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

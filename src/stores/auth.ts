@@ -1,35 +1,40 @@
 import { atom } from 'nanostores';
-import type { User } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured, type Profile } from '../lib/supabase';
+import { 
+  getCurrentUser, 
+  setCurrentUser, 
+  isUserSignedIn, 
+  signUpUser, 
+  signInUser, 
+  signOutUser,
+  onStorageChange,
+  type LocalUser 
+} from '../lib/localStorage';
 
-// Store for the current user
-export const $user = atom<User | null>(null);
-export const $profile = atom<Profile | null>(null);
+// Store for the current user - using LocalUser instead of Supabase User
+export const $user = atom<LocalUser | null>(null);
+export const $profile = atom<LocalUser | null>(null);
 export const $isLoading = atom<boolean>(true);
 
 // Initialize auth state
-export async function initAuth() {
+export function initAuth() {
   try {
-    // Check if Supabase is configured
-    if (!isSupabaseConfigured() || !supabase) {
-      console.warn('Supabase not configured - authentication features disabled');
-      $isLoading.set(false);
-      return;
-    }
-
-    // Get initial session
-    const { data: { session } } = await supabase.auth.getSession();
+    // Get current user from localStorage
+    const user = getCurrentUser();
     
-    if (session?.user) {
-      $user.set(session.user);
-      await loadUserProfile(session.user.id);
+    if (user && isUserSignedIn()) {
+      $user.set(user);
+      $profile.set(user);
+    } else {
+      $user.set(null);
+      $profile.set(null);
     }
     
-    // Listen for auth changes
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        $user.set(session.user);
-        await loadUserProfile(session.user.id);
+    // Listen for storage changes (cross-tab synchronization)
+    onStorageChange(() => {
+      const updatedUser = getCurrentUser();
+      if (updatedUser && isUserSignedIn()) {
+        $user.set(updatedUser);
+        $profile.set(updatedUser);
       } else {
         $user.set(null);
         $profile.set(null);
@@ -42,82 +47,65 @@ export async function initAuth() {
   }
 }
 
-// Load user profile from database
-async function loadUserProfile(userId: string) {
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    
-    if (error) throw error;
-    $profile.set(data);
-  } catch (error) {
-    console.error('Error loading profile:', error);
-  }
-}
-
 // Sign up new user
-export async function signUp(email: string, password: string, userData: { 
+export function signUp(email: string, password: string, userData: { 
   username?: string; 
   full_name?: string; 
 }) {
   try {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: userData
-      }
-    });
+    const result = signUpUser(email, password, userData);
     
-    if (error) throw error;
-    return { success: true, data };
+    if (result.success && result.user) {
+      $user.set(result.user);
+      $profile.set(result.user);
+    }
+    
+    return result;
   } catch (error) {
     console.error('Error signing up:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: 'Failed to create account' };
   }
 }
 
 // Sign in user
-export async function signIn(email: string, password: string) {
+export function signIn(email: string, password: string) {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
+    const result = signInUser(email, password);
     
-    if (error) throw error;
-    return { success: true, data };
+    if (result.success && result.user) {
+      $user.set(result.user);
+      $profile.set(result.user);
+    }
+    
+    return result;
   } catch (error) {
     console.error('Error signing in:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: 'Failed to sign in' };
   }
 }
 
 // Sign out user
-export async function signOut() {
+export function signOut() {
   try {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-    
+    signOutUser();
     $user.set(null);
     $profile.set(null);
     return { success: true };
   } catch (error) {
     console.error('Error signing out:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: 'Failed to sign out' };
   }
 }
 
-// Check if user is admin
+// Check if user is admin (simplified for localStorage - no roles in our LocalUser type)
 export function isAdmin(): boolean {
-  const profile = $profile.get();
-  return profile?.role === 'admin';
+  // For static hosting, we can implement a simple admin check
+  // You could maintain an admin list or add role to LocalUser interface
+  const user = $user.get();
+  return user?.email === 'admin@notflix.com'; // Simple admin check
 }
 
 // Check if user is authenticated
 export function isAuthenticated(): boolean {
-  return $user.get() !== null;
+  return $user.get() !== null && isUserSignedIn();
 }
