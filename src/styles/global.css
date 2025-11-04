@@ -87,12 +87,19 @@
     overflow: hidden;
   }
   
-  .line-clamp-3 {
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
   }
+}
+
+@layer utilities {
+  .text-shadow {
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* Add a clear focus indicator for remote control navigation */
+*:focus-visible {
+  outline: 3px solid #e50914 !important;
+  outline-offset: 2px;
 }
 
 /* Custom scrollbar */

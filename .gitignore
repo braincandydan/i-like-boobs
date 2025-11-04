@@ -22,3 +22,7 @@ pnpm-debug.log*
 
 # jetbrains setting folder
 .idea/
+
+# Gemini generated files
+GEMINI.md
+TODO.md

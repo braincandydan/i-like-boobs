@@ -6,6 +6,9 @@ export default {
   ],
   theme: {
     extend: {
+      screens: {
+        'tv': '1920px',
+      },
       colors: {
         'netflix-red': '#e50914',
         'netflix-black': '#141414',
