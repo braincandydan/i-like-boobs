@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { signUp } from '../stores/auth';
+import { createUrl } from '../lib/utils';
 
 export default function SignUpForm() {
   const [formData, setFormData] = useState({
@@ -49,11 +50,11 @@ export default function SignUpForm() {
         setError(''); // Clear any error
         alert(result.warning);
         // Redirect to signin page so they can confirm email
-        window.location.href = '/auth/signin';
+        window.location.href = createUrl('/auth/signin');
       } else {
         // Account created and confirmed - redirect to home
         alert('Account created successfully! You are now signed in.');
-        window.location.href = '/';
+        window.location.href = createUrl('/');
       }
     } else {
       setError(result.error || 'Sign up failed');
@@ -172,11 +173,11 @@ export default function SignUpForm() {
       <div className="text-center">
         <p className="text-sm text-gray-400">
           By signing up, you agree to our{' '}
-          <a href="/terms" className="font-medium text-red-600 hover:text-red-500">
+          <a href={createUrl("/terms")} className="font-medium text-red-600 hover:text-red-500">
             Terms of Service
           </a>{' '}
           and{' '}
-          <a href="/privacy" className="font-medium text-red-600 hover:text-red-500">
+          <a href={createUrl("/privacy")} className="font-medium text-red-600 hover:text-red-500">
             Privacy Policy
           </a>
         </p>

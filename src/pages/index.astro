@@ -57,7 +57,7 @@ const heroMovie = trendingData.results?.[0];
   
   <!-- Server-rendered Hero Section (always shows) -->
   {heroMovie && (
-    <section class="relative h-[70vh] flex items-center justify-center overflow-hidden">
+    <section id="fallback-hero" class="relative h-[70vh] flex items-center justify-center overflow-hidden">
       <div 
         class="absolute inset-0 bg-cover bg-center"
         style={`background-image: url('https://image.tmdb.org/t/p/original${heroMovie.backdrop_path}')`}
@@ -129,27 +129,27 @@ const heroMovie = trendingData.results?.[0];
         <div>
           <h4 class="text-white font-semibold mb-4">Navigation</h4>
           <ul class="space-y-2 text-gray-400">
-            <li><a href="/" class="hover:text-white transition-colors">Home</a></li>
-            <li><a href="/movies" class="hover:text-white transition-colors">Movies</a></li>
-            <li><a href="/tv-shows" class="hover:text-white transition-colors">TV Shows</a></li>
-            <li><a href="/search" class="hover:text-white transition-colors">Search</a></li>
+            <li><a href={createUrl("/")} class="hover:text-white transition-colors">Home</a></li>
+            <li><a href={createUrl("/movies")} class="hover:text-white transition-colors">Movies</a></li>
+            <li><a href={createUrl("/tv-shows")} class="hover:text-white transition-colors">TV Shows</a></li>
+            <li><a href={createUrl("/search")} class="hover:text-white transition-colors">Search</a></li>
           </ul>
         </div>
         
         <div>
           <h4 class="text-white font-semibold mb-4">Account</h4>
           <ul class="space-y-2 text-gray-400">
-            <li><a href="/auth/signin" class="hover:text-white transition-colors">Sign In</a></li>
-            <li><a href="/auth/signup" class="hover:text-white transition-colors">Sign Up</a></li>
-            <li><a href="/watchlist" class="hover:text-white transition-colors">Watchlist</a></li>
+            <li><a href={createUrl("/auth/signin")} class="hover:text-white transition-colors">Sign In</a></li>
+            <li><a href={createUrl("/auth/signup")} class="hover:text-white transition-colors">Sign Up</a></li>
+            <li><a href={createUrl("/watchlist")} class="hover:text-white transition-colors">Watchlist</a></li>
           </ul>
         </div>
         
         <div>
           <h4 class="text-white font-semibold mb-4">Legal</h4>
           <ul class="space-y-2 text-gray-400">
-            <li><a href="/privacy" class="hover:text-white transition-colors">Privacy Policy</a></li>
-            <li><a href="/terms" class="hover:text-white transition-colors">Terms of Service</a></li>
+            <li><a href={createUrl("/privacy")} class="hover:text-white transition-colors">Privacy Policy</a></li>
+            <li><a href={createUrl("/terms")} class="hover:text-white transition-colors">Terms of Service</a></li>
           </ul>
         </div>
       </div>

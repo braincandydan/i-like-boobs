@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react';
 import { useState, useEffect } from 'react';
 import { $user, $profile, $isLoading, signOut, isAdmin, initAuth } from '../stores/auth';
+import { createUrl } from '../lib/utils';
 
 export default function AuthButton() {
   const user = useStore($user);
@@ -23,13 +24,13 @@ export default function AuthButton() {
     return (
       <div className="flex items-center space-x-2">
         <a 
-          href="/auth/signin" 
+          href={createUrl("/auth/signin")} 
           className="text-white hover:text-red-600 transition-colors"
         >
           Sign In
         </a>
         <a 
-          href="/auth/signup" 
+          href={createUrl("/auth/signup")} 
           className="btn-primary"
         >
           Sign Up
@@ -41,7 +42,7 @@ export default function AuthButton() {
   const handleSignOut = async () => {
     await signOut();
     setShowDropdown(false);
-    window.location.href = '/';
+    window.location.href = createUrl('/');
   };
 
   return (
@@ -70,14 +71,14 @@ export default function AuthButton() {
       {showDropdown && (
         <div className="absolute right-0 mt-2 w-48 bg-gray-800 rounded-lg shadow-lg py-2 z-50">
           <a 
-            href="/profile" 
+            href={createUrl("/profile")} 
             className="block px-4 py-2 text-white hover:bg-gray-700 transition-colors"
           >
             <i className="fas fa-user mr-2"></i>
             Profile
           </a>
           <a 
-            href="/watchlist" 
+            href={createUrl("/watchlist")} 
             className="block px-4 py-2 text-white hover:bg-gray-700 transition-colors"
           >
             <i className="fas fa-heart mr-2"></i>
@@ -85,7 +86,7 @@ export default function AuthButton() {
           </a>
           {isAdmin() && (
             <a 
-              href="/admin" 
+              href={createUrl("/admin")} 
               className="block px-4 py-2 text-white hover:bg-gray-700 transition-colors"
             >
               <i className="fas fa-cogs mr-2"></i>

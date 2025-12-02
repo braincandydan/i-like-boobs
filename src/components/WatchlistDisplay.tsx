@@ -7,6 +7,7 @@ import {
   onStorageChange,
   type WatchlistItem 
 } from '../lib/localStorage';
+import { createUrl } from '../lib/utils';
 
 export default function WatchlistDisplay() {
   const user = useStore($user);
@@ -60,10 +61,10 @@ export default function WatchlistDisplay() {
         <p className="text-gray-400 mb-8">Create an account or sign in to save your favorite movies and TV shows!</p>
         
         <div className="space-x-4">
-          <a href="/auth/signin" className="btn-primary">
+          <a href={createUrl("/auth/signin")} className="btn-primary">
             Sign In
           </a>
-          <a href="/auth/signup" className="btn-secondary">
+          <a href={createUrl("/auth/signup")} className="btn-secondary">
             Sign Up
           </a>
         </div>
@@ -88,10 +89,10 @@ export default function WatchlistDisplay() {
         <p className="text-gray-400 mb-8">Start adding movies and TV shows to your watchlist!</p>
         
         <div className="space-x-4">
-          <a href="/movies" className="btn-primary">
+          <a href={createUrl("/movies")} className="btn-primary">
             Browse Movies
           </a>
-          <a href="/tv-shows" className="btn-secondary">
+          <a href={createUrl("/tv-shows")} className="btn-secondary">
             Browse TV Shows
           </a>
         </div>

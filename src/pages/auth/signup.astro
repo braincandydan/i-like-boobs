@@ -1,13 +1,14 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import SignUpForm from '../../components/SignUpForm';
+import { createUrl } from '../../lib/utils';
 ---
 
 <Layout title="Sign Up - NotFlix">
   <div class="min-h-screen flex items-center justify-center bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-md w-full space-y-8">
       <div>
-        <a href="/" class="flex justify-center">
+        <a href={createUrl("/")} class="flex justify-center">
           <span class="text-red-600 text-4xl font-bold">NotFlix</span>
         </a>
         <h2 class="mt-6 text-center text-3xl font-extrabold text-white">
@@ -15,7 +16,7 @@ import SignUpForm from '../../components/SignUpForm';
         </h2>
         <p class="mt-2 text-center text-sm text-gray-400">
           Already have an account?
-          <a href="/auth/signin" class="font-medium text-red-600 hover:text-red-500 ml-1">
+          <a href={createUrl("/auth/signin")} class="font-medium text-red-600 hover:text-red-500 ml-1">
             Sign in here
           </a>
         </p>

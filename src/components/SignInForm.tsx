@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { signIn } from '../stores/auth';
+import { createUrl } from '../lib/utils';
 
 export default function SignInForm() {
   const [email, setEmail] = useState('');
@@ -16,7 +17,7 @@ export default function SignInForm() {
     
     if (result.success) {
       // Redirect to home page
-      window.location.href = '/';
+      window.location.href = createUrl('/');
     } else {
       setError(result.error || 'Sign in failed');
     }
@@ -82,7 +83,7 @@ export default function SignInForm() {
         </div>
 
         <div className="text-sm">
-          <a href="/auth/forgot-password" className="font-medium text-red-600 hover:text-red-500">
+          <a href={createUrl("/auth/forgot-password")} className="font-medium text-red-600 hover:text-red-500">
             Forgot your password?
           </a>
         </div>
@@ -105,7 +106,7 @@ export default function SignInForm() {
       <div className="text-center">
         <p className="text-sm text-gray-400">
           Don't have an account?{' '}
-          <a href="/auth/signup" className="font-medium text-red-600 hover:text-red-500">
+          <a href={createUrl("/auth/signup")} className="font-medium text-red-600 hover:text-red-500">
             Sign up here
           </a>
         </p>

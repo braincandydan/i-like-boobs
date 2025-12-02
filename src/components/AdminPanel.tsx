@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { $user, $profile, isAdmin, initAuth } from '../stores/auth';
 import CategoryManager from './CategoryManager';
+import { createUrl } from '../lib/utils';
 
 export default function AdminPanel() {
   const user = useStore($user);
@@ -25,7 +26,7 @@ export default function AdminPanel() {
         <div className="text-center">
           <h1 className="text-3xl font-bold text-white mb-4">Please sign in</h1>
           <p className="text-gray-400 mb-6">You need to be signed in to access the admin panel.</p>
-          <a href="/auth/signin" className="btn-primary">
+          <a href={createUrl("/auth/signin")} className="btn-primary">
             Sign In
           </a>
         </div>
@@ -42,7 +43,7 @@ export default function AdminPanel() {
           <p className="text-gray-400 mb-6">
             You need admin privileges to access this panel.
           </p>
-          <a href="/" className="btn-secondary">
+          <a href={createUrl("/")} className="btn-secondary">
             Back to Home
           </a>
         </div>
