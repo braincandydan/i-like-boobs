@@ -1,0 +1,14 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Navbar from '../../components/Navbar.astro';
+import AdminPanel from '../../components/AdminPanel';
+---
+
+<Layout title="Admin Panel - NotFlix">
+  <Navbar />
+  
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <AdminPanel client:load />
+  </main>
+</Layout>
+

@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom NotFlix styles */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background-color: #141414;
+    color: #ffffff;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded transition-colors duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded transition-colors duration-200;
+  }
+  
+  .card {
+    @apply bg-gray-800 rounded-lg p-6 shadow-lg;
+  }
+  
+  .movie-card {
+    @apply relative overflow-hidden rounded-lg transition-transform duration-300 hover:scale-105 hover:shadow-xl;
+  }
+  
+  .movie-poster {
+    @apply w-full aspect-[2/3] object-cover;
+  }
+  
+  .spinner {
+    @apply w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin;
+  }
+  
+  .loading-indicator {
+    @apply flex flex-col items-center justify-center py-12;
+  }
+  
+  .content-grid {
+    @apply grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4;
+  }
+  
+  .watchlist-btn {
+    @apply absolute top-2 right-2 bg-black bg-opacity-70 border-none rounded-full w-8 h-8 flex items-center justify-center cursor-pointer opacity-0 transition-opacity duration-300 z-10;
+  }
+  
+  .movie-card:hover .watchlist-btn {
+    @apply opacity-100;
+  }
+  
+  .watchlist-btn.added svg {
+    @apply fill-red-600 stroke-red-600;
+  }
+  
+  .watchlist-btn svg {
+    @apply fill-none stroke-white stroke-2 transition-colors duration-200;
+  }
+}
+
+@layer utilities {
+  .text-shadow {
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  }
+  
+  .gradient-overlay {
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent);
+  }
+  
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #666;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #888;
+}

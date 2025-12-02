@@ -1,0 +1,292 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import Navbar from '../../../components/Navbar.astro';
+import WatchlistButton from '../../../components/WatchlistButton';
+import { fetchFromTMDB, tmdbEndpoints, getImageUrl, formatDate, formatRuntime } from '../../../lib/tmdb';
+import { createUrl } from '../../../lib/utils';
+
+export function getStaticPaths() {
+  // Return empty array to enable dynamic routing for any movie ID
+  return [];
+}
+
+const { id } = Astro.params;
+
+// Fetch movie details
+let movie;
+let cast = [];
+let error = null;
+
+try {
+  movie = await fetchFromTMDB(tmdbEndpoints.movieDetails(parseInt(id)));
+  
+  // Fetch cast information
+  const credits = await fetchFromTMDB(`/movie/${id}/credits`);
+  cast = credits.cast.slice(0, 10); // Get first 10 cast members
+} catch (e) {
+  error = e.message;
+  console.error('Error fetching movie details:', e);
+}
+
+if (error || !movie) {
+  return new Response(null, {
+    status: 404,
+    statusText: 'Movie not found'
+  });
+}
+
+const backdropUrl = movie.backdrop_path 
+  ? getImageUrl(movie.backdrop_path, 'original')
+  : getImageUrl(movie.poster_path, 'original');
+
+const posterUrl = getImageUrl(movie.poster_path, 'w500');
+---
+
+<Layout title={`${movie.title} - NotFlix`} description={movie.overview}>
+  <Navbar />
+  
+  <!-- Hero Section -->
+  <section class="relative h-[70vh] flex items-end overflow-hidden">
+    <div 
+      class="absolute inset-0 bg-cover bg-center"
+      style={`background-image: url('${backdropUrl}')`}
+    ></div>
+    <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/70 to-transparent"></div>
+    
+    <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+      <div class="flex flex-col md:flex-row gap-8 items-end">
+        <!-- Poster -->
+        <div class="flex-shrink-0">
+          <img 
+            src={posterUrl} 
+            alt={movie.title}
+            class="w-64 h-96 object-cover rounded-lg shadow-2xl"
+          />
+        </div>
+        
+        <!-- Movie Info -->
+        <div class="flex-1 text-white">
+          <h1 class="text-4xl md:text-6xl font-bold mb-4 text-shadow">
+            {movie.title}
+          </h1>
+          
+          <div class="flex flex-wrap items-center gap-4 mb-6 text-lg">
+            <span class="bg-yellow-600 text-black px-2 py-1 rounded font-bold">
+              {movie.vote_average.toFixed(1)}
+            </span>
+            <span>{formatDate(movie.release_date)}</span>
+            <span>{formatRuntime(movie.runtime)}</span>
+            <span class="bg-gray-700 px-2 py-1 rounded text-sm">
+              {movie.adult ? 'R' : 'PG-13'}
+            </span>
+          </div>
+          
+          <p class="text-xl mb-6 max-w-3xl text-shadow">
+            {movie.overview}
+          </p>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            {movie.genres.map((genre) => (
+              <span class="bg-gray-800 bg-opacity-80 px-3 py-1 rounded-full text-sm">
+                {genre.name}
+              </span>
+            ))}
+          </div>
+          
+          <div class="flex flex-wrap gap-4">
+            <a 
+              href={createUrl(`/watch?type=movie&id=${movie.id}&title=${encodeURIComponent(movie.title)}`)}
+              class="btn-primary text-lg px-8 py-3 no-underline"
+            >
+              <i class="fas fa-play mr-2"></i>
+              Watch Now
+            </a>
+            <button 
+              onclick={`searchStreamingServices('${movie.title}', ${movie.release_date ? movie.release_date.split('-')[0] : 'null'})`}
+              class="btn-secondary text-lg px-8 py-3"
+            >
+              <i class="fas fa-external-link-alt mr-2"></i>
+              Find Streaming
+            </button>
+            <WatchlistButton 
+              movieId={movie.id}
+              mediaType="movie"
+              title={movie.title}
+              posterPath={movie.poster_path}
+              client:load
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Details Section -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-12">
+      <!-- Main Content -->
+      <div class="lg:col-span-2 space-y-8">
+        <!-- Cast -->
+        {cast.length > 0 && (
+          <section>
+            <h2 class="text-2xl font-bold text-white mb-6">Cast</h2>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+              {cast.map((actor) => (
+                <div class="text-center">
+                  <img 
+                    src={actor.profile_path ? getImageUrl(actor.profile_path, 'w185') : '/images/placeholder-person.jpg'}
+                    alt={actor.name}
+                    class="w-full aspect-square object-cover rounded-lg mb-2"
+                  />
+                  <h3 class="text-white font-semibold text-sm">{actor.name}</h3>
+                  <p class="text-gray-400 text-xs">{actor.character}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        
+        <!-- Movie Details -->
+        <section>
+          <h2 class="text-2xl font-bold text-white mb-6">Movie Details</h2>
+          <div class="bg-gray-800 rounded-lg p-6 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h3 class="text-gray-400 text-sm mb-1">Release Date</h3>
+                <p class="text-white">{formatDate(movie.release_date)}</p>
+              </div>
+              <div>
+                <h3 class="text-gray-400 text-sm mb-1">Runtime</h3>
+                <p class="text-white">{formatRuntime(movie.runtime)}</p>
+              </div>
+              <div>
+                <h3 class="text-gray-400 text-sm mb-1">Budget</h3>
+                <p class="text-white">
+                  {movie.budget ? `$${movie.budget.toLocaleString()}` : 'Unknown'}
+                </p>
+              </div>
+              <div>
+                <h3 class="text-gray-400 text-sm mb-1">Revenue</h3>
+                <p class="text-white">
+                  {movie.revenue ? `$${movie.revenue.toLocaleString()}` : 'Unknown'}
+                </p>
+              </div>
+              <div>
+                <h3 class="text-gray-400 text-sm mb-1">Language</h3>
+                <p class="text-white">{movie.original_language.toUpperCase()}</p>
+              </div>
+              <div>
+                <h3 class="text-gray-400 text-sm mb-1">Status</h3>
+                <p class="text-white">{movie.status}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+      
+      <!-- Sidebar -->
+      <div class="space-y-8">
+        <!-- Movie Stats -->
+        <section class="bg-gray-800 rounded-lg p-6">
+          <h3 class="text-xl font-bold text-white mb-4">Rating & Reviews</h3>
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="text-gray-400">TMDB Rating</span>
+              <span class="text-yellow-400 font-bold text-lg">
+                {movie.vote_average.toFixed(1)}/10
+              </span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-gray-400">Vote Count</span>
+              <span class="text-white">{movie.vote_count.toLocaleString()}</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-gray-400">Popularity</span>
+              <span class="text-white">{Math.round(movie.popularity)}</span>
+            </div>
+          </div>
+        </section>
+        
+        <!-- Production Companies -->
+        {movie.production_companies && movie.production_companies.length > 0 && (
+          <section class="bg-gray-800 rounded-lg p-6">
+            <h3 class="text-xl font-bold text-white mb-4">Production</h3>
+            <div class="space-y-2">
+              {movie.production_companies.slice(0, 5).map((company) => (
+                <div class="flex items-center space-x-3">
+                  {company.logo_path && (
+                    <img 
+                      src={getImageUrl(company.logo_path, 'w92')}
+                      alt={company.name}
+                      class="w-8 h-8 object-contain"
+                    />
+                  )}
+                  <span class="text-white text-sm">{company.name}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  // Add any client-side functionality here
+  console.log('Movie details page loaded');
+  
+  // Function to search for streaming services
+  function searchStreamingServices(title, year) {
+    const query = year ? `${title} ${year}` : title;
+    
+    // Try multiple streaming services
+    const services = [
+      { name: 'Netflix', url: `https://www.netflix.com/search?q=${encodeURIComponent(query)}` },
+      { name: 'Amazon Prime', url: `https://www.amazon.com/s?k=${encodeURIComponent(query)}&i=prime-instant-video` },
+      { name: 'Hulu', url: `https://www.hulu.com/search?q=${encodeURIComponent(query)}` },
+      { name: 'Disney+', url: `https://www.disneyplus.com/search?q=${encodeURIComponent(query)}` },
+      { name: 'HBO Max', url: `https://play.hbomax.com/search?q=${encodeURIComponent(query)}` },
+      { name: 'JustWatch', url: `https://www.justwatch.com/us/search?q=${encodeURIComponent(query)}` }
+    ];
+    
+    // Create a modal with streaming options
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+      background: rgba(0,0,0,0.8); z-index: 1000; display: flex; 
+      align-items: center; justify-content: center; padding: 20px;
+    `;
+    
+    modal.innerHTML = `
+      <div style="background: #1a1a1a; border-radius: 12px; padding: 30px; max-width: 500px; width: 100%;">
+        <h3 style="color: white; margin-bottom: 20px; text-align: center;">Find "${title}" on Streaming Services</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+          ${services.map(service => `
+            <a href="${service.url}" target="_blank" 
+               style="background: #e50914; color: white; padding: 12px 20px; border-radius: 6px; 
+                      text-decoration: none; text-align: center; font-weight: 600; transition: background 0.3s;"
+               onmouseover="this.style.background='#f40612'" 
+               onmouseout="this.style.background='#e50914'">
+              ${service.name}
+            </a>
+          `).join('')}
+        </div>
+        <button onclick="this.parentElement.parentElement.remove()" 
+                style="background: #666; color: white; border: none; padding: 10px 20px; 
+                       border-radius: 6px; margin-top: 20px; width: 100%; cursor: pointer;">
+          Close
+        </button>
+      </div>
+    `;
+    
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+    
+    document.body.appendChild(modal);
+  }
+  
+  // Make function global
+  window.searchStreamingServices = searchStreamingServices;
+</script>

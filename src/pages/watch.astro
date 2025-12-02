@@ -1,0 +1,807 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/Navbar.astro';
+import { createUrl } from '../lib/utils';
+
+// In static mode, we'll handle URL parameters client-side
+// The server-side code will just render the basic structure
+---
+
+<Layout title="Watch - NotFlix">
+  <Navbar />
+  
+  <!-- Loading Screen -->
+  <div id="loading-screen" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="text-center py-20">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+      <p class="text-white">Loading video player...</p>
+    </div>
+  </div>
+
+  <!-- Error Screen -->
+  <div id="error-screen" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 hidden">
+    <div class="text-center py-20">
+      <i class="fas fa-exclamation-triangle text-6xl text-red-600 mb-6"></i>
+      <h1 class="text-3xl font-bold text-white mb-4">Content Not Found</h1>
+      <p class="text-gray-400 mb-8">
+        No movie or TV show ID provided in the URL.
+      </p>
+      <a href={createUrl("/")} class="btn-primary">
+        <i class="fas fa-home mr-2"></i>
+        Back to Home
+      </a>
+    </div>
+  </div>
+
+  <!-- Video Player Section -->
+  <div id="player-container" class="relative w-full hidden">
+    <!-- Player Header -->
+    <div class="bg-black bg-opacity-50 p-4">
+      <div class="max-w-7xl mx-auto flex items-center justify-between">
+        <div class="flex items-center space-x-4">
+          <a id="back-link" href={createUrl("/")} class="text-white hover:text-red-600 transition-colors">
+            <i class="fas fa-arrow-left text-xl"></i>
+          </a>
+          <h1 id="video-title" class="text-xl font-bold text-white">
+            Loading...
+          </h1>
+        </div>
+        
+        <!-- Server Selection -->
+        <div class="flex items-center space-x-2">
+          <span class="text-white text-sm">Server:</span>
+          <select id="server-select" class="bg-gray-800 text-white px-3 py-1 rounded text-sm">
+            <option value="">Loading...</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Video Player -->
+    <div class="relative w-full amazon-silk-fix" style="padding-bottom: 56.25%; height: 0;">
+      <iframe
+        id="video-player"
+        src=""
+        class="absolute top-0 left-0 w-full h-full amazon-silk-iframe"
+        frameborder="0"
+        allowfullscreen
+        allow="autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        referrerpolicy="origin"
+        title="Video Player"
+        scrolling="no"
+      ></iframe>
+      
+      <!-- Server loading indicator -->
+      <div id="server-loading" class="absolute inset-0 flex items-center justify-center bg-black/60 text-white z-25 hidden">
+        <div class="text-center">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+          <p>Loading server...</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Player Controls & Info -->
+    <div class="bg-gray-900 p-4">
+      <div class="max-w-7xl mx-auto">
+        <div class="flex flex-col md:flex-row gap-6">
+          <!-- Movie Info -->
+          <div class="flex-1">
+            <h2 id="content-title" class="text-2xl font-bold text-white mb-2">Loading...</h2>
+            <p id="content-overview" class="text-gray-300 text-sm leading-relaxed mb-4"></p>
+            
+            <!-- Episode Selector for TV Shows -->
+            <div id="episode-controls" class="flex flex-col gap-4 mb-4 hidden">
+              <div class="flex flex-wrap gap-4">
+                <div class="flex items-center space-x-2">
+                  <label class="text-white text-sm font-medium">Season:</label>
+                  <select id="season-select" class="bg-gray-800 text-white px-3 py-2 rounded text-sm border border-gray-600 focus:border-red-600 focus:outline-none">
+                    <option value="1">Season 1</option>
+                  </select>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <label class="text-white text-sm font-medium">Episode:</label>
+                  <select id="episode-select" class="bg-gray-800 text-white px-3 py-2 rounded text-sm border border-gray-600 focus:border-red-600 focus:outline-none">
+                    <option value="1">Episode 1</option>
+                  </select>
+                </div>
+                <button id="load-episode-btn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm transition-colors">
+                  <i class="fas fa-play mr-2"></i>
+                  Load Episode
+                </button>
+              </div>
+              
+              <!-- Episode Info -->
+              <div id="episode-info" class="bg-gray-800 rounded-lg p-3 hidden">
+                <h4 id="episode-title" class="text-white font-semibold mb-1"></h4>
+                <p id="episode-overview" class="text-gray-300 text-sm"></p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Action Buttons -->
+          <div class="flex flex-col space-y-2 md:w-64">
+            <a id="details-link" href={createUrl("/")} class="btn-secondary text-center">
+              <i class="fas fa-info-circle mr-2"></i>
+              View Details
+            </a>
+            <button onclick="toggleFullscreen()" class="btn-secondary">
+              <i class="fas fa-expand mr-2"></i>
+              Fullscreen
+            </button>
+            <button onclick="reportIssue()" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded text-sm">
+              <i class="fas fa-flag mr-2"></i>
+              Report Issue
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Popup Block Notification -->
+  <div id="popup-notification" class="fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 hidden">
+    <div class="flex items-center">
+      <i class="fas fa-shield-alt mr-2"></i>
+      <span>Popup blocked!</span>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  /* Additional iframe protection styles */
+  #video-player {
+    pointer-events: auto;
+    /* Prevent selection of iframe content */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+  
+  /* Popup notification animation */
+  #popup-notification {
+    transition: all 0.3s ease-in-out;
+    transform: translateX(100%);
+  }
+  
+  #popup-notification.show {
+    transform: translateX(0);
+  }
+  
+  /* Prevent drag and drop on video player */
+  #video-player {
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    user-drag: none;
+  }
+</style>
+
+<script>
+  // Show popup blocked notification
+  function showPopupBlockedNotification() {
+    const notification = document.getElementById('popup-notification');
+    if (notification) {
+      notification.classList.remove('hidden');
+      notification.classList.add('show');
+      
+      setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+          notification.classList.add('hidden');
+        }, 300);
+      }, 3000);
+    }
+  }
+  
+  // Minimal popup blocking - only log attempts for debugging
+  const originalWindowOpen = window.open;
+  window.open = function(url, name, specs) {
+    console.log('Popup attempt detected:', url);
+    // Allow all popups for now to ensure video controls work
+    return originalWindowOpen.call(window, url, name, specs);
+  };
+  
+  // Block popunder attempts
+  window.addEventListener('beforeunload', (e) => {
+    // Prevent any popunder attempts on page unload
+    e.preventDefault();
+  });
+  
+  // Block focus/blur popup tricks
+  let userInteracted = false;
+  document.addEventListener('click', () => { userInteracted = true; }, { once: true });
+  
+  window.addEventListener('blur', (e) => {
+    if (!userInteracted) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.focus();
+    }
+  });
+  
+  // Wait for DOM to be ready
+  document.addEventListener('DOMContentLoaded', () => {
+    initializeWatchPage();
+    setupPopupBlocker();
+  });
+  
+  function initializeWatchPage() {
+    // Get URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const type = urlParams.get('type') || 'movie';
+    const id = urlParams.get('id');
+    const title = urlParams.get('title') || 'Unknown';
+    const season = urlParams.get('season') || '1';
+    const episode = urlParams.get('episode') || '1';
+    
+    // Get DOM elements
+    const loadingScreen = document.getElementById('loading-screen');
+    const errorScreen = document.getElementById('error-screen');
+    const playerContainer = document.getElementById('player-container');
+    const videoPlayer = document.getElementById('video-player');
+    const serverSelect = document.getElementById('server-select');
+    const videoTitle = document.getElementById('video-title');
+    const contentTitle = document.getElementById('content-title');
+    const backLink = document.getElementById('back-link');
+    const detailsLink = document.getElementById('details-link');
+    
+    // Check if we have required parameters
+    if (!id) {
+      showError();
+      return;
+    }
+    
+    // Hide loading, show player
+    loadingScreen.classList.add('hidden');
+    playerContainer.classList.remove('hidden');
+    
+    // Build VidSrc URL as primary (auto-playing correctly)
+    const buildVidSrcUrl = (type, id, season, episode) => {
+      if (type === 'movie') {
+        return `https://vidsrc-embed.ru/embed/movie/${id}`;
+      } else if (type === 'tv') {
+        return `https://vidsrc-embed.ru/embed/tv/${id}/${season}/${episode}`;
+      }
+      return '';
+    };
+    
+    const primaryUrl = buildVidSrcUrl(type, id, season, episode);
+    
+    // Server priority: VidSrc (auto-playing correctly) → Others
+    const alternativeServers = [
+      { name: 'VidSrc-embed RU', url: `https://vidsrc-embed.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}` },
+      { name: 'VidSrc-embed SU', url: `https://vidsrc-embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}` },
+      { name: 'Vsrc SU', url: `https://vsrc.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}` },
+      { name: 'SuperEmbed', url: `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1` },
+      { name: 'EmbedSu', url: `https://embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}` }
+    ];
+    
+    // Update video player
+    videoPlayer.src = primaryUrl;
+    
+    // Update titles
+    const displayTitle = type === 'tv' ? `${title} S${season}E${episode}` : title;
+    videoTitle.textContent = displayTitle;
+    contentTitle.textContent = title;
+    document.title = `Watch ${title} - NotFlix`;
+    
+    // Update navigation links with proper base path
+    const basePath = window.location.pathname.includes('/i-like-boobs') ? '/i-like-boobs/' : '/';
+    backLink.href = basePath + `details/${type}/${id}`;
+    detailsLink.href = basePath + `details/${type}/${id}`;
+    
+    // Populate server select
+    serverSelect.innerHTML = '';
+    alternativeServers.forEach((server, index) => {
+      const option = document.createElement('option');
+      option.value = server.url;
+      option.textContent = server.name;
+      option.selected = index === 0;
+      serverSelect.appendChild(option);
+    });
+    
+    // Set up server switching with error handling
+    let currentServerIndex = 0;
+    
+    function loadServer(index) {
+      if (index < alternativeServers.length) {
+        const server = alternativeServers[index];
+        const serverLoading = document.getElementById('server-loading');
+        
+        console.log(`Loading server: ${server.name} - ${server.url}`);
+        
+        // Show loading indicator
+        serverLoading.classList.remove('hidden');
+        
+        // Update server
+        videoPlayer.src = server.url;
+        serverSelect.selectedIndex = index;
+        currentServerIndex = index;
+        
+        // Hide loading after 3 seconds (or when video loads)
+        setTimeout(() => {
+          serverLoading.classList.add('hidden');
+        }, 3000);
+      }
+    }
+    
+    // Hide loading indicator when video loads successfully
+    videoPlayer.addEventListener('load', () => {
+      const serverLoading = document.getElementById('server-loading');
+      serverLoading.classList.add('hidden');
+    });
+    
+    // Auto-switch to next server on load error
+    videoPlayer.addEventListener('error', () => {
+      console.log(`Server ${alternativeServers[currentServerIndex].name} failed, trying next...`);
+      if (currentServerIndex < alternativeServers.length - 1) {
+        setTimeout(() => {
+          loadServer(currentServerIndex + 1);
+        }, 2000);
+      } else {
+        console.log('All servers failed');
+        showServerError();
+      }
+    });
+    
+    serverSelect.addEventListener('change', (e) => {
+      const selectedIndex = e.target.selectedIndex;
+      loadServer(selectedIndex);
+    });
+    
+    function showServerError() {
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'absolute inset-0 flex items-center justify-center bg-black/80 text-white z-30';
+      errorDiv.innerHTML = `
+        <div class="text-center p-8">
+          <i class="fas fa-exclamation-triangle text-6xl text-yellow-500 mb-4"></i>
+          <h3 class="text-2xl font-bold mb-4">Media Unavailable</h3>
+          <p class="text-gray-300 mb-6">This content is currently unavailable. Try switching servers or check back later.</p>
+          <button onclick="location.reload()" class="btn-primary">
+            <i class="fas fa-redo mr-2"></i>
+            Retry
+          </button>
+        </div>
+      `;
+      videoPlayer.parentElement.appendChild(errorDiv);
+    }
+    
+    // Set up TV show episode controls if needed
+    if (type === 'tv') {
+      setupTVControls(id, season, episode);
+    }
+  }
+  
+  
+  function showError() {
+    const loadingScreen = document.getElementById('loading-screen');
+    const errorScreen = document.getElementById('error-screen');
+    const playerContainer = document.getElementById('player-container');
+    
+    loadingScreen.classList.add('hidden');
+    playerContainer.classList.add('hidden');
+    errorScreen.classList.remove('hidden');
+  }
+  
+  async function setupTVControls(id, currentSeason, currentEpisode) {
+    const episodeControls = document.getElementById('episode-controls');
+    const seasonSelect = document.getElementById('season-select');
+    const episodeSelect = document.getElementById('episode-select');
+    const loadEpisodeBtn = document.getElementById('load-episode-btn');
+    const episodeInfo = document.getElementById('episode-info');
+    const episodeTitle = document.getElementById('episode-title');
+    const episodeOverview = document.getElementById('episode-overview');
+    
+    episodeControls.classList.remove('hidden');
+    
+    // Try to get real TV show data from TMDB
+    let tvShowData = null;
+    try {
+      const response = await fetch(`https://api.themoviedb.org/3/tv/${id}?api_key=${import.meta.env.PUBLIC_TMDB_API_KEY}`);
+      if (response.ok) {
+        tvShowData = await response.json();
+      }
+    } catch (e) {
+      console.log('Could not fetch TV show data:', e);
+    }
+    
+    // Populate season options
+    seasonSelect.innerHTML = '';
+    const maxSeasons = tvShowData?.number_of_seasons || 10;
+    for (let i = 1; i <= maxSeasons; i++) {
+      const option = document.createElement('option');
+      option.value = i;
+      option.textContent = `Season ${i}`;
+      option.selected = i == currentSeason;
+      seasonSelect.appendChild(option);
+    }
+    
+    // Populate episode options
+    async function updateEpisodeOptions(selectedSeason) {
+      episodeSelect.innerHTML = '';
+      
+      // Try to get real episode data
+      let seasonData = null;
+      try {
+        const response = await fetch(`https://api.themoviedb.org/3/tv/${id}/season/${selectedSeason}?api_key=${import.meta.env.PUBLIC_TMDB_API_KEY}`);
+        if (response.ok) {
+          seasonData = await response.json();
+        }
+      } catch (e) {
+        console.log('Could not fetch season data:', e);
+      }
+      
+      const episodes = seasonData?.episodes || [];
+      const maxEpisodes = episodes.length || 24;
+      
+      for (let i = 1; i <= maxEpisodes; i++) {
+        const option = document.createElement('option');
+        option.value = i;
+        const episodeData = episodes[i - 1];
+        option.textContent = episodeData?.name ? `${i}. ${episodeData.name}` : `Episode ${i}`;
+        option.selected = i == currentEpisode;
+        episodeSelect.appendChild(option);
+      }
+      
+      // Update episode info if available
+      updateEpisodeInfo(selectedSeason, episodeSelect.value, episodes);
+    }
+    
+    function updateEpisodeInfo(season, episode, episodes = []) {
+      const episodeData = episodes[episode - 1];
+      if (episodeData) {
+        episodeTitle.textContent = `S${season}E${episode}: ${episodeData.name}`;
+        episodeOverview.textContent = episodeData.overview || 'No description available.';
+        episodeInfo.classList.remove('hidden');
+      } else {
+        episodeInfo.classList.add('hidden');
+      }
+    }
+    
+    await updateEpisodeOptions(currentSeason);
+    
+    // Function to load a specific episode
+    function loadEpisode(season, episode) {
+      // Update URL without reloading
+      const url = new URL(window.location);
+      url.searchParams.set('season', season);
+      url.searchParams.set('episode', episode);
+      window.history.pushState({}, '', url);
+      
+      // Update video player with VidSrc format (primary with auto-play)
+      const videoPlayer = document.getElementById('video-player');
+      const newUrl = `https://vidsrc-embed.ru/embed/tv/${id}/${season}/${episode}`;
+      videoPlayer.src = newUrl;
+      
+      // Update title
+      const title = new URLSearchParams(window.location.search).get('title') || 'Unknown';
+      document.getElementById('video-title').textContent = `${title} S${season}E${episode}`;
+      
+      // Update all server options to reflect new episode
+      const serverSelect = document.getElementById('server-select');
+      const servers = Array.from(serverSelect.options);
+      servers.forEach((option, index) => {
+        const serverName = option.textContent;
+        if (serverName.includes('VidSrc') || serverName.includes('Vsrc')) {
+          // Update URL pattern for all VidSrc servers
+          option.value = option.value.replace(/\/embed\/tv\/\d+\/\d+\/\d+/, `/embed/tv/${id}/${season}/${episode}`);
+        }
+      });
+      
+      // Show brief loading indicator
+      const serverLoading = document.getElementById('server-loading');
+      serverLoading.classList.remove('hidden');
+      setTimeout(() => {
+        serverLoading.classList.add('hidden');
+      }, 1000);
+    }
+    
+    // Handle episode changes (with auto-loading)
+    episodeSelect.addEventListener('change', () => {
+      const episodes = seasonSelect.value === currentSeason ? [] : []; // Would need to store episodes data
+      updateEpisodeInfo(seasonSelect.value, episodeSelect.value, episodes);
+      
+      // Auto-play the selected episode
+      const newSeason = seasonSelect.value;
+      const newEpisode = episodeSelect.value;
+      loadEpisode(newSeason, newEpisode);
+    });
+    
+    seasonSelect.addEventListener('change', async () => {
+      await updateEpisodeOptions(seasonSelect.value);
+      
+      // Auto-play first episode of the new season
+      const newSeason = seasonSelect.value;
+      const newEpisode = episodeSelect.value || '1';
+      loadEpisode(newSeason, newEpisode);
+    });
+    
+    // Load episode button handler (now just calls the loadEpisode function)
+    loadEpisodeBtn.addEventListener('click', () => {
+      const newSeason = seasonSelect.value;
+      const newEpisode = episodeSelect.value;
+      loadEpisode(newSeason, newEpisode);
+    });
+  }
+  
+  function setupPopupBlocker() {
+    // Additional iframe protection
+    const iframe = document.getElementById('video-player');
+    
+    // Intercept iframe navigation attempts
+    iframe.addEventListener('load', () => {
+      try {
+        // Add additional security headers via meta injection
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        if (iframeDoc) {
+          // Try to inject popup blocking script into iframe (may be blocked by CORS)
+          const script = iframeDoc.createElement('script');
+          script.textContent = `
+            window.open = function() { return null; };
+            document.addEventListener('click', function(e) {
+              if (e.target.tagName === 'A' && e.target.target === '_blank') {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+              }
+            }, true);
+          `;
+          iframeDoc.head?.appendChild(script);
+        }
+      } catch (e) {
+        // CORS will prevent this, but we try anyway
+        console.log('Could not inject into iframe (CORS protected)');
+      }
+    });
+    
+    // Monitor for suspicious activity
+    let clickCount = 0;
+    const clickThreshold = 3;
+    const timeWindow = 2000; // 2 seconds
+    
+    document.addEventListener('click', (e) => {
+      clickCount++;
+      setTimeout(() => { clickCount--; }, timeWindow);
+      
+      if (clickCount > clickThreshold) {
+        console.warn('Suspicious click activity detected - potential ad injection');
+        // Could add visual warning here
+      }
+    });
+    
+    // Block context menus on video player (often used for ad injection)
+    iframe.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      return false;
+    });
+    
+    // Detect and block redirect attempts
+    let lastUrl = window.location.href;
+    setInterval(() => {
+      if (window.location.href !== lastUrl) {
+        // URL changed unexpectedly, might be a redirect attempt
+        console.warn('Unexpected URL change detected');
+        lastUrl = window.location.href;
+      }
+    }, 500);
+  }
+  
+  // Advanced popup detection and blocking
+  function enhancedPopupBlocker() {
+    // Block document.open calls
+    const originalDocOpen = document.open;
+    document.open = function() {
+      console.log('Blocked document.open call');
+      return null;
+    };
+    
+    // Block createElement for popup elements
+    const originalCreateElement = document.createElement;
+    document.createElement = function(tagName) {
+      const element = originalCreateElement.call(document, tagName);
+      
+      if (tagName.toLowerCase() === 'a') {
+        // Intercept link creation and remove target="_blank"
+        const originalSetAttribute = element.setAttribute;
+        element.setAttribute = function(name, value) {
+          if (name === 'target' && value === '_blank') {
+            console.log('Blocked target="_blank" on dynamically created link');
+            showPopupBlockedNotification();
+            return;
+          }
+          return originalSetAttribute.call(this, name, value);
+        };
+      }
+      
+      return element;
+    };
+    
+    // Block form submissions that could open popups
+    document.addEventListener('submit', (e) => {
+      const form = e.target;
+      if (form.target === '_blank') {
+        console.log('Blocked form submission with target="_blank"');
+        showPopupBlockedNotification();
+        e.preventDefault();
+        return false;
+      }
+    });
+  }
+  
+  // Initialize enhanced blocking
+  enhancedPopupBlocker();
+  
+  // Fullscreen functionality
+  function toggleFullscreen() {
+    const videoPlayer = document.getElementById('video-player');
+    const playerContainer = videoPlayer?.parentElement;
+    if (playerContainer) {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        playerContainer.requestFullscreen();
+      }
+    }
+  }
+  
+  // Report issue functionality
+  function reportIssue() {
+    const currentUrl = window.location.href;
+    const title = document.getElementById('content-title')?.textContent || 'Unknown';
+    
+    const message = `Issue Report for: ${title}\nURL: ${currentUrl}\n\nPlease describe the issue:`;
+    
+    if (confirm('Report a playback issue? This will open your email client.')) {
+      window.location.href = `mailto:support@notflix.com?subject=Playback Issue Report&body=${encodeURIComponent(message)}`;
+    }
+  }
+  
+  // Make functions globally available
+  window.toggleFullscreen = toggleFullscreen;
+  window.reportIssue = reportIssue;
+  
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    switch(e.key) {
+      case 'f':
+      case 'F':
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          toggleFullscreen();
+        }
+        break;
+      case 'Escape':
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        }
+        break;
+    }
+  });
+</script>
+
+<!-- Amazon Silk Browser Fixes -->
+<style>
+  /* Amazon Silk iframe scroll fix */
+  .amazon-silk-fix {
+    -webkit-overflow-scrolling: touch;
+    transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .amazon-silk-iframe {
+    pointer-events: auto;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  
+  /* Silk browser detection and fixes */
+  @media screen and (-webkit-min-device-pixel-ratio: 0) {
+    body.silk-browser {
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    body.silk-browser .amazon-silk-fix {
+      position: relative;
+      z-index: 1;
+    }
+    
+    body.silk-browser .amazon-silk-iframe {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      border: none;
+      outline: none;
+      touch-action: manipulation;
+    }
+  }
+  
+  /* Force scrolling capability */
+  html, body {
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
+</style>
+
+<script>
+  // Amazon Silk browser detection and fixes
+  function detectAndFixSilkBrowser() {
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    const isSilk = /Silk|silk/i.test(userAgent);
+    const isFireTV = /AFTK|AFTB|AFTM|AFTN|AFTR|AFTD|AFHE|AFTI|AFTS|AFMM|AFKN|AFT/i.test(userAgent);
+    
+    if (isSilk || isFireTV) {
+      document.body.classList.add('silk-browser');
+      
+      // Force enable scrolling
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+      
+      // Fix iframe interaction issues
+      const iframe = document.getElementById('video-player');
+      if (iframe) {
+        // Add touch-action to prevent scroll blocking
+        iframe.style.touchAction = 'manipulation';
+        
+        // Ensure iframe doesn't block scrolling
+        iframe.addEventListener('load', function() {
+          // Reset scrolling capability after iframe loads
+          setTimeout(() => {
+            document.body.style.overflow = 'auto';
+            document.documentElement.style.overflow = 'auto';
+            
+            // Enable touch scrolling
+            document.body.style.webkitOverflowScrolling = 'touch';
+            document.documentElement.style.webkitOverflowScrolling = 'touch';
+          }, 1000);
+        });
+        
+        // Handle iframe src changes
+        const originalSetAttribute = iframe.setAttribute;
+        iframe.setAttribute = function(name, value) {
+          originalSetAttribute.call(this, name, value);
+          if (name === 'src') {
+            setTimeout(() => {
+              document.body.style.overflow = 'auto';
+              document.documentElement.style.overflow = 'auto';
+            }, 2000);
+          }
+        };
+      }
+      
+      // Add scroll restoration
+      let scrollRestoreTimer;
+      function restoreScrolling() {
+        clearTimeout(scrollRestoreTimer);
+        scrollRestoreTimer = setTimeout(() => {
+          document.body.style.overflow = 'auto';
+          document.documentElement.style.overflow = 'auto';
+          document.body.style.webkitOverflowScrolling = 'touch';
+          document.documentElement.style.webkitOverflowScrolling = 'touch';
+        }, 100);
+      }
+      
+      // Monitor for scroll blocking and restore
+      setInterval(restoreScrolling, 5000);
+      
+      // Restore scrolling on touch events
+      document.addEventListener('touchstart', restoreScrolling);
+      document.addEventListener('touchmove', restoreScrolling);
+      
+      console.log('Amazon Silk browser detected - scroll fixes applied');
+    }
+  }
+  
+  // Apply fixes when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', detectAndFixSilkBrowser);
+  } else {
+    detectAndFixSilkBrowser();
+  }
+</script>

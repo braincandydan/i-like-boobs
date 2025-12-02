@@ -1,0 +1,168 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/Navbar.astro';
+import HomepageSections from '../components/HomepageSections';
+import MovieCard from '../components/MovieCard.astro';
+import { fetchFromTMDB, tmdbEndpoints } from '../lib/tmdb';
+import { createUrl } from '../lib/utils';
+
+// Fetch default data at build time for fallback/SEO - always fetch this
+const [trendingData, popularMoviesData, topRatedData, popularTvData, upcomingData] = await Promise.all([
+  fetchFromTMDB(tmdbEndpoints.trending).catch(() => ({ results: [] })),
+  fetchFromTMDB(tmdbEndpoints.popularMovies).catch(() => ({ results: [] })),
+  fetchFromTMDB(tmdbEndpoints.topRatedMovies).catch(() => ({ results: [] })),
+  fetchFromTMDB(tmdbEndpoints.popularTv).catch(() => ({ results: [] })),
+  fetchFromTMDB(tmdbEndpoints.upcomingMovies).catch(() => ({ results: [] })),
+]);
+
+const sections = [
+  {
+    id: 'trending',
+    title: 'Trending Now',
+    movies: trendingData.results?.slice(0, 12) || [],
+    mediaType: 'movie' as const
+  },
+  {
+    id: 'popular-movies',
+    title: 'Popular Movies',
+    movies: popularMoviesData.results?.slice(0, 12) || [],
+    mediaType: 'movie' as const
+  },
+  {
+    id: 'top-rated',
+    title: 'Top Rated Movies',
+    movies: topRatedData.results?.slice(0, 12) || [],
+    mediaType: 'movie' as const
+  },
+  {
+    id: 'popular-tv',
+    title: 'Popular TV Shows',
+    movies: popularTvData.results?.slice(0, 12) || [],
+    mediaType: 'tv' as const
+  },
+  {
+    id: 'upcoming',
+    title: 'Upcoming Movies',
+    movies: upcomingData.results?.slice(0, 12) || [],
+    mediaType: 'movie' as const
+  }
+].filter(section => section.movies.length > 0);
+
+// Hero movie (first trending movie)
+const heroMovie = trendingData.results?.[0];
+---
+
+<Layout title="NotFlix - Your favorite movies and TV shows">
+  <Navbar />
+  
+  <!-- Server-rendered Hero Section (always shows) -->
+  {heroMovie && (
+    <section class="relative h-[70vh] flex items-center justify-center overflow-hidden">
+      <div 
+        class="absolute inset-0 bg-cover bg-center"
+        style={`background-image: url('https://image.tmdb.org/t/p/original${heroMovie.backdrop_path}')`}
+      ></div>
+      <div class="absolute inset-0 bg-black bg-opacity-50"></div>
+      
+      <div class="relative z-10 text-center max-w-4xl mx-auto px-4">
+        <h1 class="text-5xl md:text-7xl font-bold mb-6 text-shadow">
+          {heroMovie.title}
+        </h1>
+        <p class="text-xl md:text-2xl mb-8 text-shadow max-w-2xl mx-auto">
+          {heroMovie.overview?.slice(0, 200)}...
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+          <a 
+            href={createUrl(`/details?type=movie&id=${heroMovie.id}`)}
+            class="btn-primary text-lg px-8 py-3"
+          >
+            <i class="fas fa-play mr-2"></i>
+            Watch Now
+          </a>
+          <a 
+            href={createUrl(`/details?type=movie&id=${heroMovie.id}`)}
+            class="btn-secondary text-lg px-8 py-3"
+          >
+            <i class="fas fa-info-circle mr-2"></i>
+            More Info
+          </a>
+        </div>
+      </div>
+    </section>
+  )}
+  
+  <!-- Server-rendered Content Sections (fallback - shows initially) -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-12" id="server-rendered-sections">
+    {sections.map((section) => (
+      <section>
+        <h2 class="text-2xl md:text-3xl font-bold mb-6 text-white">
+          {section.title}
+        </h2>
+        
+        <div class="content-grid">
+          {section.movies.map((movie) => (
+            <MovieCard 
+              movie={movie} 
+              mediaType={section.mediaType}
+            />
+          ))}
+        </div>
+      </section>
+    ))}
+  </main>
+  
+  <!-- Dynamic Sections (loads from database - includes custom categories and respects admin order) -->
+  <!-- This will enhance/replace server-rendered sections when loaded -->
+  <HomepageSections client:load />
+  
+  <!-- Footer -->
+  <footer class="bg-black mt-20 py-12">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div>
+          <h3 class="text-red-600 text-2xl font-bold mb-4">NotFlix</h3>
+          <p class="text-gray-400">
+            Your favorite destination for movies and TV shows.
+          </p>
+        </div>
+        
+        <div>
+          <h4 class="text-white font-semibold mb-4">Navigation</h4>
+          <ul class="space-y-2 text-gray-400">
+            <li><a href="/" class="hover:text-white transition-colors">Home</a></li>
+            <li><a href="/movies" class="hover:text-white transition-colors">Movies</a></li>
+            <li><a href="/tv-shows" class="hover:text-white transition-colors">TV Shows</a></li>
+            <li><a href="/search" class="hover:text-white transition-colors">Search</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h4 class="text-white font-semibold mb-4">Account</h4>
+          <ul class="space-y-2 text-gray-400">
+            <li><a href="/auth/signin" class="hover:text-white transition-colors">Sign In</a></li>
+            <li><a href="/auth/signup" class="hover:text-white transition-colors">Sign Up</a></li>
+            <li><a href="/watchlist" class="hover:text-white transition-colors">Watchlist</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h4 class="text-white font-semibold mb-4">Legal</h4>
+          <ul class="space-y-2 text-gray-400">
+            <li><a href="/privacy" class="hover:text-white transition-colors">Privacy Policy</a></li>
+            <li><a href="/terms" class="hover:text-white transition-colors">Terms of Service</a></li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
+        <p>&copy; 2024 NotFlix. All rights reserved.</p>
+        <p class="mt-2">
+          Data provided by 
+          <a href="https://www.themoviedb.org/" class="text-red-600 hover:text-red-500 transition-colors">
+            The Movie Database
+          </a>
+        </p>
+      </div>
+    </div>
+  </footer>
+</Layout>

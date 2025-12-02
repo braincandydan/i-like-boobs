@@ -1,0 +1,45 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/Navbar.astro';
+import MovieCard from '../components/MovieCard.astro';
+import TvShowsPageSections from '../components/TvShowsPageSections';
+import { fetchFromTMDB, tmdbEndpoints } from '../lib/tmdb';
+
+// Fetch TV show data for server-rendered fallback
+const popularTvData = await fetchFromTMDB(tmdbEndpoints.popularTv).catch(() => ({ results: [] }));
+
+const sections = [
+  {
+    id: 'popular-tv',
+    title: 'Popular TV Shows',
+    movies: popularTvData.results?.slice(0, 12) || [],
+  }
+].filter(section => section.movies.length > 0);
+---
+
+<Layout title="TV Shows - NotFlix">
+  <Navbar />
+  
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <h1 class="text-4xl font-bold text-white mb-12">TV Shows</h1>
+    
+    <!-- Server-rendered Content Sections (fallback - shows initially) -->
+    <div id="server-rendered-sections" class="space-y-12">
+      {sections.map((section) => (
+        <section>
+          <h2 class="text-2xl font-bold text-white mb-6">
+            {section.title}
+          </h2>
+          <div class="content-grid">
+            {section.movies.map((show) => (
+              <MovieCard movie={show} mediaType="tv" />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+    
+    <!-- Dynamic Sections (loads from database - respects admin order and visibility) -->
+    <TvShowsPageSections client:load />
+  </main>
+</Layout>
