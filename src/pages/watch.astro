@@ -557,14 +557,10 @@ import { createUrl } from '../lib/utils';
     }
     
     async function loadWebTorrent(magnetLink, torrentFile) {
-      // Use WebTorrent from CDN (already loaded in Layout.astro)
-      // Check if WebTorrent is available
-      const WebTorrentGlobal = (window as any).WebTorrent;
-      if (typeof WebTorrentGlobal === 'undefined') {
-        throw new Error('WebTorrent library not loaded. Please refresh the page.');
-      }
-      
-      const WebTorrentClient = WebTorrentGlobal;
+      // Import WebTorrent as ES module (as per official docs: https://esm.sh/webtorrent)
+      // Using dynamic import() which works in modern browsers
+      const WebTorrentModule = await import('https://esm.sh/webtorrent') as any;
+      const WebTorrentClient = WebTorrentModule.default || WebTorrentModule;
       
       // Stop any existing torrent
       if (webtorrentClient) {
