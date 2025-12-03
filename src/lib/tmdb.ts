@@ -79,6 +79,7 @@ export const tmdbEndpoints = {
   companies: '/search/company',
   languages: '/configuration/languages',
   regions: '/configuration/countries',
+  certifications: (type: 'movie' | 'tv' = 'movie') => `/certification/${type}/list`,
 };
 
 // Import filter types from supabase
@@ -141,6 +142,15 @@ export async function discoverWithFilters(
       params.with_companies = params.with_companies.join(',');
     }
 
+    // Include adult content if certification filter is set (needed for X, NC-17, etc.)
+    // Also include if explicitly requested
+    // Always include adult content when filtering by certification to ensure all ratings are available
+    if (params.certification) {
+      params.include_adult = true;
+    } else if (filters.include_adult) {
+      params.include_adult = true;
+    }
+
     // Set default sort if not provided
     if (!params.sort_by) {
       params.sort_by = type === 'movie' ? 'popularity.desc' : 'popularity.desc';
@@ -194,6 +204,61 @@ export async function searchKeywords(query: string): Promise<{ id: number; name:
     return (data.results || []).slice(0, 10);
   } catch (error) {
     console.error('Error searching keywords:', error);
+    return [];
+  }
+}
+
+/**
+ * Fetch movie certifications (ratings) for filtering
+ * Returns certifications for US by default, but includes all countries
+ */
+export async function fetchMovieCertifications(): Promise<{ country: string; certifications: { certification: string; meaning: string; order: number }[] }[]> {
+  try {
+    const data = await fetchFromTMDB(tmdbEndpoints.certifications('movie'));
+    // Data structure: { certifications: { US: [...], CA: [...], ... } }
+    const certifications = data.certifications || {};
+    
+    // Convert to array format for easier use
+    return Object.entries(certifications).map(([country, certs]: [string, any]) => ({
+      country,
+      certifications: certs || []
+    }));
+  } catch (error) {
+    console.error('Error fetching movie certifications:', error);
+    return [];
+  }
+}
+
+/**
+ * Get all unique certifications across all countries, sorted by order
+ * This is useful for a unified certification filter
+ */
+export async function getAllMovieCertifications(): Promise<{ certification: string; meaning: string; order: number }[]> {
+  try {
+    const countryCerts = await fetchMovieCertifications();
+    const certMap = new Map<string, { certification: string; meaning: string; order: number }>();
+    
+    // Collect all unique certifications, prioritizing US if available
+    const usCerts = countryCerts.find(c => c.country === 'US');
+    if (usCerts) {
+      usCerts.certifications.forEach(cert => {
+        certMap.set(cert.certification, cert);
+      });
+    }
+    
+    // Add any other certifications not in US list
+    countryCerts.forEach(countryCert => {
+      countryCert.certifications.forEach(cert => {
+        if (!certMap.has(cert.certification)) {
+          certMap.set(cert.certification, cert);
+        }
+      });
+    });
+    
+    // Sort by order
+    return Array.from(certMap.values()).sort((a, b) => a.order - b.order);
+  } catch (error) {
+    console.error('Error getting all movie certifications:', error);
     return [];
   }
 }

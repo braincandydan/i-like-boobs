@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase, isSupabaseConfigured, type HomepageSection, type CustomSection } from '../lib/supabase';
 import { fetchFromTMDB, tmdbEndpoints, getImageUrl, discoverWithFilters } from '../lib/tmdb';
 import { createUrl } from '../lib/utils';
@@ -11,6 +11,149 @@ interface Section {
   mediaType: 'movie' | 'tv';
   section_key: string;
   section_type: 'builtin' | 'custom';
+  section_id?: string; // The homepage_sections table ID for fetching filters
+}
+
+// Separate component for carousel section to avoid hooks in map
+function CarouselSection({ section }: { section: Section }) {
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const [showLeftArrow, setShowLeftArrow] = useState(false);
+  const [showRightArrow, setShowRightArrow] = useState(true);
+
+  const checkScrollPosition = () => {
+    if (!carouselRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = carouselRef.current;
+    setShowLeftArrow(scrollLeft > 0);
+    setShowRightArrow(scrollLeft < scrollWidth - clientWidth - 10);
+  };
+
+  const scrollLeft = () => {
+    if (carouselRef.current) {
+      const cardWidth = carouselRef.current.querySelector('.movie-card')?.clientWidth || 200;
+      carouselRef.current.scrollBy({ left: -cardWidth * 5, behavior: 'smooth' });
+    }
+  };
+
+  const scrollRight = () => {
+    if (carouselRef.current) {
+      const cardWidth = carouselRef.current.querySelector('.movie-card')?.clientWidth || 200;
+      carouselRef.current.scrollBy({ left: cardWidth * 5, behavior: 'smooth' });
+    }
+  };
+
+  useEffect(() => {
+    const carousel = carouselRef.current;
+    if (!carousel) return;
+
+    checkScrollPosition();
+    carousel.addEventListener('scroll', checkScrollPosition);
+    window.addEventListener('resize', checkScrollPosition);
+
+    return () => {
+      carousel.removeEventListener('scroll', checkScrollPosition);
+      window.removeEventListener('resize', checkScrollPosition);
+    };
+  }, [section.movies]);
+
+  return (
+    <section className="carousel-container">
+      <h2 className="text-2xl md:text-3xl font-bold mb-6 text-white">
+        {section.title}
+      </h2>
+
+      <div className="relative">
+        {showLeftArrow && (
+          <button
+            onClick={scrollLeft}
+            className="carousel-arrow carousel-arrow-left"
+            aria-label="Scroll left"
+          >
+            <i className="fas fa-chevron-left"></i>
+          </button>
+        )}
+        
+        {showRightArrow && (
+          <button
+            onClick={scrollRight}
+            className="carousel-arrow carousel-arrow-right"
+            aria-label="Scroll right"
+          >
+            <i className="fas fa-chevron-right"></i>
+          </button>
+        )}
+
+        <div ref={carouselRef} className="content-grid">
+          {section.movies.map((movie: any) => {
+            const mediaType = movie.media_type || section.mediaType;
+            const movieId = movie.id;
+            const title = movie.title || movie.name;
+
+            return (
+              <div key={`${movieId}-${mediaType}`} className="movie-card group relative">
+                <a
+                  href={createUrl(`/details?type=${mediaType}&id=${movieId}`)}
+                  className="block"
+                >
+                  {movie.poster_path ? (
+                    <div className="relative">
+                      <img
+                        src={getImageUrl(movie.poster_path, 'w500')}
+                        alt={title}
+                        className="w-full aspect-[2/3] object-cover rounded-lg mb-2 group-hover:scale-105 transition-transform"
+                        loading="lazy"
+                      />
+                      <div className="absolute top-2 right-2 z-10" onClick={(e) => e.preventDefault()}>
+                        <WatchlistButton
+                          movieId={movieId}
+                          mediaType={mediaType}
+                          title={title}
+                          posterPath={movie.poster_path}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full aspect-[2/3] bg-gray-800 rounded-lg mb-2 flex items-center justify-center relative">
+                      <i className="fas fa-image text-gray-600 text-4xl"></i>
+                      <div className="absolute top-2 right-2 z-10">
+                        <WatchlistButton
+                          movieId={movieId}
+                          mediaType={mediaType}
+                          title={title}
+                          posterPath={movie.poster_path}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <h3 className="text-white font-semibold text-sm truncate group-hover:text-red-600 transition-colors">
+                    {title}
+                  </h3>
+                  {movie.release_date && (
+                    <p className="text-gray-400 text-xs">
+                      {new Date(movie.release_date || movie.first_air_date).getFullYear()}
+                    </p>
+                  )}
+                </a>
+              </div>
+            );
+          })}
+          
+          {/* Search All Button */}
+          <a
+            href={createUrl(`/search?sectionId=${section.section_id || section.id}`)}
+            className="search-all-card group"
+          >
+            <i className="fas fa-search text-4xl text-gray-400 group-hover:text-red-600 mb-4 transition-colors"></i>
+            <p className="text-white font-semibold text-center text-sm">
+              Search all
+            </p>
+            <p className="text-gray-400 text-center text-xs mt-1">
+              {section.title}
+            </p>
+          </a>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export default function HomepageSections() {
@@ -105,6 +248,7 @@ export default function HomepageSections() {
                 mediaType: section.config.tmdb_filters.media_type,
                 section_key: section.section_key,
                 section_type: 'builtin',
+                section_id: section.id,
               });
             }
           } else {
@@ -118,6 +262,7 @@ export default function HomepageSections() {
                 mediaType: getMediaTypeForSection(section.section_key),
                 section_key: section.section_key,
                 section_type: 'builtin',
+                section_id: section.id,
               });
             }
           }
@@ -138,6 +283,7 @@ export default function HomepageSections() {
                 mediaType: section.config.tmdb_filters.media_type,
                 section_key: section.section_key,
                 section_type: 'custom',
+                section_id: section.id,
               });
             }
           } else {
@@ -464,67 +610,7 @@ export default function HomepageSections() {
       {/* Content Sections */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-12">
         {sections.map((section) => (
-          <section key={section.id}>
-            <h2 className="text-2xl md:text-3xl font-bold mb-6 text-white">
-              {section.title}
-            </h2>
-
-            <div className="content-grid">
-              {section.movies.map((movie: any) => {
-                const mediaType = movie.media_type || section.mediaType;
-                const movieId = movie.id;
-                const title = movie.title || movie.name;
-
-                return (
-                  <div key={`${movieId}-${mediaType}`} className="movie-card group relative">
-                    <a
-                      href={createUrl(`/details?type=${mediaType}&id=${movieId}`)}
-                      className="block"
-                    >
-                      {movie.poster_path ? (
-                        <div className="relative">
-                          <img
-                            src={getImageUrl(movie.poster_path, 'w500')}
-                            alt={title}
-                            className="w-full aspect-[2/3] object-cover rounded-lg mb-2 group-hover:scale-105 transition-transform"
-                            loading="lazy"
-                          />
-                          <div className="absolute top-2 right-2 z-10" onClick={(e) => e.preventDefault()}>
-                            <WatchlistButton
-                              movieId={movieId}
-                              mediaType={mediaType}
-                              title={title}
-                              posterPath={movie.poster_path}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="w-full aspect-[2/3] bg-gray-800 rounded-lg mb-2 flex items-center justify-center relative">
-                          <i className="fas fa-image text-gray-600 text-4xl"></i>
-                          <div className="absolute top-2 right-2 z-10">
-                            <WatchlistButton
-                              movieId={movieId}
-                              mediaType={mediaType}
-                              title={title}
-                              posterPath={movie.poster_path}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      <h3 className="text-white font-semibold text-sm truncate group-hover:text-red-600 transition-colors">
-                        {title}
-                      </h3>
-                      {movie.release_date && (
-                        <p className="text-gray-400 text-xs">
-                          {new Date(movie.release_date || movie.first_air_date).getFullYear()}
-                        </p>
-                      )}
-                    </a>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+          <CarouselSection key={section.id} section={section} />
         ))}
       </main>
     </>

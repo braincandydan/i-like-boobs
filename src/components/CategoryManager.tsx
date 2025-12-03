@@ -12,7 +12,8 @@ import {
   sortByOptions,
   tvSortByOptions,
   searchKeywords,
-  searchCompanies
+  searchCompanies,
+  getAllMovieCertifications
 } from '../lib/tmdb';
 
 interface Movie {
@@ -62,6 +63,8 @@ export default function CategoryManager() {
     sort_by: 'popularity.desc'
   });
   const [availableGenres, setAvailableGenres] = useState<{ id: number; name: string }[]>([]);
+  const [availableCertifications, setAvailableCertifications] = useState<{ certification: string; meaning: string; order: number }[]>([]);
+  const [loadingCertifications, setLoadingCertifications] = useState(false);
   const [companySearchQuery, setCompanySearchQuery] = useState('');
   const [companySearchResults, setCompanySearchResults] = useState<{ id: number; name: string; logo_path?: string }[]>([]);
   const [searchingCompanies, setSearchingCompanies] = useState(false);
@@ -73,7 +76,20 @@ export default function CategoryManager() {
   useEffect(() => {
     loadSections();
     loadGenres();
+    loadCertifications();
   }, []);
+
+  const loadCertifications = async () => {
+    setLoadingCertifications(true);
+    try {
+      const certs = await getAllMovieCertifications();
+      setAvailableCertifications(certs);
+    } catch (error) {
+      console.error('Error loading certifications:', error);
+    } finally {
+      setLoadingCertifications(false);
+    }
+  };
 
   const loadGenres = async (type: 'movie' | 'tv' = 'movie') => {
     const genres = await fetchGenres(type);
@@ -1154,6 +1170,37 @@ export default function CategoryManager() {
                     </div>
                   </div>
 
+                  {/* Certification (Movies Only) */}
+                  {tmdbFilters.media_type === 'movie' && (
+                    <div>
+                      <label className="block text-white mb-2">Movie Certification (optional)</label>
+                      {loadingCertifications ? (
+                        <div className="text-gray-400 text-sm">Loading certifications...</div>
+                      ) : (
+                        <select
+                          value={tmdbFilters.certification || ''}
+                          onChange={(e) => {
+                            const cert = e.target.value || undefined;
+                            setTmdbFilters({ 
+                              ...tmdbFilters, 
+                              certification: cert,
+                              certification_country: cert ? 'US' : undefined
+                            });
+                          }}
+                          className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                        >
+                          <option value="">Any Certification</option>
+                          {availableCertifications.map(cert => (
+                            <option key={cert.certification} value={cert.certification}>
+                              {cert.certification} {cert.meaning ? `- ${cert.meaning}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <p className="text-gray-400 text-xs mt-1">Filter movies by MPAA rating (US certifications)</p>
+                    </div>
+                  )}
+
                   {/* Sort By */}
                   <div>
                     <label className="block text-white mb-2">Sort By</label>
@@ -1680,6 +1727,37 @@ export default function CategoryManager() {
                             />
                           </div>
                         </div>
+
+                        {/* Certification (Movies Only) */}
+                        {tmdbFilters.media_type === 'movie' && (
+                          <div>
+                            <label className="block text-white mb-2">Movie Certification (optional)</label>
+                            {loadingCertifications ? (
+                              <div className="text-gray-400 text-sm">Loading certifications...</div>
+                            ) : (
+                              <select
+                                value={tmdbFilters.certification || ''}
+                                onChange={(e) => {
+                                  const cert = e.target.value || undefined;
+                                  setTmdbFilters({ 
+                                    ...tmdbFilters, 
+                                    certification: cert,
+                                    certification_country: cert ? 'US' : undefined
+                                  });
+                                }}
+                                className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                              >
+                                <option value="">Any Certification</option>
+                                {availableCertifications.map(cert => (
+                                  <option key={cert.certification} value={cert.certification}>
+                                    {cert.certification} {cert.meaning ? `- ${cert.meaning}` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            <p className="text-gray-400 text-xs mt-1">Filter movies by MPAA rating (US certifications)</p>
+                          </div>
+                        )}
 
                         {/* Sort By */}
                         <div>

@@ -114,7 +114,7 @@ export default function WatchlistDisplay() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+      <div className="grid grid-cols-5 md:grid-cols-7 lg:grid-cols-8 gap-4">
         {watchlist.map((item) => (
           <div key={`${item.mediaType}-${item.movieId}`} className="group relative">
             <div className="aspect-[2/3] relative overflow-hidden rounded-lg bg-gray-800">

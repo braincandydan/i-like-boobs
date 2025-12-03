@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { fetchFromTMDB, tmdbEndpoints, getImageUrl, fetchGenres, sortByOptions, tvSortByOptions, discoverWithFilters } from '../lib/tmdb';
-import type { TMDBFilters } from '../lib/supabase';
+import { fetchFromTMDB, tmdbEndpoints, getImageUrl, fetchGenres, sortByOptions, tvSortByOptions, discoverWithFilters, getAllMovieCertifications } from '../lib/tmdb';
+import { supabase, isSupabaseConfigured, type TMDBFilters } from '../lib/supabase';
 import WatchlistButton from './WatchlistButton';
 
 interface SearchFormProps {
@@ -31,7 +31,18 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     
     return `${baseWithSlash}${cleanPath}`;
   }
+  
+  // Get sectionId from URL params if present
+  const getSectionIdFromUrl = () => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('sectionId') || '';
+    }
+    return '';
+  };
+  
   const [query, setQuery] = useState('');
+  const [sectionId, setSectionId] = useState(getSectionIdFromUrl());
   const [allResults, setAllResults] = useState<SearchResult[]>([]);
   const [filteredResults, setFilteredResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -45,14 +56,18 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     startYear: '' as string | number,
     endYear: '' as string | number,
     minRating: '' as string | number,
+    certification: '' as string,
     sortBy: 'popularity.desc' as string
   });
   
   const [availableGenres, setAvailableGenres] = useState<{ id: number; name: string }[]>([]);
+  const [availableCertifications, setAvailableCertifications] = useState<{ certification: string; meaning: string; order: number }[]>([]);
   const [loadingGenres, setLoadingGenres] = useState(false);
+  const [loadingCertifications, setLoadingCertifications] = useState(false);
   const [showGenreDropdown, setShowGenreDropdown] = useState(false);
   const [showYearDropdown, setShowYearDropdown] = useState(false);
   const [showRatingDropdown, setShowRatingDropdown] = useState(false);
+  const [showCertificationDropdown, setShowCertificationDropdown] = useState(false);
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -151,6 +166,12 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
         }
       }
       
+      // Certification (only for movies)
+      if (filters.certification && mediaType === 'movie') {
+        tmdbFilters.certification = filters.certification;
+        tmdbFilters.certification_country = 'US'; // Default to US certifications
+      }
+      
       // Sort
       if (filters.sortBy && filters.sortBy !== 'relevance') {
         // Map our sort options to TMDB sort options
@@ -211,7 +232,132 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     return new Date(date).getFullYear().toString();
   };
 
-  // Load genres on mount
+  // Auto-search if sectionId is provided in URL - fetch filters and apply them
+  useEffect(() => {
+    const loadSectionFilters = async () => {
+      if (!sectionId || hasSearched || !isSupabaseConfigured() || !supabase) return;
+      
+      try {
+        // Fetch the section from homepage_sections
+        const { data: section, error } = await supabase
+          .from('homepage_sections')
+          .select('id, title, config')
+          .eq('id', sectionId)
+          .single();
+        
+        if (error || !section) {
+          console.error('Error fetching section:', error);
+          return;
+        }
+        
+        // Check if section has TMDB filters
+        if (section.config?.tmdb_filters) {
+          const tmdbFilters = section.config.tmdb_filters as TMDBFilters;
+          
+          // Apply filters to the filter state
+          if (tmdbFilters.media_type) {
+            setFilters(prev => ({
+              ...prev,
+              mediaType: tmdbFilters.media_type === 'movie' ? 'movie' : tmdbFilters.media_type === 'tv' ? 'tv' : 'all',
+            }));
+          }
+          
+          if (tmdbFilters.with_genres && Array.isArray(tmdbFilters.with_genres)) {
+            setFilters(prev => ({
+              ...prev,
+              genres: tmdbFilters.with_genres!,
+            }));
+          }
+          
+          if (tmdbFilters['vote_average.gte']) {
+            setFilters(prev => ({
+              ...prev,
+              minRating: tmdbFilters['vote_average.gte']!,
+            }));
+          }
+          
+          if (tmdbFilters.certification) {
+            setFilters(prev => ({
+              ...prev,
+              certification: tmdbFilters.certification!,
+            }));
+          }
+          
+          if (tmdbFilters.sort_by) {
+            setFilters(prev => ({
+              ...prev,
+              sortBy: tmdbFilters.sort_by!,
+            }));
+          }
+          
+          // Handle year filters
+          if (tmdbFilters.primary_release_year) {
+            const year = tmdbFilters.primary_release_year;
+            setFilters(prev => ({
+              ...prev,
+              startYear: year,
+              endYear: year,
+            }));
+          } else if (tmdbFilters['primary_release_date.gte'] || tmdbFilters['primary_release_date.lte']) {
+            const startYear = tmdbFilters['primary_release_date.gte'] 
+              ? new Date(tmdbFilters['primary_release_date.gte']).getFullYear() 
+              : '';
+            const endYear = tmdbFilters['primary_release_date.lte'] 
+              ? new Date(tmdbFilters['primary_release_date.lte']).getFullYear() 
+              : '';
+            setFilters(prev => ({
+              ...prev,
+              startYear,
+              endYear,
+            }));
+          }
+          
+          if (tmdbFilters.first_air_date_year) {
+            const year = tmdbFilters.first_air_date_year;
+            setFilters(prev => ({
+              ...prev,
+              startYear: year,
+              endYear: year,
+            }));
+          } else if (tmdbFilters['first_air_date.gte'] || tmdbFilters['first_air_date.lte']) {
+            const startYear = tmdbFilters['first_air_date.gte'] 
+              ? new Date(tmdbFilters['first_air_date.gte']).getFullYear() 
+              : '';
+            const endYear = tmdbFilters['first_air_date.lte'] 
+              ? new Date(tmdbFilters['first_air_date.lte']).getFullYear() 
+              : '';
+            setFilters(prev => ({
+              ...prev,
+              startYear,
+              endYear,
+            }));
+          }
+          
+          // Use discover API with the section's filters
+          setSearchMode('discover');
+          setIsLoading(true);
+          setHasSearched(true);
+          
+          const mediaType = tmdbFilters.media_type || 'movie';
+          const results = await discoverWithFilters(mediaType, tmdbFilters, 100);
+          
+          setAllResults(results);
+          setIsLoading(false);
+        } else {
+          // No filters - this shouldn't happen for auto-generated categories, but handle it
+          console.warn('Section has no TMDB filters');
+        }
+      } catch (error) {
+        console.error('Error loading section filters:', error);
+        setIsLoading(false);
+      }
+    };
+    
+    loadSectionFilters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sectionId]);
+
+  // Load genres and certifications on mount
   useEffect(() => {
     const loadGenres = async () => {
       setLoadingGenres(true);
@@ -234,7 +380,21 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
         setLoadingGenres(false);
       }
     };
+    
+    const loadCertifications = async () => {
+      setLoadingCertifications(true);
+      try {
+        const certs = await getAllMovieCertifications();
+        setAvailableCertifications(certs);
+      } catch (error) {
+        console.error('Error loading certifications:', error);
+      } finally {
+        setLoadingCertifications(false);
+      }
+    };
+    
     loadGenres();
+    loadCertifications();
   }, []);
 
   // Apply filters to results whenever filters or allResults change
@@ -374,6 +534,11 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
 
   const handleFilterChange = (key: string, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
+    // Close certification dropdown if media type changes to TV (certification only applies to movies)
+    if (key === 'mediaType' && value === 'tv') {
+      setShowCertificationDropdown(false);
+      setFilters(prev => ({ ...prev, certification: '' }));
+    }
   };
 
   const clearFilters = () => {
@@ -383,11 +548,13 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       startYear: '',
       endYear: '',
       minRating: '',
+      certification: '',
       sortBy: 'popularity.desc'
     });
     setShowGenreDropdown(false);
     setShowYearDropdown(false);
     setShowRatingDropdown(false);
+    setShowCertificationDropdown(false);
   };
 
   const hasActiveFilters = filters.mediaType !== 'all' || 
@@ -395,6 +562,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     filters.startYear !== '' || 
     filters.endYear !== '' ||
     filters.minRating !== '' || 
+    filters.certification !== '' ||
     (filters.sortBy !== 'relevance' && filters.sortBy !== 'popularity.desc');
 
   return (
@@ -499,6 +667,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                   setShowGenreDropdown(!showGenreDropdown);
                   setShowYearDropdown(false);
                   setShowRatingDropdown(false);
+                  setShowCertificationDropdown(false);
                 }}
                 className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center justify-between text-sm md:text-base h-[42px] ${
                   filters.genres.length > 0 ? 'ring-2 ring-red-600' : ''
@@ -524,6 +693,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                   setShowYearDropdown(!showYearDropdown);
                   setShowGenreDropdown(false);
                   setShowRatingDropdown(false);
+                  setShowCertificationDropdown(false);
                 }}
                 className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center justify-between text-sm md:text-base h-[42px] ${
                   filters.startYear || filters.endYear ? 'ring-2 ring-red-600' : ''
@@ -553,6 +723,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                   setShowRatingDropdown(!showRatingDropdown);
                   setShowGenreDropdown(false);
                   setShowYearDropdown(false);
+                  setShowCertificationDropdown(false);
                 }}
                 className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center justify-between text-sm md:text-base h-[42px] ${
                   filters.minRating ? 'ring-2 ring-red-600' : ''
@@ -562,6 +733,32 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                 <i className={`fas fa-chevron-${showRatingDropdown ? 'up' : 'down'} ml-2 flex-shrink-0`}></i>
               </button>
             </div>
+
+            {/* Certification - Dropdown Button (Movies Only) */}
+            {filters.mediaType === 'movie' || filters.mediaType === 'all' ? (
+              <div className="relative md:col-span-1 lg:col-span-2">
+                <label className="block text-white mb-2 text-xs md:text-sm font-semibold">Certification</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCertificationDropdown(!showCertificationDropdown);
+                    setShowGenreDropdown(false);
+                    setShowYearDropdown(false);
+                    setShowRatingDropdown(false);
+                  }}
+                  className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center justify-between text-sm md:text-base h-[42px] ${
+                    filters.certification ? 'ring-2 ring-red-600' : ''
+                  }`}
+                >
+                  <span className="truncate">
+                    {filters.certification 
+                      ? availableCertifications.find(c => c.certification === filters.certification)?.certification || filters.certification
+                      : 'Any Rating'}
+                  </span>
+                  <i className={`fas fa-chevron-${showCertificationDropdown ? 'up' : 'down'} ml-2 flex-shrink-0`}></i>
+                </button>
+              </div>
+            ) : null}
 
             {/* Sort By - Dropdown on the Right */}
             <div className="md:col-span-1 lg:col-span-3">
@@ -826,6 +1023,84 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
         </>
       )}
 
+      {/* Certification Mega Menu */}
+      {showCertificationDropdown && (filters.mediaType === 'movie' || filters.mediaType === 'all') && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black bg-opacity-50"
+            onClick={() => setShowCertificationDropdown(false)}
+          ></div>
+          <div className="max-w-6xl mx-auto mb-6 relative z-50">
+            <div className="bg-gray-800 rounded-lg shadow-2xl overflow-hidden">
+              <div className="p-4 md:p-6 border-b border-gray-700 flex justify-between items-center">
+                <span className="text-white font-semibold text-base md:text-lg">Select Movie Certification</span>
+                <div className="flex items-center gap-3">
+                  {filters.certification !== '' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleFilterChange('certification', '');
+                      }}
+                      className="text-red-400 text-sm hover:text-red-300 px-3 py-1.5 rounded hover:bg-gray-700 transition-colors"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowCertificationDropdown(false)}
+                    className="text-gray-400 hover:text-white transition-colors p-2"
+                  >
+                    <i className="fas fa-times text-lg"></i>
+                  </button>
+                </div>
+              </div>
+              <div className="p-4 md:p-6">
+                {loadingCertifications ? (
+                  <div className="text-center py-8">
+                    <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-gray-400">Loading certifications...</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-11 gap-2 md:gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleFilterChange('certification', '');
+                      }}
+                      className={`px-4 py-3 md:px-6 md:py-4 rounded transition-all text-sm md:text-base font-medium ${
+                        filters.certification === ''
+                          ? 'bg-red-600 text-white ring-2 ring-red-400'
+                          : 'bg-gray-700 text-white hover:bg-gray-600'
+                      }`}
+                    >
+                      Any
+                    </button>
+                    {availableCertifications.map(cert => (
+                      <button
+                        key={cert.certification}
+                        type="button"
+                        onClick={() => {
+                          handleFilterChange('certification', cert.certification);
+                        }}
+                        className={`px-4 py-3 md:px-6 md:py-4 rounded transition-all text-sm md:text-base font-medium ${
+                          filters.certification === cert.certification
+                            ? 'bg-red-600 text-white ring-2 ring-red-400'
+                            : 'bg-gray-700 text-white hover:bg-gray-600'
+                        }`}
+                        title={cert.meaning}
+                      >
+                        {cert.certification}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Results */}
       {!isLoading && hasSearched && (
         <div className="max-w-6xl mx-auto">
@@ -836,7 +1111,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                 {searchMode === 'search' && hasActiveFilters && allResults.length !== filteredResults.length && 
                   ` of ${allResults.length}`})
               </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              <div className="grid grid-cols-5 md:grid-cols-7 lg:grid-cols-8 gap-4">
                 {filteredResults.map((item) => {
                   const title = getTitle(item);
                   const year = getDate(item);

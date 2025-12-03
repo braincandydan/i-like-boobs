@@ -51,7 +51,68 @@
   }
   
   .content-grid {
-    @apply grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4;
+    @apply flex overflow-x-auto gap-4 pb-4;
+    scroll-behavior: smooth;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+  }
+  
+  .content-grid::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
+  
+  .content-grid > * {
+    flex-shrink: 0;
+    width: 140px; /* Fixed width for small screens - shows ~5 per viewport */
+  }
+  
+  @media (min-width: 768px) {
+    .content-grid > * {
+      width: 160px; /* Fixed width for medium screens - shows ~7 per viewport */
+    }
+  }
+  
+  @media (min-width: 1024px) {
+    .content-grid > * {
+      width: 180px; /* Fixed width for large screens - shows ~8 per viewport */
+    }
+  }
+  
+  .carousel-container {
+    @apply relative;
+  }
+  
+  .carousel-arrow {
+    @apply absolute top-1/2 -translate-y-1/2 z-10 bg-black bg-opacity-70 hover:bg-opacity-90 text-white rounded-full w-10 h-10 flex items-center justify-center cursor-pointer transition-all duration-200;
+  }
+  
+  .carousel-arrow-left {
+    @apply left-0;
+  }
+  
+  .carousel-arrow-right {
+    @apply right-0;
+  }
+  
+  .carousel-arrow.hidden {
+    @apply opacity-0 pointer-events-none;
+  }
+  
+  .search-all-card {
+    @apply aspect-[2/3] bg-gray-800 rounded-lg flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-600 hover:border-red-600 transition-colors cursor-pointer;
+    min-width: calc((100% - 1rem) / 5);
+  }
+  
+  @media (min-width: 768px) {
+    .search-all-card {
+      min-width: calc((100% - 1.5rem) / 7);
+    }
+  }
+  
+  @media (min-width: 1024px) {
+    .search-all-card {
+      min-width: calc((100% - 1.75rem) / 8);
+    }
   }
   
   .watchlist-btn {
