@@ -59,6 +59,7 @@ import { createUrl } from '../lib/utils';
     
     <!-- Video Player -->
     <div class="relative w-full amazon-silk-fix" style="padding-bottom: 56.25%; height: 0;">
+      <!-- Iframe Player (for streaming servers) -->
       <iframe
         id="video-player"
         src=""
@@ -71,11 +72,93 @@ import { createUrl } from '../lib/utils';
         scrolling="no"
       ></iframe>
       
+      <!-- WebTorrent Player (for torrent playback) -->
+      <div id="webtorrent-container" class="absolute top-0 left-0 w-full h-full hidden">
+        <video
+          id="webtorrent-player"
+          class="w-full h-full"
+          controls
+          autoplay
+        ></video>
+        
+        <!-- WebTorrent Status -->
+        <div id="webtorrent-status" class="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-4 py-2 rounded text-sm">
+          <div class="flex items-center space-x-2">
+            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            <span>Connecting to peers...</span>
+          </div>
+        </div>
+        
+        <!-- WebTorrent Progress -->
+        <div id="webtorrent-progress" class="absolute bottom-4 left-4 right-4 bg-black bg-opacity-70 rounded p-2 hidden">
+          <div class="flex items-center justify-between text-white text-xs mb-1">
+            <span>Download Speed: <span id="download-speed">0</span> MB/s</span>
+            <span>Upload Speed: <span id="upload-speed">0</span> MB/s</span>
+          </div>
+          <div class="w-full bg-gray-700 rounded-full h-2">
+            <div id="progress-bar" class="bg-red-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <div class="text-white text-xs mt-1">
+            <span>Progress: <span id="progress-text">0%</span></span>
+            <span class="ml-4">Peers: <span id="peer-count">0</span></span>
+          </div>
+        </div>
+      </div>
+      
       <!-- Server loading indicator -->
       <div id="server-loading" class="absolute inset-0 flex items-center justify-center bg-black/60 text-white z-25 hidden">
         <div class="text-center">
           <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
           <p>Loading server...</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- WebTorrent Input Modal -->
+    <div id="webtorrent-modal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden flex items-center justify-center">
+      <div class="bg-gray-900 rounded-lg p-6 max-w-2xl w-full mx-4">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-xl font-bold text-white">Load WebTorrent</h3>
+          <button id="close-webtorrent-modal" class="text-gray-400 hover:text-white">
+            <i class="fas fa-times text-xl"></i>
+          </button>
+        </div>
+        <p class="text-gray-300 mb-4">Enter a magnet link or select a torrent file to stream:</p>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-white text-sm font-medium mb-2">Magnet Link:</label>
+            <input
+              type="text"
+              id="magnet-input"
+              placeholder="magnet:?xt=urn:btih:..."
+              class="w-full bg-gray-800 text-white px-4 py-2 rounded border border-gray-600 focus:border-red-600 focus:outline-none"
+            />
+          </div>
+          <div class="text-center text-gray-400 text-sm">OR</div>
+          <div>
+            <label class="block text-white text-sm font-medium mb-2">Torrent File:</label>
+            <input
+              type="file"
+              id="torrent-file-input"
+              accept=".torrent"
+              class="w-full bg-gray-800 text-white px-4 py-2 rounded border border-gray-600 focus:border-red-600 focus:outline-none"
+            />
+          </div>
+          <div class="flex space-x-4">
+            <button
+              id="load-webtorrent-btn"
+              class="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded transition-colors"
+            >
+              <i class="fas fa-play mr-2"></i>
+              Load Torrent
+            </button>
+            <button
+              id="cancel-webtorrent-btn"
+              class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -318,13 +401,14 @@ import { createUrl } from '../lib/utils';
     
     const primaryUrl = buildVidSrcUrl(type, id, season, episode);
     
-    // Server priority: VidSrc (auto-playing correctly) → Others
+    // Server priority: VidSrc (auto-playing correctly) → Others → WebTorrent
     const alternativeServers = [
-      { name: 'VidSrc-embed RU', url: `https://vidsrc-embed.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}` },
-      { name: 'VidSrc-embed SU', url: `https://vidsrc-embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}` },
-      { name: 'Vsrc SU', url: `https://vsrc.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}` },
-      { name: 'SuperEmbed', url: `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1` },
-      { name: 'EmbedSu', url: `https://embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}` }
+      { name: 'VidSrc-embed RU', url: `https://vidsrc-embed.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'VidSrc-embed SU', url: `https://vidsrc-embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'Vsrc SU', url: `https://vsrc.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'SuperEmbed', url: `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1`, playerType: 'iframe' },
+      { name: 'EmbedSu', url: `https://embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'WebTorrent', url: 'webtorrent', playerType: 'webtorrent' }
     ];
     
     // Update video player
@@ -381,34 +465,59 @@ import { createUrl } from '../lib/utils';
     serverSelect.innerHTML = '';
     alternativeServers.forEach((server, index) => {
       const option = document.createElement('option');
-      option.value = server.url;
+      option.value = index.toString();
       option.textContent = server.name;
       option.selected = index === 0;
+      option.dataset.playerType = server.playerType;
       serverSelect.appendChild(option);
     });
     
     // Set up server switching with error handling
     let currentServerIndex = 0;
+    let webtorrentClient = null;
+    let webtorrentTorrent = null;
     
     function loadServer(index) {
       if (index < alternativeServers.length) {
         const server = alternativeServers[index];
         const serverLoading = document.getElementById('server-loading');
+        const videoPlayer = document.getElementById('video-player');
+        const webtorrentContainer = document.getElementById('webtorrent-container');
         
         console.log(`Loading server: ${server.name} - ${server.url}`);
         
         // Show loading indicator
         serverLoading.classList.remove('hidden');
         
-        // Update server
-        videoPlayer.src = server.url;
-        serverSelect.selectedIndex = index;
-        currentServerIndex = index;
-        
-        // Hide loading after 3 seconds (or when video loads)
-        setTimeout(() => {
+        // Handle WebTorrent vs iframe
+        if (server.playerType === 'webtorrent') {
+          // Show WebTorrent modal
+          showWebTorrentModal();
+          serverSelect.selectedIndex = index;
+          currentServerIndex = index;
           serverLoading.classList.add('hidden');
-        }, 3000);
+        } else {
+          // Hide WebTorrent, show iframe
+          webtorrentContainer.classList.add('hidden');
+          videoPlayer.classList.remove('hidden');
+          
+          // Stop any active WebTorrent
+          if (webtorrentClient) {
+            webtorrentClient.destroy();
+            webtorrentClient = null;
+            webtorrentTorrent = null;
+          }
+          
+          // Update iframe server
+          videoPlayer.src = server.url;
+          serverSelect.selectedIndex = index;
+          currentServerIndex = index;
+          
+          // Hide loading after 3 seconds (or when video loads)
+          setTimeout(() => {
+            serverLoading.classList.add('hidden');
+          }, 3000);
+        }
       }
     }
     
@@ -432,8 +541,197 @@ import { createUrl } from '../lib/utils';
     });
     
     serverSelect.addEventListener('change', (e) => {
-      const selectedIndex = e.target.selectedIndex;
+      const selectedIndex = parseInt(e.target.value);
       loadServer(selectedIndex);
+    });
+    
+    // WebTorrent functionality
+    function showWebTorrentModal() {
+      const modal = document.getElementById('webtorrent-modal');
+      modal.classList.remove('hidden');
+    }
+    
+    function hideWebTorrentModal() {
+      const modal = document.getElementById('webtorrent-modal');
+      modal.classList.add('hidden');
+    }
+    
+    async function loadWebTorrent(magnetLink, torrentFile) {
+      // Import WebTorrent dynamically
+      const WebTorrent = (await import('webtorrent')).default;
+      
+      // Stop any existing torrent
+      if (webtorrentClient) {
+        webtorrentClient.destroy();
+      }
+      
+      // Create new WebTorrent client
+      webtorrentClient = new WebTorrent();
+      
+      const videoPlayer = document.getElementById('video-player');
+      const webtorrentContainer = document.getElementById('webtorrent-container');
+      const webtorrentPlayer = document.getElementById('webtorrent-player');
+      const webtorrentStatus = document.getElementById('webtorrent-status');
+      const webtorrentProgress = document.getElementById('webtorrent-progress');
+      const serverLoading = document.getElementById('server-loading');
+      
+      // Hide iframe, show WebTorrent player
+      videoPlayer.classList.add('hidden');
+      webtorrentContainer.classList.remove('hidden');
+      webtorrentProgress.classList.remove('hidden');
+      serverLoading.classList.add('hidden');
+      hideWebTorrentModal();
+      
+      // Add torrent
+      const torrent = magnetLink 
+        ? webtorrentClient.add(magnetLink)
+        : webtorrentClient.add(torrentFile);
+      
+      webtorrentTorrent = torrent;
+      
+      // Update status
+      webtorrentStatus.innerHTML = `
+        <div class="flex items-center space-x-2">
+          <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+          <span>Connecting to peers...</span>
+        </div>
+      `;
+      
+      torrent.on('metadata', () => {
+        console.log('Torrent metadata received');
+        webtorrentStatus.innerHTML = `
+          <div class="flex items-center space-x-2">
+            <i class="fas fa-check-circle text-green-400"></i>
+            <span>Connected! Finding video file...</span>
+          </div>
+        `;
+        
+        // Find the largest video file
+        const files = torrent.files;
+        let videoFile = null;
+        let maxSize = 0;
+        
+        files.forEach(file => {
+          if (file.name.endsWith('.mp4') || file.name.endsWith('.mkv') || 
+              file.name.endsWith('.avi') || file.name.endsWith('.webm') ||
+              file.name.endsWith('.mov')) {
+            if (file.length > maxSize) {
+              maxSize = file.length;
+              videoFile = file;
+            }
+          }
+        });
+        
+        if (!videoFile && files.length > 0) {
+          // If no video file found, use the largest file
+          files.forEach(file => {
+            if (file.length > maxSize) {
+              maxSize = file.length;
+              videoFile = file;
+            }
+          });
+        }
+        
+        if (videoFile) {
+          console.log('Playing video file:', videoFile.name);
+          videoFile.renderTo(webtorrentPlayer, {
+            autoplay: true,
+            controls: true
+          });
+          
+          webtorrentStatus.innerHTML = `
+            <div class="flex items-center space-x-2">
+              <i class="fas fa-play-circle text-green-400"></i>
+              <span>Playing: ${videoFile.name}</span>
+            </div>
+          `;
+        } else {
+          webtorrentStatus.innerHTML = `
+            <div class="flex items-center space-x-2">
+              <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+              <span>No video file found in torrent</span>
+            </div>
+          `;
+        }
+      });
+      
+      torrent.on('download', () => {
+        const progress = (torrent.progress * 100).toFixed(1);
+        const downloadSpeed = (torrent.downloadSpeed / 1024 / 1024).toFixed(2);
+        const uploadSpeed = (torrent.uploadSpeed / 1024 / 1024).toFixed(2);
+        const peers = torrent.numPeers;
+        
+        document.getElementById('progress-bar').style.width = `${progress}%`;
+        document.getElementById('progress-text').textContent = `${progress}%`;
+        document.getElementById('download-speed').textContent = downloadSpeed;
+        document.getElementById('upload-speed').textContent = uploadSpeed;
+        document.getElementById('peer-count').textContent = peers;
+      });
+      
+      torrent.on('done', () => {
+        webtorrentStatus.innerHTML = `
+          <div class="flex items-center space-x-2">
+            <i class="fas fa-check-circle text-green-400"></i>
+            <span>Download complete!</span>
+          </div>
+        `;
+      });
+      
+      torrent.on('error', (err) => {
+        console.error('Torrent error:', err);
+        webtorrentStatus.innerHTML = `
+          <div class="flex items-center space-x-2">
+            <i class="fas fa-exclamation-circle text-red-400"></i>
+            <span>Error: ${err.message}</span>
+          </div>
+        `;
+      });
+    }
+    
+    // WebTorrent modal handlers
+    document.getElementById('close-webtorrent-modal')?.addEventListener('click', () => {
+      hideWebTorrentModal();
+      // Reset to previous server if cancelled
+      if (currentServerIndex > 0) {
+        serverSelect.selectedIndex = currentServerIndex - 1;
+        loadServer(currentServerIndex - 1);
+      }
+    });
+    
+    document.getElementById('cancel-webtorrent-btn')?.addEventListener('click', () => {
+      hideWebTorrentModal();
+      // Reset to previous server if cancelled
+      if (currentServerIndex > 0) {
+        serverSelect.selectedIndex = currentServerIndex - 1;
+        loadServer(currentServerIndex - 1);
+      }
+    });
+    
+    document.getElementById('load-webtorrent-btn')?.addEventListener('click', async () => {
+      const magnetInput = document.getElementById('magnet-input');
+      const torrentFileInput = document.getElementById('torrent-file-input');
+      
+      const magnetLink = magnetInput.value.trim();
+      const torrentFile = torrentFileInput.files[0];
+      
+      if (!magnetLink && !torrentFile) {
+        alert('Please enter a magnet link or select a torrent file');
+        return;
+      }
+      
+      try {
+        await loadWebTorrent(magnetLink || null, torrentFile || null);
+      } catch (error) {
+        console.error('Error loading WebTorrent:', error);
+        alert('Error loading torrent: ' + error.message);
+      }
+    });
+    
+    // Allow Enter key to submit magnet link
+    document.getElementById('magnet-input')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('load-webtorrent-btn')?.click();
+      }
     });
     
     function showServerError() {

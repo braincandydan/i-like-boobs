@@ -21,7 +21,8 @@ const { title, description = "NotFlix - Your favorite movies and TV shows" } = A
     
     <!-- Security headers for popup blocking -->
     <!-- Note: theajack.github.io is required by vidsrc-embed.ru as a nested iframe proxy -->
-    <meta http-equiv="Content-Security-Policy" content="frame-ancestors 'self'; frame-src 'self' https://vidsrc-embed.ru https://vidsrc-embed.su https://vsrc.su https://multiembed.mov https://embed.su https://theajack.github.io; object-src 'none';" />
+    <!-- WebRTC and WebSocket connections needed for WebTorrent -->
+    <meta http-equiv="Content-Security-Policy" content="frame-ancestors 'self'; frame-src 'self' https://vidsrc-embed.ru https://vidsrc-embed.su https://vsrc.su https://multiembed.mov https://embed.su https://theajack.github.io; object-src 'none'; connect-src 'self' https: wss: ws: blob:; media-src 'self' blob: data:;" />
     <meta http-equiv="X-Frame-Options" content="SAMEORIGIN" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta http-equiv="Referrer-Policy" content="no-referrer-when-downgrade" />
