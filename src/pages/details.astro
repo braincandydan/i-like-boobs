@@ -69,6 +69,13 @@ import { createUrl } from '../lib/utils';
                 <i class="fas fa-external-link-alt mr-2"></i>
                 Find Streaming
               </button>
+              <button 
+                id="watchlist-btn"
+                class="btn-secondary text-lg px-8 py-3 hidden"
+              >
+                <i class="fas fa-heart mr-2"></i>
+                <span id="watchlist-btn-text">Add to Watchlist</span>
+              </button>
             </div>
           </div>
         </div>
@@ -282,6 +289,80 @@ import { createUrl } from '../lib/utils';
     // Find streaming button
     document.getElementById('find-streaming-btn').onclick = () => searchStreamingServices(title, type === 'movie' ? content.release_date?.split('-')[0] : content.first_air_date?.split('-')[0]);
     
+    // Watchlist button
+    const watchlistBtn = document.getElementById('watchlist-btn');
+    const watchlistBtnText = document.getElementById('watchlist-btn-text');
+    if (watchlistBtn) {
+      watchlistBtn.classList.remove('hidden');
+      watchlistBtn.dataset.movieId = content.id;
+      watchlistBtn.dataset.mediaType = type;
+      watchlistBtn.dataset.title = title;
+      watchlistBtn.dataset.posterPath = content.poster_path || '';
+      
+      // Check if in watchlist and update button state
+      (async () => {
+        try {
+          const { isInWatchlist } = await import('../lib/localStorage');
+          const userId = window.currentUser?.id;
+          if (userId) {
+            const movieId = parseInt(watchlistBtn.dataset.movieId);
+            const mediaType = watchlistBtn.dataset.mediaType;
+            const inWatchlist = isInWatchlist(movieId, mediaType, userId);
+            if (inWatchlist) {
+              watchlistBtn.innerHTML = '<i class="fas fa-heart mr-2" style="color: red;"></i><span>In Watchlist</span>';
+              watchlistBtn.classList.add('added');
+            }
+          }
+        } catch (error) {
+          console.error('Error checking watchlist:', error);
+        }
+      })();
+      
+      // Add click handler
+      watchlistBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        try {
+          const { addToWatchlist, removeFromWatchlist, isInWatchlist } = await import('../lib/localStorage');
+          const userId = window.currentUser?.id;
+          
+          if (!userId) {
+            window.location.href = createUrl('/auth/signin');
+            return;
+          }
+          
+          const movieId = parseInt(watchlistBtn.dataset.movieId);
+          const mediaType = watchlistBtn.dataset.mediaType;
+          const title = watchlistBtn.dataset.title;
+          const posterPath = watchlistBtn.dataset.posterPath;
+          
+          const inWatchlist = isInWatchlist(movieId, mediaType, userId);
+          
+          if (inWatchlist) {
+            const success = removeFromWatchlist(movieId, mediaType, userId);
+            if (success) {
+              watchlistBtn.innerHTML = '<i class="fas fa-heart mr-2"></i><span>Add to Watchlist</span>';
+              watchlistBtn.classList.remove('added');
+            }
+          } else {
+            const success = addToWatchlist({
+              movieId,
+              mediaType,
+              title,
+              posterPath
+            }, userId);
+            if (success) {
+              watchlistBtn.innerHTML = '<i class="fas fa-heart mr-2" style="color: red;"></i><span>In Watchlist</span>';
+              watchlistBtn.classList.add('added');
+            }
+          }
+        } catch (error) {
+          console.error('Error toggling watchlist:', error);
+        }
+      });
+    }
+    
     // Overview
     document.getElementById('content-overview').textContent = content.overview;
     
@@ -450,12 +531,35 @@ import { createUrl } from '../lib/utils';
     }
   }
   
+  // Get current user from Supabase
+  async function getCurrentUser() {
+    try {
+      const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL;
+      const supabaseKey = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
+      
+      if (supabaseUrl && supabaseKey) {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          return { id: session.user.id };
+        }
+      }
+    } catch (error) {
+      console.error('Error getting user:', error);
+    }
+    return null;
+  }
+  
   // Initialize page
   async function initializePage() {
     try {
       console.log('Starting page initialization...');
       console.log('API_KEY available:', !!API_KEY);
       console.log('BASE_URL:', BASE_URL);
+      
+      // Get current user
+      window.currentUser = await getCurrentUser();
       
       const urlData = parseUrl();
       console.log('URL data:', urlData);

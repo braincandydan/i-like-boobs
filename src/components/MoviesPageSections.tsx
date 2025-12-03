@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { fetchFromTMDB, tmdbEndpoints, getImageUrl, discoverWithFilters } from '../lib/tmdb';
 import { createUrl } from '../lib/utils';
+import WatchlistButton from './WatchlistButton';
 
 interface Section {
   id: string;
@@ -256,32 +257,51 @@ export default function MoviesPageSections() {
               const title = movie.title || movie.name;
 
               return (
-                <a
-                  key={`${movieId}-${mediaType}`}
-                  href={createUrl(`/details?type=${mediaType}&id=${movieId}`)}
-                  className="movie-card group"
-                >
-                  {movie.poster_path ? (
-                    <img
-                      src={getImageUrl(movie.poster_path, 'w500')}
-                      alt={title}
-                      className="w-full aspect-[2/3] object-cover rounded-lg mb-2 group-hover:scale-105 transition-transform"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="w-full aspect-[2/3] bg-gray-800 rounded-lg mb-2 flex items-center justify-center">
-                      <i className="fas fa-image text-gray-600 text-4xl"></i>
-                    </div>
-                  )}
-                  <h3 className="text-white font-semibold text-sm truncate group-hover:text-red-600 transition-colors">
-                    {title}
-                  </h3>
-                  {movie.release_date && (
-                    <p className="text-gray-400 text-xs">
-                      {new Date(movie.release_date || movie.first_air_date).getFullYear()}
-                    </p>
-                  )}
-                </a>
+                <div key={`${movieId}-${mediaType}`} className="movie-card group relative">
+                  <a
+                    href={createUrl(`/details?type=${mediaType}&id=${movieId}`)}
+                    className="block"
+                  >
+                    {movie.poster_path ? (
+                      <div className="relative">
+                        <img
+                          src={getImageUrl(movie.poster_path, 'w500')}
+                          alt={title}
+                          className="w-full aspect-[2/3] object-cover rounded-lg mb-2 group-hover:scale-105 transition-transform"
+                          loading="lazy"
+                        />
+                        <div className="absolute top-2 right-2 z-10" onClick={(e) => e.preventDefault()}>
+                          <WatchlistButton
+                            movieId={movieId}
+                            mediaType={mediaType}
+                            title={title}
+                            posterPath={movie.poster_path}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-full aspect-[2/3] bg-gray-800 rounded-lg mb-2 flex items-center justify-center relative">
+                        <i className="fas fa-image text-gray-600 text-4xl"></i>
+                        <div className="absolute top-2 right-2 z-10">
+                          <WatchlistButton
+                            movieId={movieId}
+                            mediaType={mediaType}
+                            title={title}
+                            posterPath={movie.poster_path}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <h3 className="text-white font-semibold text-sm truncate group-hover:text-red-600 transition-colors">
+                      {title}
+                    </h3>
+                    {movie.release_date && (
+                      <p className="text-gray-400 text-xs">
+                        {new Date(movie.release_date || movie.first_air_date).getFullYear()}
+                      </p>
+                    )}
+                  </a>
+                </div>
               );
             })}
           </div>

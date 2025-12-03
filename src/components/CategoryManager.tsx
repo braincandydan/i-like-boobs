@@ -11,7 +11,8 @@ import {
   discoverWithFilters,
   sortByOptions,
   tvSortByOptions,
-  searchKeywords
+  searchKeywords,
+  searchCompanies
 } from '../lib/tmdb';
 
 interface Movie {
@@ -45,6 +46,7 @@ export default function CategoryManager() {
 
   // Page visibility and ordering state
   const [editingSection, setEditingSection] = useState<string | null>(null);
+  const [editingFilters, setEditingFilters] = useState<string | null>(null);
 
   // Movie management state
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -60,6 +62,10 @@ export default function CategoryManager() {
     sort_by: 'popularity.desc'
   });
   const [availableGenres, setAvailableGenres] = useState<{ id: number; name: string }[]>([]);
+  const [companySearchQuery, setCompanySearchQuery] = useState('');
+  const [companySearchResults, setCompanySearchResults] = useState<{ id: number; name: string; logo_path?: string }[]>([]);
+  const [searchingCompanies, setSearchingCompanies] = useState(false);
+  const [selectedCompanies, setSelectedCompanies] = useState<{ id: number; name: string; logo_path?: string }[]>([]);
   const [filterPreview, setFilterPreview] = useState<Movie[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [activePage, setActivePage] = useState<PageOption | 'all'>('all');
@@ -69,9 +75,57 @@ export default function CategoryManager() {
     loadGenres();
   }, []);
 
-  const loadGenres = async () => {
-    const movieGenres = await fetchGenres('movie');
-    setAvailableGenres(movieGenres);
+  const loadGenres = async (type: 'movie' | 'tv' = 'movie') => {
+    const genres = await fetchGenres(type);
+    setAvailableGenres(genres);
+  };
+
+  const loadFiltersForEditing = async (section: HomepageSection) => {
+    if (!section.config?.tmdb_filters) return;
+    
+    const filters = { ...section.config.tmdb_filters };
+    setTmdbFilters(filters);
+    
+    // Load genres for the media type
+    if (filters.media_type) {
+      await loadGenres(filters.media_type);
+    }
+    
+    // Reset company selection (user will need to re-select if they want to edit)
+    // This is because we only store company IDs, not full company objects
+    setSelectedCompanies([]);
+    setCompanySearchQuery('');
+    setCompanySearchResults([]);
+    
+    setEditingFilters(section.id);
+  };
+
+  const saveFilters = async (sectionId: string) => {
+    if (!tmdbFilters.media_type) {
+      setMessage({ type: 'error', text: 'Please select a media type' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const section = sections.find(s => s.id === sectionId);
+      if (!section) return;
+
+      const newConfig = {
+        ...section.config,
+        tmdb_filters: tmdbFilters
+      };
+
+      await updateSectionConfig(sectionId, newConfig);
+      setMessage({ type: 'success', text: 'Filters updated successfully!' });
+      setEditingFilters(null);
+      await loadSections(); // Reload to get fresh data
+    } catch (error: any) {
+      console.error('Error saving filters:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to save filters' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const loadSections = async () => {
@@ -314,6 +368,45 @@ export default function CategoryManager() {
     }
   };
 
+  const handleCompanySearch = async (query: string) => {
+    setCompanySearchQuery(query);
+    if (!query.trim()) {
+      setCompanySearchResults([]);
+      return;
+    }
+
+    setSearchingCompanies(true);
+    try {
+      const results = await searchCompanies(query);
+      setCompanySearchResults(results);
+    } catch (error) {
+      console.error('Error searching companies:', error);
+      setCompanySearchResults([]);
+    } finally {
+      setSearchingCompanies(false);
+    }
+  };
+
+  const addCompany = (company: { id: number; name: string; logo_path?: string }) => {
+    if (!selectedCompanies.find(c => c.id === company.id)) {
+      setSelectedCompanies([...selectedCompanies, company]);
+      setTmdbFilters({
+        ...tmdbFilters,
+        with_companies: [...(tmdbFilters.with_companies || []), company.id]
+      });
+    }
+    setCompanySearchQuery('');
+    setCompanySearchResults([]);
+  };
+
+  const removeCompany = (companyId: number) => {
+    setSelectedCompanies(selectedCompanies.filter(c => c.id !== companyId));
+    setTmdbFilters({
+      ...tmdbFilters,
+      with_companies: (tmdbFilters.with_companies || []).filter(id => id !== companyId)
+    });
+  };
+
   const previewFilters = async () => {
     if (!tmdbFilters.media_type) {
       setMessage({ type: 'error', text: 'Please select a media type' });
@@ -464,6 +557,9 @@ export default function CategoryManager() {
       setShowCreateForm(false);
       setCategoryType('manual');
       setTmdbFilters({ media_type: 'movie', sort_by: 'popularity.desc' });
+      setSelectedCompanies([]);
+      setCompanySearchQuery('');
+      setCompanySearchResults([]);
       setFilterPreview([]);
       await loadSections();
     } catch (error: any) {
@@ -947,6 +1043,76 @@ export default function CategoryManager() {
                     <p className="text-gray-400 text-xs mt-1">Hold Ctrl/Cmd to select multiple genres</p>
                   </div>
 
+                  {/* Companies */}
+                  <div>
+                    <label className="block text-white mb-2">Production Companies (optional)</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={companySearchQuery}
+                        onChange={(e) => handleCompanySearch(e.target.value)}
+                        placeholder="Search for companies..."
+                        className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                      />
+                      {searchingCompanies && (
+                        <div className="absolute right-3 top-2.5">
+                          <i className="fas fa-spinner fa-spin text-gray-400"></i>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Search Results Dropdown */}
+                    {companySearchResults.length > 0 && (
+                      <div className="mt-2 max-h-48 overflow-y-auto bg-gray-800 rounded border border-gray-700">
+                        {companySearchResults.map(company => (
+                          <button
+                            key={company.id}
+                            type="button"
+                            onClick={() => addCompany(company)}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-700 flex items-center gap-3"
+                          >
+                            {company.logo_path && (
+                              <img
+                                src={getImageUrl(company.logo_path, 'w92')}
+                                alt={company.name}
+                                className="w-8 h-8 object-contain"
+                              />
+                            )}
+                            <span className="text-white">{company.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Selected Companies */}
+                    {selectedCompanies.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {selectedCompanies.map(company => (
+                          <div
+                            key={company.id}
+                            className="bg-red-600 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2"
+                          >
+                            {company.logo_path && (
+                              <img
+                                src={getImageUrl(company.logo_path, 'w92')}
+                                alt={company.name}
+                                className="w-5 h-5 object-contain"
+                              />
+                            )}
+                            <span>{company.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeCompany(company.id)}
+                              className="ml-1 hover:text-red-200"
+                            >
+                              <i className="fas fa-times"></i>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Year Range */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -1339,6 +1505,293 @@ export default function CategoryManager() {
                         );
                       })}
                     </div>
+                  </div>
+                )}
+
+                {/* Filter Editing for Custom Sections with TMDB Filters */}
+                {section.section_type === 'custom' && section.config?.tmdb_filters && (
+                  <div className="p-4 bg-gray-600 border-t border-gray-700">
+                    {editingFilters === section.id ? (
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center mb-2">
+                          <h4 className="text-white font-semibold">Edit TMDB Filters</h4>
+                          <button
+                            onClick={() => {
+                              setEditingFilters(null);
+                              // Reset filters to original
+                              if (section.config?.tmdb_filters) {
+                                setTmdbFilters(section.config.tmdb_filters);
+                              } else {
+                                setTmdbFilters({ media_type: 'movie', sort_by: 'popularity.desc' });
+                              }
+                              setSelectedCompanies([]);
+                              setCompanySearchQuery('');
+                              setCompanySearchResults([]);
+                            }}
+                            className="text-gray-400 hover:text-white"
+                          >
+                            <i className="fas fa-times"></i>
+                          </button>
+                        </div>
+                        
+                        {/* Media Type */}
+                        <div>
+                          <label className="block text-white mb-2">Media Type *</label>
+                          <select
+                            value={tmdbFilters.media_type || 'movie'}
+                            onChange={async (e) => {
+                              const newType = e.target.value as 'movie' | 'tv';
+                              setTmdbFilters({ ...tmdbFilters, media_type: newType });
+                              await loadGenres(newType);
+                            }}
+                            className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                          >
+                            <option value="movie">Movies</option>
+                            <option value="tv">TV Shows</option>
+                          </select>
+                        </div>
+
+                        {/* Genres */}
+                        <div>
+                          <label className="block text-white mb-2">Genres (optional)</label>
+                          <select
+                            multiple
+                            value={tmdbFilters.with_genres?.map(String) || []}
+                            onChange={(e) => {
+                              const selected = Array.from(e.target.selectedOptions, opt => parseInt(opt.value));
+                              setTmdbFilters({ ...tmdbFilters, with_genres: selected });
+                            }}
+                            className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 h-32"
+                          >
+                            {availableGenres.map(genre => (
+                              <option key={genre.id} value={genre.id}>{genre.name}</option>
+                            ))}
+                          </select>
+                          <p className="text-gray-400 text-xs mt-1">Hold Ctrl/Cmd to select multiple genres</p>
+                        </div>
+
+                        {/* Companies */}
+                        <div>
+                          <label className="block text-white mb-2">Production Companies (optional)</label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={companySearchQuery}
+                              onChange={(e) => handleCompanySearch(e.target.value)}
+                              placeholder="Search for companies..."
+                              className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                            />
+                            {searchingCompanies && (
+                              <div className="absolute right-3 top-2.5">
+                                <i className="fas fa-spinner fa-spin text-gray-400"></i>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Search Results Dropdown */}
+                          {companySearchResults.length > 0 && (
+                            <div className="mt-2 max-h-48 overflow-y-auto bg-gray-800 rounded border border-gray-700">
+                              {companySearchResults.map(company => (
+                                <button
+                                  key={company.id}
+                                  type="button"
+                                  onClick={() => addCompany(company)}
+                                  className="w-full px-4 py-2 text-left hover:bg-gray-700 flex items-center gap-3"
+                                >
+                                  {company.logo_path && (
+                                    <img
+                                      src={getImageUrl(company.logo_path, 'w92')}
+                                      alt={company.name}
+                                      className="w-8 h-8 object-contain"
+                                    />
+                                  )}
+                                  <span className="text-white">{company.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Selected Companies */}
+                          {selectedCompanies.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {selectedCompanies.map(company => (
+                                <div
+                                  key={company.id}
+                                  className="bg-red-600 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2"
+                                >
+                                  {company.logo_path && (
+                                    <img
+                                      src={getImageUrl(company.logo_path, 'w92')}
+                                      alt={company.name}
+                                      className="w-5 h-5 object-contain"
+                                    />
+                                  )}
+                                  <span>{company.name}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeCompany(company.id)}
+                                    className="ml-1 hover:text-red-200"
+                                  >
+                                    <i className="fas fa-times"></i>
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Year Range */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-white mb-2">
+                              {tmdbFilters.media_type === 'movie' ? 'Release Year' : 'First Air Year'} (optional)
+                            </label>
+                            <input
+                              type="number"
+                              value={tmdbFilters.primary_release_year || tmdbFilters.first_air_date_year || ''}
+                              onChange={(e) => {
+                                const year = e.target.value ? parseInt(e.target.value) : undefined;
+                                if (tmdbFilters.media_type === 'movie') {
+                                  setTmdbFilters({ ...tmdbFilters, primary_release_year: year });
+                                } else {
+                                  setTmdbFilters({ ...tmdbFilters, first_air_date_year: year });
+                                }
+                              }}
+                              placeholder="2023"
+                              min="1900"
+                              max={new Date().getFullYear() + 1}
+                              className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-white mb-2">Rating Range (optional)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="10"
+                              value={tmdbFilters['vote_average.gte'] || ''}
+                              onChange={(e) => {
+                                const rating = e.target.value ? parseFloat(e.target.value) : undefined;
+                                setTmdbFilters({ ...tmdbFilters, 'vote_average.gte': rating });
+                              }}
+                              placeholder="Min rating (0-10)"
+                              className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Sort By */}
+                        <div>
+                          <label className="block text-white mb-2">Sort By</label>
+                          <select
+                            value={tmdbFilters.sort_by || 'popularity.desc'}
+                            onChange={(e) => setTmdbFilters({ ...tmdbFilters, sort_by: e.target.value })}
+                            className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                          >
+                            {(tmdbFilters.media_type === 'tv' ? tvSortByOptions : sortByOptions).map(option => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => saveFilters(section.id)}
+                            disabled={saving}
+                            className="btn-primary disabled:opacity-50"
+                          >
+                            {saving ? (
+                              <>
+                                <i className="fas fa-spinner fa-spin mr-2"></i>
+                                Saving...
+                              </>
+                            ) : (
+                              <>
+                                <i className="fas fa-save mr-2"></i>
+                                Save Filters
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={previewFilters}
+                            disabled={loadingPreview}
+                            className="btn-secondary disabled:opacity-50"
+                          >
+                            {loadingPreview ? (
+                              <>
+                                <i className="fas fa-spinner fa-spin mr-2"></i>
+                                Loading...
+                              </>
+                            ) : (
+                              <>
+                                <i className="fas fa-eye mr-2"></i>
+                                Preview
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Preview Results */}
+                        {filterPreview.length > 0 && (
+                          <div className="mt-4">
+                            <p className="text-white font-semibold mb-2">Preview ({filterPreview.length} results):</p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 max-h-64 overflow-y-auto">
+                              {filterPreview.map((movie: any) => (
+                                <div key={`${movie.id}-${movie.media_type}`} className="bg-gray-800 rounded-lg overflow-hidden">
+                                  {movie.poster_path ? (
+                                    <img
+                                      src={getImageUrl(movie.poster_path, 'w500')}
+                                      alt={movie.title || movie.name}
+                                      className="w-full aspect-[2/3] object-cover"
+                                    />
+                                  ) : (
+                                    <div className="w-full aspect-[2/3] bg-gray-600 flex items-center justify-center">
+                                      <i className="fas fa-image text-gray-400"></i>
+                                    </div>
+                                  )}
+                                  <div className="p-2">
+                                    <p className="text-white text-xs font-semibold truncate">{movie.title || movie.name}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-gray-700 rounded">
+                        <p className="text-green-400 text-sm mb-2">✓ Auto-Generated Category</p>
+                        <div className="text-sm text-gray-300 mb-2">
+                          {section.config.tmdb_filters.media_type && (
+                            <p>Type: {section.config.tmdb_filters.media_type}</p>
+                          )}
+                          {section.config.tmdb_filters.with_genres && section.config.tmdb_filters.with_genres.length > 0 && (
+                            <p>Genres: {section.config.tmdb_filters.with_genres.length} selected</p>
+                          )}
+                          {section.config.tmdb_filters.with_companies && section.config.tmdb_filters.with_companies.length > 0 && (
+                            <p>Companies: {section.config.tmdb_filters.with_companies.length} selected</p>
+                          )}
+                          {section.config.tmdb_filters.primary_release_year && (
+                            <p>Year: {section.config.tmdb_filters.primary_release_year}</p>
+                          )}
+                          {section.config.tmdb_filters.first_air_date_year && (
+                            <p>Year: {section.config.tmdb_filters.first_air_date_year}</p>
+                          )}
+                          {section.config.tmdb_filters['vote_average.gte'] && (
+                            <p>Min Rating: {section.config.tmdb_filters['vote_average.gte']}</p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => loadFiltersForEditing(section)}
+                          className="btn-secondary text-sm"
+                        >
+                          <i className="fas fa-edit mr-2"></i>
+                          Edit Filters
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 

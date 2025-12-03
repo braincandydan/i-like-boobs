@@ -50,6 +50,7 @@ export type UserWatchlist = {
 export type TMDBFilters = {
   media_type?: 'movie' | 'tv';
   with_genres?: number[];
+  with_companies?: number[];
   primary_release_year?: number;
   first_air_date_year?: number;
   'vote_average.gte'?: number;

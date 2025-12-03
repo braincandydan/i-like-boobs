@@ -7,6 +7,7 @@ import {
   isInWatchlist, 
   onStorageChange 
 } from '../lib/localStorage';
+import { createUrl } from '../lib/utils';
 
 interface WatchlistButtonProps {
   movieId: number;
@@ -44,7 +45,8 @@ export default function WatchlistButton({
     }
 
     try {
-      const inWatchlist = isInWatchlist(movieId, mediaType);
+      // Use Supabase user ID
+      const inWatchlist = isInWatchlist(movieId, mediaType, user.id);
       setIsInWatchlistState(inWatchlist);
     } catch (error) {
       console.error('Error checking watchlist:', error);
@@ -57,8 +59,8 @@ export default function WatchlistButton({
     e.stopPropagation();
 
     if (!user) {
-      // Redirect to sign in
-      window.location.href = '/auth/signin';
+      // Redirect to sign in with base path
+      window.location.href = createUrl('/auth/signin');
       return;
     }
 
@@ -67,7 +69,7 @@ export default function WatchlistButton({
     try {
       if (isInWatchlistState) {
         // Remove from watchlist
-        const success = removeFromWatchlist(movieId, mediaType);
+        const success = removeFromWatchlist(movieId, mediaType, user.id);
         if (success) {
           setIsInWatchlistState(false);
         } else {
@@ -80,7 +82,7 @@ export default function WatchlistButton({
           mediaType,
           title,
           posterPath,
-        });
+        }, user.id);
         if (success) {
           setIsInWatchlistState(true);
         } else {

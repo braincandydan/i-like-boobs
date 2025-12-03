@@ -29,7 +29,8 @@ export default function WatchlistDisplay() {
   const loadWatchlist = () => {
     try {
       if (user) {
-        const userWatchlist = getWatchlist();
+        // Use Supabase user ID
+        const userWatchlist = getWatchlist(user.id);
         setWatchlist(userWatchlist);
       } else {
         setWatchlist([]);
@@ -43,8 +44,10 @@ export default function WatchlistDisplay() {
   };
 
   const handleRemoveFromWatchlist = (movieId: number, mediaType: 'movie' | 'tv') => {
+    if (!user) return;
+    
     try {
-      const success = removeFromWatchlist(movieId, mediaType);
+      const success = removeFromWatchlist(movieId, mediaType, user.id);
       if (success) {
         setWatchlist(prev => prev.filter(item => !(item.movieId === movieId && item.mediaType === mediaType)));
       }

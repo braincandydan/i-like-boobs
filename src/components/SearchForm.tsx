@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { fetchFromTMDB, tmdbEndpoints, getImageUrl, fetchGenres, sortByOptions, tvSortByOptions, discoverWithFilters } from '../lib/tmdb';
 import type { TMDBFilters } from '../lib/supabase';
+import WatchlistButton from './WatchlistButton';
 
 interface SearchFormProps {
   basePath?: string;
@@ -844,41 +845,52 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                     : '/images/placeholder-poster.jpg';
 
                   return (
-                    <a
-                      key={`${item.media_type}-${item.id}`}
-                      href={createUrl(`/details?type=${item.media_type}&id=${item.id}`)}
-                      className="group block"
-                    >
-                      <div className="bg-gray-800 rounded-lg overflow-hidden transition-transform duration-300 group-hover:scale-105 group-hover:shadow-xl">
-                        <div className="relative">
-                          <img
-                            src={posterUrl}
-                            alt={title}
-                            className="w-full aspect-[2/3] object-cover"
-                          />
-                          <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-yellow-400 px-2 py-1 rounded text-sm font-semibold">
-                            {item.vote_average.toFixed(1)}
+                    <div key={`${item.media_type}-${item.id}`} className="group">
+                      <a
+                        href={createUrl(`/details?type=${item.media_type}&id=${item.id}`)}
+                        className="block"
+                      >
+                        <div className="bg-gray-800 rounded-lg overflow-hidden transition-transform duration-300 group-hover:scale-105 group-hover:shadow-xl">
+                          <div className="relative">
+                            <img
+                              src={posterUrl}
+                              alt={title}
+                              className="w-full aspect-[2/3] object-cover"
+                            />
+                            <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold uppercase z-10">
+                              {item.media_type}
+                            </div>
+                            <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
+                              <div className="bg-black bg-opacity-70 text-yellow-400 px-2 py-1 rounded text-sm font-semibold">
+                                {item.vote_average.toFixed(1)}
+                              </div>
+                              <div onClick={(e) => e.preventDefault()}>
+                                <WatchlistButton
+                                  movieId={item.id}
+                                  mediaType={item.media_type}
+                                  title={title}
+                                  posterPath={item.poster_path}
+                                />
+                              </div>
+                            </div>
                           </div>
-                          <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold uppercase">
-                            {item.media_type}
-                          </div>
-                        </div>
-                        
-                        <div className="p-4">
-                          <h3 className="font-semibold text-white mb-2 line-clamp-2" title={title}>
-                            {title}
-                          </h3>
-                          <p className="text-gray-400 text-sm mb-2">
-                            {year && `${year} • `}{item.media_type === 'tv' ? 'TV Show' : 'Movie'}
-                          </p>
-                          {item.overview && (
-                            <p className="text-gray-300 text-sm line-clamp-3">
-                              {item.overview}
+                          
+                          <div className="p-4">
+                            <h3 className="font-semibold text-white mb-2 line-clamp-2" title={title}>
+                              {title}
+                            </h3>
+                            <p className="text-gray-400 text-sm mb-2">
+                              {year && `${year} • `}{item.media_type === 'tv' ? 'TV Show' : 'Movie'}
                             </p>
-                          )}
+                            {item.overview && (
+                              <p className="text-gray-300 text-sm line-clamp-3">
+                                {item.overview}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </a>
+                      </a>
+                    </div>
                   );
                 })}
               </div>

@@ -76,6 +76,7 @@ export const tmdbEndpoints = {
   genres: (type: 'movie' | 'tv' = 'movie') => `/genre/${type}/list`,
   discover: (type: 'movie' | 'tv' = 'movie') => `/discover/${type}`,
   keywords: '/search/keyword',
+  companies: '/search/company',
   languages: '/configuration/languages',
   regions: '/configuration/countries',
 };
@@ -92,6 +93,20 @@ export async function fetchGenres(type: 'movie' | 'tv' = 'movie'): Promise<{ id:
     return data.genres || [];
   } catch (error) {
     console.error(`Error fetching ${type} genres:`, error);
+    return [];
+  }
+}
+
+/**
+ * Search for companies by name
+ */
+export async function searchCompanies(query: string): Promise<{ id: number; name: string; logo_path?: string }[]> {
+  try {
+    if (!query.trim()) return [];
+    const data = await fetchFromTMDB(tmdbEndpoints.companies, { query: query.trim() });
+    return data.results || [];
+  } catch (error) {
+    console.error('Error searching companies:', error);
     return [];
   }
 }
@@ -119,6 +134,11 @@ export async function discoverWithFilters(
     // Convert keyword array to comma-separated string if present
     if (params.with_keywords && Array.isArray(params.with_keywords)) {
       params.with_keywords = params.with_keywords.join(',');
+    }
+
+    // Convert companies array to comma-separated string if present
+    if (params.with_companies && Array.isArray(params.with_companies)) {
+      params.with_companies = params.with_companies.join(',');
     }
 
     // Set default sort if not provided

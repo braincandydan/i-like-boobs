@@ -120,12 +120,23 @@ function getStoredUsers(): LocalUser[] {
 }
 
 // Watchlist management
-export function getWatchlist(): WatchlistItem[] {
+// Updated to work with Supabase authenticated users
+export function getWatchlist(userId?: string): WatchlistItem[] {
   try {
-    const user = getCurrentUser();
-    if (!user) return [];
+    // Try to get userId from parameter, or from localStorage user, or from Supabase user
+    let id = userId;
+    
+    if (!id) {
+      // Try localStorage user first (for backward compatibility)
+      const localUser = getCurrentUser();
+      if (localUser) {
+        id = localUser.id;
+      }
+    }
+    
+    if (!id) return [];
 
-    const watchlistData = localStorage.getItem(`${STORAGE_KEYS.WATCHLIST}_${user.id}`);
+    const watchlistData = localStorage.getItem(`${STORAGE_KEYS.WATCHLIST}_${id}`);
     return watchlistData ? JSON.parse(watchlistData) : [];
   } catch (error) {
     console.error('Error getting watchlist:', error);
@@ -133,12 +144,21 @@ export function getWatchlist(): WatchlistItem[] {
   }
 }
 
-export function addToWatchlist(item: Omit<WatchlistItem, 'id' | 'addedAt'>): boolean {
+export function addToWatchlist(item: Omit<WatchlistItem, 'id' | 'addedAt'>, userId?: string): boolean {
   try {
-    const user = getCurrentUser();
-    if (!user) return false;
+    // Try to get userId from parameter, or from localStorage user
+    let id = userId;
+    
+    if (!id) {
+      const localUser = getCurrentUser();
+      if (localUser) {
+        id = localUser.id;
+      }
+    }
+    
+    if (!id) return false;
 
-    const watchlist = getWatchlist();
+    const watchlist = getWatchlist(id);
     
     // Check if item already exists
     const exists = watchlist.some(w => w.movieId === item.movieId && w.mediaType === item.mediaType);
@@ -151,7 +171,13 @@ export function addToWatchlist(item: Omit<WatchlistItem, 'id' | 'addedAt'>): boo
     };
 
     const updatedWatchlist = [...watchlist, newItem];
-    localStorage.setItem(`${STORAGE_KEYS.WATCHLIST}_${user.id}`, JSON.stringify(updatedWatchlist));
+    localStorage.setItem(`${STORAGE_KEYS.WATCHLIST}_${id}`, JSON.stringify(updatedWatchlist));
+    
+    // Trigger storage event for cross-tab sync
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: `${STORAGE_KEYS.WATCHLIST}_${id}`,
+      newValue: JSON.stringify(updatedWatchlist)
+    }));
     
     return true;
   } catch (error) {
@@ -160,15 +186,31 @@ export function addToWatchlist(item: Omit<WatchlistItem, 'id' | 'addedAt'>): boo
   }
 }
 
-export function removeFromWatchlist(movieId: number, mediaType: 'movie' | 'tv'): boolean {
+export function removeFromWatchlist(movieId: number, mediaType: 'movie' | 'tv', userId?: string): boolean {
   try {
-    const user = getCurrentUser();
-    if (!user) return false;
+    // Try to get userId from parameter, or from localStorage user
+    let id = userId;
+    
+    if (!id) {
+      const localUser = getCurrentUser();
+      if (localUser) {
+        id = localUser.id;
+      }
+    }
+    
+    if (!id) return false;
 
-    const watchlist = getWatchlist();
+    const watchlist = getWatchlist(id);
     const updatedWatchlist = watchlist.filter(w => !(w.movieId === movieId && w.mediaType === mediaType));
     
-    localStorage.setItem(`${STORAGE_KEYS.WATCHLIST}_${user.id}`, JSON.stringify(updatedWatchlist));
+    localStorage.setItem(`${STORAGE_KEYS.WATCHLIST}_${id}`, JSON.stringify(updatedWatchlist));
+    
+    // Trigger storage event for cross-tab sync
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: `${STORAGE_KEYS.WATCHLIST}_${id}`,
+      newValue: JSON.stringify(updatedWatchlist)
+    }));
+    
     return true;
   } catch (error) {
     console.error('Error removing from watchlist:', error);
@@ -176,9 +218,9 @@ export function removeFromWatchlist(movieId: number, mediaType: 'movie' | 'tv'):
   }
 }
 
-export function isInWatchlist(movieId: number, mediaType: 'movie' | 'tv'): boolean {
+export function isInWatchlist(movieId: number, mediaType: 'movie' | 'tv', userId?: string): boolean {
   try {
-    const watchlist = getWatchlist();
+    const watchlist = getWatchlist(userId);
     return watchlist.some(w => w.movieId === movieId && w.mediaType === mediaType);
   } catch (error) {
     console.error('Error checking watchlist:', error);
