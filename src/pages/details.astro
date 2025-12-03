@@ -207,7 +207,7 @@ import { createUrl } from '../lib/utils';
       const creditsEndpoint = `${endpoint}/credits`;
       
       const [contentResponse, creditsResponse] = await Promise.all([
-        fetch(`${BASE_URL}${endpoint}?api_key=${API_KEY}`),
+        fetch(`${BASE_URL}${endpoint}?api_key=${API_KEY}&include_adult=true`),
         fetch(`${BASE_URL}${creditsEndpoint}?api_key=${API_KEY}`)
       ]);
       

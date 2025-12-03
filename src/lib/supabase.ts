@@ -67,6 +67,7 @@ export type TMDBFilters = {
   watch_region?: string;
   certification?: string; // Movie certification (e.g., "G", "PG", "R", "NC-17", "X")
   certification_country?: string; // Country code for certification (e.g., "US")
+  with_cast?: number[]; // Filter by actor/actress IDs
   [key: string]: any; // Allow other TMDB discover params
 };
 

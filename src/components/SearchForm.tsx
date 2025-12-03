@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchFromTMDB, tmdbEndpoints, getImageUrl, fetchGenres, sortByOptions, tvSortByOptions, discoverWithFilters, getAllMovieCertifications } from '../lib/tmdb';
+import { fetchFromTMDB, tmdbEndpoints, getImageUrl, fetchGenres, sortByOptions, tvSortByOptions, discoverWithFilters, getAllMovieCertifications, searchActors } from '../lib/tmdb';
 import { supabase, isSupabaseConfigured, type TMDBFilters } from '../lib/supabase';
 import WatchlistButton from './WatchlistButton';
 
@@ -57,6 +57,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     endYear: '' as string | number,
     minRating: '' as string | number,
     certification: '' as string,
+    actors: [] as number[], // Actor IDs
     sortBy: 'popularity.desc' as string
   });
   
@@ -68,6 +69,13 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
   const [showYearDropdown, setShowYearDropdown] = useState(false);
   const [showRatingDropdown, setShowRatingDropdown] = useState(false);
   const [showCertificationDropdown, setShowCertificationDropdown] = useState(false);
+  
+  // Actor search state
+  const [actorSearchQuery, setActorSearchQuery] = useState('');
+  const [actorSearchResults, setActorSearchResults] = useState<{ id: number; name: string; profile_path?: string; known_for_department?: string }[]>([]);
+  const [searchingActors, setSearchingActors] = useState(false);
+  const [selectedActors, setSelectedActors] = useState<{ id: number; name: string; profile_path?: string }[]>([]);
+  const [showActorDropdown, setShowActorDropdown] = useState(false);
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -82,9 +90,11 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       // If there's a text query, use search API
       if (query.trim()) {
         setSearchMode('search');
+        // Always include adult content in search to show all available results
+        // Users can filter results client-side if needed
         const data = await fetchFromTMDB(tmdbEndpoints.search, {
           query: query.trim(),
-          include_adult: false
+          include_adult: true
         });
         
         // Filter out person results and only keep movies and TV shows
@@ -170,6 +180,11 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       if (filters.certification && mediaType === 'movie') {
         tmdbFilters.certification = filters.certification;
         tmdbFilters.certification_country = 'US'; // Default to US certifications
+      }
+      
+      // Actors
+      if (filters.actors.length > 0) {
+        tmdbFilters.with_cast = filters.actors;
       }
       
       // Sort
@@ -549,12 +564,59 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       endYear: '',
       minRating: '',
       certification: '',
+      actors: [],
       sortBy: 'popularity.desc'
     });
     setShowGenreDropdown(false);
     setShowYearDropdown(false);
     setShowRatingDropdown(false);
     setShowCertificationDropdown(false);
+    setShowActorDropdown(false);
+    setSelectedActors([]);
+    setActorSearchQuery('');
+    setActorSearchResults([]);
+  };
+
+  // Handle actor search
+  const handleActorSearch = async (query: string) => {
+    setActorSearchQuery(query);
+    if (!query.trim()) {
+      setActorSearchResults([]);
+      return;
+    }
+    
+    setSearchingActors(true);
+    try {
+      const results = await searchActors(query);
+      setActorSearchResults(results);
+    } catch (error) {
+      console.error('Error searching actors:', error);
+      setActorSearchResults([]);
+    } finally {
+      setSearchingActors(false);
+    }
+  };
+
+  // Add actor to selected list
+  const addActor = (actor: { id: number; name: string; profile_path?: string }) => {
+    if (!selectedActors.find(a => a.id === actor.id)) {
+      setSelectedActors([...selectedActors, actor]);
+      setFilters(prev => ({
+        ...prev,
+        actors: [...prev.actors, actor.id]
+      }));
+    }
+    setActorSearchQuery('');
+    setActorSearchResults([]);
+  };
+
+  // Remove actor from selected list
+  const removeActor = (actorId: number) => {
+    setSelectedActors(selectedActors.filter(a => a.id !== actorId));
+    setFilters(prev => ({
+      ...prev,
+      actors: prev.actors.filter(id => id !== actorId)
+    }));
   };
 
   const hasActiveFilters = filters.mediaType !== 'all' || 
@@ -563,6 +625,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     filters.endYear !== '' ||
     filters.minRating !== '' || 
     filters.certification !== '' ||
+    filters.actors.length > 0 ||
     (filters.sortBy !== 'relevance' && filters.sortBy !== 'popularity.desc');
 
   return (
@@ -694,6 +757,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                   setShowGenreDropdown(false);
                   setShowRatingDropdown(false);
                   setShowCertificationDropdown(false);
+                  setShowActorDropdown(false);
                 }}
                 className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center justify-between text-sm md:text-base h-[42px] ${
                   filters.startYear || filters.endYear ? 'ring-2 ring-red-600' : ''
@@ -724,6 +788,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                   setShowGenreDropdown(false);
                   setShowYearDropdown(false);
                   setShowCertificationDropdown(false);
+                  setShowActorDropdown(false);
                 }}
                 className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center justify-between text-sm md:text-base h-[42px] ${
                   filters.minRating ? 'ring-2 ring-red-600' : ''
@@ -740,12 +805,13 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                 <label className="block text-white mb-2 text-xs md:text-sm font-semibold">Certification</label>
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowCertificationDropdown(!showCertificationDropdown);
-                    setShowGenreDropdown(false);
-                    setShowYearDropdown(false);
-                    setShowRatingDropdown(false);
-                  }}
+                    onClick={() => {
+                      setShowCertificationDropdown(!showCertificationDropdown);
+                      setShowGenreDropdown(false);
+                      setShowYearDropdown(false);
+                      setShowRatingDropdown(false);
+                      setShowActorDropdown(false);
+                    }}
                   className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center justify-between text-sm md:text-base h-[42px] ${
                     filters.certification ? 'ring-2 ring-red-600' : ''
                   }`}
@@ -759,6 +825,87 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                 </button>
               </div>
             ) : null}
+
+            {/* Actors - Search and Select */}
+            <div className="relative md:col-span-2 lg:col-span-3">
+              <label className="block text-white mb-2 text-xs md:text-sm font-semibold">Actors</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={actorSearchQuery}
+                  onChange={(e) => handleActorSearch(e.target.value)}
+                  onFocus={() => setShowActorDropdown(true)}
+                  placeholder="Search for actors..."
+                  className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 text-sm md:text-base h-[42px] ${
+                    filters.actors.length > 0 ? 'ring-2 ring-red-600' : ''
+                  }`}
+                />
+                {searchingActors && (
+                  <div className="absolute right-3 top-2.5">
+                    <i className="fas fa-spinner fa-spin text-gray-400"></i>
+                  </div>
+                )}
+              </div>
+              
+              {/* Actor Search Results Dropdown */}
+              {showActorDropdown && actorSearchResults.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto bg-gray-800 rounded border border-gray-700 shadow-lg">
+                  {actorSearchResults.map(actor => (
+                    <button
+                      key={actor.id}
+                      type="button"
+                      onClick={() => {
+                        addActor(actor);
+                        setShowActorDropdown(false);
+                      }}
+                      className="w-full px-4 py-2 text-left hover:bg-gray-700 flex items-center gap-3"
+                    >
+                      {actor.profile_path && (
+                        <img
+                          src={getImageUrl(actor.profile_path, 'w92')}
+                          alt={actor.name}
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
+                      )}
+                      <div className="flex-1">
+                        <span className="text-white block">{actor.name}</span>
+                        {actor.known_for_department && (
+                          <span className="text-gray-400 text-xs">{actor.known_for_department}</span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              {/* Selected Actors */}
+              {selectedActors.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {selectedActors.map(actor => (
+                    <div
+                      key={actor.id}
+                      className="bg-red-600 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2"
+                    >
+                      {actor.profile_path && (
+                        <img
+                          src={getImageUrl(actor.profile_path, 'w92')}
+                          alt={actor.name}
+                          className="w-5 h-5 rounded-full object-cover"
+                        />
+                      )}
+                      <span>{actor.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeActor(actor.id)}
+                        className="ml-1 hover:text-red-200"
+                      >
+                        <i className="fas fa-times"></i>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Sort By - Dropdown on the Right */}
             <div className="md:col-span-1 lg:col-span-3">
@@ -793,6 +940,14 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
           )}
         </div>
       </div>
+
+      {/* Click outside to close actor dropdown */}
+      {showActorDropdown && actorSearchResults.length > 0 && (
+        <div
+          className="fixed inset-0 z-30"
+          onClick={() => setShowActorDropdown(false)}
+        ></div>
+      )}
 
       {/* Genre Mega Menu - Full Width Below Filters */}
       {showGenreDropdown && (

@@ -33,7 +33,7 @@ let cast = [];
 let error = null;
 
 try {
-  show = await fetchFromTMDB(tmdbEndpoints.tvDetails(parseInt(id)));
+  show = await fetchFromTMDB(tmdbEndpoints.tvDetails(parseInt(id)), { include_adult: true });
   
   const credits = await fetchFromTMDB(`/tv/${id}/credits`);
   cast = credits.cast.slice(0, 10);

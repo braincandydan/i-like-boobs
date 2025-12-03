@@ -73,6 +73,7 @@ export const tmdbEndpoints = {
   movieDetails: (id: number) => `/movie/${id}`,
   tvDetails: (id: number) => `/tv/${id}`,
   search: '/search/multi',
+  searchPerson: '/search/person',
   genres: (type: 'movie' | 'tv' = 'movie') => `/genre/${type}/list`,
   discover: (type: 'movie' | 'tv' = 'movie') => `/discover/${type}`,
   keywords: '/search/keyword',
@@ -80,6 +81,9 @@ export const tmdbEndpoints = {
   languages: '/configuration/languages',
   regions: '/configuration/countries',
   certifications: (type: 'movie' | 'tv' = 'movie') => `/certification/${type}/list`,
+  personDetails: (id: number) => `/person/${id}`,
+  personMovieCredits: (id: number) => `/person/${id}/movie_credits`,
+  personTvCredits: (id: number) => `/person/${id}/tv_credits`,
 };
 
 // Import filter types from supabase
@@ -108,6 +112,23 @@ export async function searchCompanies(query: string): Promise<{ id: number; name
     return data.results || [];
   } catch (error) {
     console.error('Error searching companies:', error);
+    return [];
+  }
+}
+
+/**
+ * Search for actors/people by name
+ */
+export async function searchActors(query: string): Promise<{ id: number; name: string; profile_path?: string; known_for_department?: string; popularity?: number }[]> {
+  try {
+    if (!query.trim()) return [];
+    const data = await fetchFromTMDB(tmdbEndpoints.searchPerson, { 
+      query: query.trim(),
+      include_adult: true 
+    });
+    return (data.results || []).slice(0, 20); // Limit to 20 results
+  } catch (error) {
+    console.error('Error searching actors:', error);
     return [];
   }
 }
@@ -145,9 +166,13 @@ export async function discoverWithFilters(
     // Include adult content if certification filter is set (needed for X, NC-17, etc.)
     // Also include if explicitly requested
     // Always include adult content when filtering by certification to ensure all ratings are available
+    // Also include for adult certifications (X, NC-17, R18+, etc.)
     if (params.certification) {
       params.include_adult = true;
     } else if (filters.include_adult) {
+      params.include_adult = true;
+    } else {
+      // Default to including adult content for discover API to show all available content
       params.include_adult = true;
     }
 
