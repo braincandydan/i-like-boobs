@@ -206,13 +206,19 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       // Discover for the selected media type
       let results = await discoverWithFilters(mediaType, tmdbFilters, 100);
       
+      // Ensure all results have media_type set
+      results = results.map(item => ({
+        ...item,
+        media_type: item.media_type || mediaType
+      }));
+      
       // If "all" was selected, also get the other type
       if (filters.mediaType === 'all') {
-        const otherType = mediaType === 'movie' ? 'tv' : 'movie';
-        const otherFilters = { ...tmdbFilters, media_type: otherType };
-        // Adjust year field for the other type
-        if (filters.year) {
-          const year = typeof filters.year === 'string' ? parseInt(filters.year) : filters.year;
+        const otherType: 'movie' | 'tv' = mediaType === 'movie' ? 'tv' : 'movie';
+        const otherFilters: TMDBFilters = { ...tmdbFilters, media_type: otherType };
+        // Adjust year field for the other type if we have a single year
+        if (filters.startYear && filters.endYear && filters.startYear === filters.endYear) {
+          const year = typeof filters.startYear === 'string' ? parseInt(filters.startYear) : filters.startYear;
           if (!isNaN(year)) {
             delete otherFilters.primary_release_year;
             delete otherFilters.first_air_date_year;
@@ -224,7 +230,12 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
           }
         }
         const otherResults = await discoverWithFilters(otherType, otherFilters, 100);
-        results = [...results, ...otherResults];
+        // Ensure other results also have media_type set
+        const typedOtherResults = otherResults.map(item => ({
+          ...item,
+          media_type: item.media_type || otherType
+        }));
+        results = [...results, ...typedOtherResults];
       }
       
       setAllResults(results);
@@ -356,7 +367,13 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
           const mediaType = tmdbFilters.media_type || 'movie';
           const results = await discoverWithFilters(mediaType, tmdbFilters, 100);
           
-          setAllResults(results);
+          // Ensure all results have media_type set
+          const typedResults = results.map(item => ({
+            ...item,
+            media_type: item.media_type || mediaType
+          }));
+          
+          setAllResults(typedResults);
           setIsLoading(false);
         } else {
           // No filters - this shouldn't happen for auto-generated categories, but handle it
@@ -1273,11 +1290,21 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                   const posterUrl = item.poster_path 
                     ? getImageUrl(item.poster_path, 'w500')
                     : '/images/placeholder-poster.jpg';
+                  
+                  // Determine media type - use item.media_type or infer from title/name
+                  // Filter out 'person' type and ensure we have 'movie' or 'tv'
+                  let mediaType: 'movie' | 'tv';
+                  if (item.media_type === 'movie' || item.media_type === 'tv') {
+                    mediaType = item.media_type;
+                  } else {
+                    // Infer from title/name (movies have title, TV shows have name)
+                    mediaType = item.title ? 'movie' : 'tv';
+                  }
 
                   return (
-                    <div key={`${item.media_type}-${item.id}`} className="group">
+                    <div key={`${mediaType}-${item.id}`} className="group">
                       <a
-                        href={createUrl(`/details?type=${item.media_type}&id=${item.id}`)}
+                        href={createUrl(`/details?type=${mediaType}&id=${item.id}`)}
                         className="block"
                       >
                         <div className="bg-gray-800 rounded-lg overflow-hidden transition-transform duration-300 group-hover:scale-105 group-hover:shadow-xl">
@@ -1288,7 +1315,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                               className="w-full aspect-[2/3] object-cover"
                             />
                             <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold uppercase z-10">
-                              {item.media_type}
+                              {mediaType}
                             </div>
                             <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
                               <div className="bg-black bg-opacity-70 text-yellow-400 px-2 py-1 rounded text-sm font-semibold">
@@ -1297,8 +1324,8 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                               <div onClick={(e) => e.preventDefault()}>
                                 <WatchlistButton
                                   movieId={item.id}
-                                  mediaType={item.media_type}
-                                  title={title}
+                                  mediaType={mediaType}
+                                  title={title || ''}
                                   posterPath={item.poster_path}
                                 />
                               </div>
