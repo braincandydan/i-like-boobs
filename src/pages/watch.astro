@@ -557,8 +557,14 @@ import { createUrl } from '../lib/utils';
     }
     
     async function loadWebTorrent(magnetLink, torrentFile) {
-      // Import WebTorrent dynamically
-      const WebTorrent = (await import('webtorrent')).default;
+      // Use WebTorrent from CDN (already loaded in Layout.astro)
+      // Check if WebTorrent is available
+      const WebTorrentGlobal = (window as any).WebTorrent;
+      if (typeof WebTorrentGlobal === 'undefined') {
+        throw new Error('WebTorrent library not loaded. Please refresh the page.');
+      }
+      
+      const WebTorrentClient = WebTorrentGlobal;
       
       // Stop any existing torrent
       if (webtorrentClient) {
@@ -566,7 +572,7 @@ import { createUrl } from '../lib/utils';
       }
       
       // Create new WebTorrent client
-      webtorrentClient = new WebTorrent();
+      webtorrentClient = new WebTorrentClient();
       
       const videoPlayer = document.getElementById('video-player');
       const webtorrentContainer = document.getElementById('webtorrent-container');
