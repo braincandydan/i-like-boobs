@@ -20,9 +20,10 @@ import { createUrl } from '../lib/utils';
     <div class="text-center">
       <i class="fas fa-exclamation-triangle text-6xl text-red-600 mb-6"></i>
       <h1 class="text-3xl font-bold text-white mb-4">Content Not Found</h1>
-      <p class="text-gray-400 mb-8">
+      <p class="text-gray-400 mb-4" id="error-message">
         The requested content could not be found.
       </p>
+      <p class="text-gray-500 text-sm mb-8" id="error-details"></p>
       <a href={createUrl("/")} class="btn-primary">
         <i class="fas fa-home mr-2"></i>
         Back to Home
@@ -206,17 +207,56 @@ import { createUrl } from '../lib/utils';
       const endpoint = type === 'movie' ? `/movie/${id}` : `/tv/${id}`;
       const creditsEndpoint = `${endpoint}/credits`;
       
-      const [contentResponse, creditsResponse] = await Promise.all([
-        fetch(`${BASE_URL}${endpoint}?api_key=${API_KEY}&include_adult=true`),
-        fetch(`${BASE_URL}${creditsEndpoint}?api_key=${API_KEY}`)
-      ]);
+      // Note: TMDB details endpoints don't support include_adult parameter
+      // Adult content should be accessible directly by ID
+      let contentResponse = await fetch(`${BASE_URL}${endpoint}?api_key=${API_KEY}`);
       
-      if (!contentResponse.ok || !creditsResponse.ok) {
-        throw new Error(`${type === 'movie' ? 'Movie' : 'TV show'} not found`);
+      // If that fails, log the error for debugging
+      if (!contentResponse.ok) {
+        const errorText = await contentResponse.text().catch(() => 'Unknown error');
+        console.error(`TMDB API Error for ${endpoint} (${contentResponse.status}):`, errorText);
+        
+        // Try with include_adult as a fallback (though it shouldn't be needed)
+        if (contentResponse.status === 404 || contentResponse.status === 401) {
+          console.log('Retrying with include_adult parameter...');
+          contentResponse = await fetch(`${BASE_URL}${endpoint}?api_key=${API_KEY}&include_adult=true`);
+        }
+      }
+      
+      // Fetch credits (optional, don't fail if this fails)
+      let creditsResponse;
+      try {
+        creditsResponse = await fetch(`${BASE_URL}${creditsEndpoint}?api_key=${API_KEY}`);
+      } catch (creditsError) {
+        console.warn('Could not fetch credits:', creditsError);
+        creditsResponse = { ok: false };
+      }
+      
+      // Check content response
+      if (!contentResponse.ok) {
+        const errorText = await contentResponse.text().catch(() => 'Unknown error');
+        console.error(`TMDB API Error (${contentResponse.status}):`, errorText);
+        throw new Error(`${type === 'movie' ? 'Movie' : 'TV show'} not found (${contentResponse.status})`);
+      }
+      
+      // Credits are optional, don't fail if they're missing
+      let credits = { cast: [] };
+      if (creditsResponse && creditsResponse.ok) {
+        try {
+          credits = await creditsResponse.json();
+        } catch (creditsError) {
+          console.warn('Could not parse credits, continuing without them');
+        }
+      } else {
+        console.warn('Could not fetch credits, continuing without them');
       }
       
       const content = await contentResponse.json();
-      const credits = await creditsResponse.json();
+      
+      // Check if content was actually returned
+      if (!content || !content.id) {
+        throw new Error(`${type === 'movie' ? 'Movie' : 'TV show'} data is invalid`);
+      }
       
       window.currentContent = content;
       
@@ -583,7 +623,18 @@ import { createUrl } from '../lib/utils';
       console.error('Error in initializePage:', error);
       // Hide loading, show error
       document.getElementById('loading-screen').classList.add('hidden');
-      document.getElementById('error-screen').classList.remove('hidden');
+      const errorScreen = document.getElementById('error-screen');
+      const errorMessage = document.getElementById('error-message');
+      const errorDetails = document.getElementById('error-details');
+      
+      if (errorMessage) {
+        errorMessage.textContent = error.message || 'The requested content could not be found.';
+      }
+      if (errorDetails) {
+        errorDetails.textContent = `Type: ${contentType || 'unknown'}, ID: ${contentId || 'unknown'}`;
+      }
+      
+      errorScreen.classList.remove('hidden');
     }
   }
   

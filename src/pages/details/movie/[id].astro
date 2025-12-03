@@ -18,7 +18,9 @@ let cast = [];
 let error = null;
 
 try {
-  movie = await fetchFromTMDB(tmdbEndpoints.movieDetails(parseInt(id)), { include_adult: true });
+  // Note: TMDB details endpoints don't support include_adult parameter
+  // Adult content should be accessible directly by ID
+  movie = await fetchFromTMDB(tmdbEndpoints.movieDetails(parseInt(id)));
   
   // Fetch cast information
   const credits = await fetchFromTMDB(`/movie/${id}/credits`);
