@@ -135,7 +135,9 @@ import { createUrl } from '../lib/utils';
   basePath: import.meta.env.BASE_URL || '/', 
   apiKey: import.meta.env.PUBLIC_TMDB_API_KEY,
   tmdbBaseUrl: import.meta.env.PUBLIC_TMDB_BASE_URL || 'https://api.themoviedb.org/3',
-  tmdbImageBaseUrl: import.meta.env.PUBLIC_TMDB_IMAGE_BASE_URL || 'https://image.tmdb.org/t/p'
+  tmdbImageBaseUrl: import.meta.env.PUBLIC_TMDB_IMAGE_BASE_URL || 'https://image.tmdb.org/t/p',
+  supabaseUrl: import.meta.env.PUBLIC_SUPABASE_URL || '',
+  supabaseKey: import.meta.env.PUBLIC_SUPABASE_ANON_KEY || ''
 }}>
   // Global variables
   window.currentContent = null;
@@ -534,9 +536,6 @@ import { createUrl } from '../lib/utils';
   // Get current user from Supabase
   async function getCurrentUser() {
     try {
-      const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL;
-      const supabaseKey = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
-      
       if (supabaseUrl && supabaseKey) {
         const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(supabaseUrl, supabaseKey);

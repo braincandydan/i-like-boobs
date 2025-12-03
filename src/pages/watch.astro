@@ -228,6 +228,55 @@ import { createUrl } from '../lib/utils';
   });
   
   function initializeWatchPage() {
+    // Monitor CSP violations to see what's being blocked
+    if (window.SecurityPolicyViolationEvent) {
+      document.addEventListener('securitypolicyviolation', (e) => {
+        console.warn('CSP Violation detected:', {
+          blockedURI: e.blockedURI,
+          violatedDirective: e.violatedDirective,
+          effectiveDirective: e.effectiveDirective,
+          sourceFile: e.sourceFile,
+          lineNumber: e.lineNumber,
+          columnNumber: e.columnNumber
+        });
+      });
+    }
+    
+    // Monitor iframe load events to see what's being loaded
+    const originalCreateElement = document.createElement;
+    document.createElement = function(tagName) {
+      const element = originalCreateElement.call(this, tagName);
+      if (tagName.toLowerCase() === 'iframe') {
+        console.log('Iframe created:', element);
+        element.addEventListener('load', function() {
+          console.log('Iframe loaded:', {
+            src: this.src,
+            contentWindow: this.contentWindow ? 'has contentWindow' : 'no contentWindow',
+            contentDocument: this.contentDocument ? 'has contentDocument' : 'no contentDocument'
+          });
+          // Try to log nested iframes
+          try {
+            if (this.contentDocument) {
+              const nestedIframes = this.contentDocument.querySelectorAll('iframe');
+              if (nestedIframes.length > 0) {
+                console.log('Nested iframes found:', nestedIframes.length);
+                nestedIframes.forEach((iframe, index) => {
+                  console.log(`Nested iframe ${index}:`, {
+                    src: iframe.src,
+                    id: iframe.id,
+                    className: iframe.className
+                  });
+                });
+              }
+            }
+          } catch (e) {
+            // CORS will prevent this, but we try
+          }
+        });
+      }
+      return element;
+    };
+    
     // Get URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const type = urlParams.get('type') || 'movie';
@@ -279,7 +328,43 @@ import { createUrl } from '../lib/utils';
     ];
     
     // Update video player
+    console.log('Loading video player with URL:', primaryUrl);
     videoPlayer.src = primaryUrl;
+    
+    // Monitor iframe src changes
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'src') {
+          console.log('Iframe src changed to:', videoPlayer.src);
+        }
+      });
+    });
+    observer.observe(videoPlayer, { attributes: true, attributeFilter: ['src'] });
+    
+    // Monitor iframe load
+    videoPlayer.addEventListener('load', () => {
+      console.log('Main video player iframe loaded:', {
+        src: videoPlayer.src,
+        currentSrc: videoPlayer.currentSrc || 'N/A'
+      });
+      
+      // Try to inspect nested content (will fail due to CORS, but we try)
+      try {
+        if (videoPlayer.contentDocument) {
+          const scripts = videoPlayer.contentDocument.querySelectorAll('script[src]');
+          scripts.forEach(script => {
+            console.log('Script in iframe:', script.src);
+          });
+          
+          const iframes = videoPlayer.contentDocument.querySelectorAll('iframe');
+          iframes.forEach(iframe => {
+            console.log('Nested iframe found:', iframe.src);
+          });
+        }
+      } catch (e) {
+        console.log('Cannot inspect iframe content (CORS):', e.message);
+      }
+    });
     
     // Update titles
     const displayTitle = type === 'tv' ? `${title} S${season}E${episode}` : title;
@@ -551,8 +636,8 @@ import { createUrl } from '../lib/utils';
           iframeDoc.head?.appendChild(script);
         }
       } catch (e) {
-        // CORS will prevent this, but we try anyway
-        console.log('Could not inject into iframe (CORS protected)');
+        // CORS will prevent this, but we try anyway - this is expected and not an error
+        // Silently handle - no need to log
       }
     });
     
