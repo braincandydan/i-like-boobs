@@ -1,0 +1,398 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/Navbar.astro';
+import { createUrl } from '../lib/utils';
+---
+
+<Layout title="Watch Torrent - NotFlix">
+  <Navbar />
+  
+  <!-- Loading Screen -->
+  <div id="loading-screen" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="text-center py-20">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+      <p class="text-white">Loading torrent player...</p>
+    </div>
+  </div>
+
+  <!-- Magnet Input Screen (shown when no magnet in URL) -->
+  <div id="magnet-input-screen" class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 hidden">
+    <div class="bg-gray-800 rounded-lg p-8">
+      <div class="text-center mb-6">
+        <i class="fas fa-magnet text-6xl text-red-600 mb-4"></i>
+        <h1 class="text-3xl font-bold text-white mb-2">Load Torrent</h1>
+        <p class="text-gray-400">
+          Enter a magnet link to start streaming
+        </p>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-white text-sm font-medium mb-2">Magnet Link:</label>
+          <input
+            type="text"
+            id="magnet-input"
+            placeholder="magnet:?xt=urn:btih:..."
+            class="w-full bg-gray-700 text-white px-4 py-3 rounded border border-gray-600 focus:border-red-600 focus:outline-none"
+          />
+        </div>
+        <div class="text-center text-gray-400 text-sm">OR</div>
+        <div>
+          <label class="block text-white text-sm font-medium mb-2">Torrent File:</label>
+          <input
+            type="file"
+            id="torrent-file-input"
+            accept=".torrent"
+            class="w-full bg-gray-700 text-white px-4 py-3 rounded border border-gray-600 focus:border-red-600 focus:outline-none"
+          />
+        </div>
+        <div class="flex space-x-4">
+          <button
+            id="load-torrent-btn"
+            class="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded transition-colors font-medium"
+          >
+            <i class="fas fa-play mr-2"></i>
+            Load Torrent
+          </button>
+          <a href={createUrl("/")} class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 rounded transition-colors">
+            <i class="fas fa-home mr-2"></i>
+            Back to Home
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Video Player Section -->
+  <div id="player-container" class="relative w-full hidden">
+    <!-- Player Header -->
+    <div class="bg-black bg-opacity-50 p-4">
+      <div class="max-w-7xl mx-auto flex items-center justify-between">
+        <div class="flex items-center space-x-4">
+          <a id="back-link" href={createUrl("/")} class="text-white hover:text-red-600 transition-colors">
+            <i class="fas fa-arrow-left text-xl"></i>
+          </a>
+          <h1 id="video-title" class="text-xl font-bold text-white">
+            Loading...
+          </h1>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Video Player -->
+    <div class="relative w-full amazon-silk-fix" style="padding-bottom: 56.25%; height: 0;">
+      <!-- WebTorrent Player -->
+      <div id="webtorrent-container" class="absolute top-0 left-0 w-full h-full">
+        <video
+          id="webtorrent-player"
+          class="w-full h-full"
+          controls
+          autoplay
+        ></video>
+        
+        <!-- WebTorrent Status -->
+        <div id="webtorrent-status" class="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-4 py-2 rounded text-sm">
+          <div class="flex items-center space-x-2">
+            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            <span>Connecting to peers...</span>
+          </div>
+        </div>
+        
+        <!-- WebTorrent Progress -->
+        <div id="webtorrent-progress" class="absolute bottom-4 left-4 right-4 bg-black bg-opacity-70 rounded p-2">
+          <div class="flex items-center justify-between text-white text-xs mb-1">
+            <span>Download Speed: <span id="download-speed">0</span> MB/s</span>
+            <span>Upload Speed: <span id="upload-speed">0</span> MB/s</span>
+          </div>
+          <div class="w-full bg-gray-700 rounded-full h-2">
+            <div id="progress-bar" class="bg-red-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <div class="text-white text-xs mt-1">
+            <span>Progress: <span id="progress-text">0%</span></span>
+            <span class="ml-4">Peers: <span id="peer-count">0</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Player Controls & Info -->
+    <div class="bg-gray-900 p-4">
+      <div class="max-w-7xl mx-auto">
+        <div class="flex flex-col md:flex-row gap-6">
+          <!-- Movie Info -->
+          <div class="flex-1">
+            <h2 id="content-title" class="text-2xl font-bold text-white mb-2">Loading...</h2>
+            <p id="content-overview" class="text-gray-300 text-sm leading-relaxed mb-4"></p>
+          </div>
+          
+          <!-- Action Buttons -->
+          <div class="flex flex-col space-y-2 md:w-64">
+            <button onclick="toggleFullscreen()" class="btn-secondary">
+              <i class="fas fa-expand mr-2"></i>
+              Fullscreen
+            </button>
+            <button onclick="loadNewMagnet()" class="btn-secondary">
+              <i class="fas fa-magnet mr-2"></i>
+              Load New Magnet
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  // Wait for DOM to be ready
+  document.addEventListener('DOMContentLoaded', () => {
+    initializeTorrentPlayer();
+  });
+
+  function initializeTorrentPlayer() {
+    // Get URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const magnetLink = urlParams.get('magnet');
+    const title = urlParams.get('title') || 'Torrent Stream';
+    
+    // Get DOM elements
+    const loadingScreen = document.getElementById('loading-screen');
+    const errorScreen = document.getElementById('error-screen');
+    const playerContainer = document.getElementById('player-container');
+    const videoTitle = document.getElementById('video-title');
+    const contentTitle = document.getElementById('content-title');
+    const backLink = document.getElementById('back-link');
+    
+    // Get magnet input screen
+    const magnetInputScreen = document.getElementById('magnet-input-screen');
+    const magnetInput = document.getElementById('magnet-input') as HTMLInputElement;
+    const torrentFileInput = document.getElementById('torrent-file-input') as HTMLInputElement;
+    const loadTorrentBtn = document.getElementById('load-torrent-btn');
+    
+    // Check if we have magnet link in URL
+    if (!magnetLink) {
+      // Show input screen instead of error
+      loadingScreen.classList.add('hidden');
+      playerContainer.classList.add('hidden');
+      if (magnetInputScreen) {
+        magnetInputScreen.classList.remove('hidden');
+      }
+      
+      // Set up input handlers
+      if (loadTorrentBtn) {
+        loadTorrentBtn.addEventListener('click', () => {
+          const magnetValue = magnetInput?.value.trim();
+          const torrentFile = torrentFileInput?.files?.[0];
+          
+          if (!magnetValue && !torrentFile) {
+            alert('Please enter a magnet link or select a torrent file');
+            return;
+          }
+          
+          if (magnetValue) {
+            // Hide input screen, show player, and load
+            if (magnetInputScreen) {
+              magnetInputScreen.classList.add('hidden');
+            }
+            playerContainer.classList.remove('hidden');
+            loadWebTorrent(magnetValue);
+          } else if (torrentFile) {
+            // Hide input screen, show player, and load
+            if (magnetInputScreen) {
+              magnetInputScreen.classList.add('hidden');
+            }
+            playerContainer.classList.remove('hidden');
+            loadWebTorrent(null, torrentFile);
+          }
+        });
+      }
+      
+      // Allow Enter key to submit
+      if (magnetInput) {
+        magnetInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            loadTorrentBtn?.click();
+          }
+        });
+      }
+      
+      return;
+    }
+    
+    // Hide loading, show player
+    loadingScreen.classList.add('hidden');
+    playerContainer.classList.remove('hidden');
+    
+    // Update titles
+    videoTitle.textContent = title;
+    contentTitle.textContent = title;
+    document.title = `Watch ${title} - NotFlix`;
+    
+    // Update navigation links with proper base path
+    const basePath = window.location.pathname.includes('/i-like-boobs') ? '/i-like-boobs/' : '/';
+    backLink.href = basePath;
+    
+    // WebTorrent client
+    let webtorrentClient = null;
+    let webtorrentTorrent = null;
+    
+    // Load the magnet link automatically
+    loadWebTorrent(magnetLink);
+    
+    async function loadWebTorrent(magnetLink: string | null, torrentFile?: File) {
+      try {
+        // Import WebTorrent as ES module
+        const WebTorrentModule = await import('https://esm.sh/webtorrent') as any;
+        const WebTorrentClient = WebTorrentModule.default || WebTorrentModule;
+        
+        // Stop any existing torrent
+        if (webtorrentClient) {
+          webtorrentClient.destroy();
+        }
+        
+        // Create new WebTorrent client
+        webtorrentClient = new WebTorrentClient();
+        
+        const webtorrentContainer = document.getElementById('webtorrent-container');
+        const webtorrentPlayer = document.getElementById('webtorrent-player');
+        const webtorrentStatus = document.getElementById('webtorrent-status');
+        const webtorrentProgress = document.getElementById('webtorrent-progress');
+        
+        // Update status
+        webtorrentStatus.innerHTML = `
+          <div class="flex items-center space-x-2">
+            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            <span>Connecting to peers...</span>
+          </div>
+        `;
+        
+        // Add torrent
+        const torrent = magnetLink 
+          ? webtorrentClient.add(magnetLink)
+          : webtorrentClient.add(torrentFile!);
+        webtorrentTorrent = torrent;
+        
+        torrent.on('metadata', () => {
+          console.log('Torrent metadata received');
+          webtorrentStatus.innerHTML = `
+            <div class="flex items-center space-x-2">
+              <i class="fas fa-check-circle text-green-400"></i>
+              <span>Connected! Finding video file...</span>
+            </div>
+          `;
+          
+          // Find the largest video file
+          const files = torrent.files;
+          let videoFile = null;
+          let maxSize = 0;
+          
+          files.forEach(file => {
+            if (file.name.endsWith('.mp4') || file.name.endsWith('.mkv') || 
+                file.name.endsWith('.avi') || file.name.endsWith('.webm') ||
+                file.name.endsWith('.mov')) {
+              if (file.length > maxSize) {
+                maxSize = file.length;
+                videoFile = file;
+              }
+            }
+          });
+          
+          if (!videoFile && files.length > 0) {
+            // If no video file found, use the largest file
+            files.forEach(file => {
+              if (file.length > maxSize) {
+                maxSize = file.length;
+                videoFile = file;
+              }
+            });
+          }
+          
+          if (videoFile) {
+            console.log('Playing video file:', videoFile.name);
+            videoFile.renderTo(webtorrentPlayer, {
+              autoplay: true,
+              controls: true
+            });
+            
+            webtorrentStatus.innerHTML = `
+              <div class="flex items-center space-x-2">
+                <i class="fas fa-play-circle text-green-400"></i>
+                <span>Playing: ${videoFile.name}</span>
+              </div>
+            `;
+          } else {
+            webtorrentStatus.innerHTML = `
+              <div class="flex items-center space-x-2">
+                <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+                <span>No video file found in torrent</span>
+              </div>
+            `;
+          }
+        });
+        
+        torrent.on('download', () => {
+          const progress = (torrent.progress * 100).toFixed(1);
+          const downloadSpeed = (torrent.downloadSpeed / 1024 / 1024).toFixed(2);
+          const uploadSpeed = (torrent.uploadSpeed / 1024 / 1024).toFixed(2);
+          const peers = torrent.numPeers;
+          
+          document.getElementById('progress-text').textContent = `${progress}%`;
+          document.getElementById('progress-bar').style.width = `${progress}%`;
+          document.getElementById('download-speed').textContent = downloadSpeed;
+          document.getElementById('upload-speed').textContent = uploadSpeed;
+          document.getElementById('peer-count').textContent = peers.toString();
+        });
+        
+        torrent.on('done', () => {
+          webtorrentStatus.innerHTML = `
+            <div class="flex items-center space-x-2">
+              <i class="fas fa-check-circle text-green-400"></i>
+              <span>Download complete!</span>
+            </div>
+          `;
+        });
+        
+        torrent.on('error', (err) => {
+          console.error('Torrent error:', err);
+          webtorrentStatus.innerHTML = `
+            <div class="flex items-center space-x-2">
+              <i class="fas fa-exclamation-triangle text-red-400"></i>
+              <span>Error: ${err.message}</span>
+            </div>
+          `;
+        });
+      } catch (error) {
+        console.error('Error loading WebTorrent:', error);
+        webtorrentStatus.innerHTML = `
+          <div class="flex items-center space-x-2">
+            <i class="fas fa-exclamation-triangle text-red-400"></i>
+            <span>Error loading torrent: ${error.message}</span>
+          </div>
+        `;
+      }
+    }
+    
+    
+    // Make functions available globally
+    (window as any).loadNewMagnet = () => {
+      const newMagnet = prompt('Enter a new magnet link:');
+      if (newMagnet && newMagnet.startsWith('magnet:')) {
+        loadWebTorrent(newMagnet);
+      } else if (newMagnet) {
+        alert('Please enter a valid magnet link starting with "magnet:"');
+      }
+    };
+    
+    (window as any).toggleFullscreen = () => {
+      const player = document.getElementById('webtorrent-player') as HTMLVideoElement;
+      if (player) {
+        if (player.requestFullscreen) {
+          player.requestFullscreen();
+        } else if ((player as any).webkitRequestFullscreen) {
+          (player as any).webkitRequestFullscreen();
+        } else if ((player as any).mozRequestFullScreen) {
+          (player as any).mozRequestFullScreen();
+        }
+      }
+    };
+  }
+</script>
+

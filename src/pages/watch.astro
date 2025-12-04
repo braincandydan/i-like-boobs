@@ -367,6 +367,7 @@ import { createUrl } from '../lib/utils';
     const title = urlParams.get('title') || 'Unknown';
     const season = urlParams.get('season') || '1';
     const episode = urlParams.get('episode') || '1';
+    const magnetLink = urlParams.get('magnet'); // Get magnet link if provided
     
     // Get DOM elements
     const loadingScreen = document.getElementById('loading-screen');
@@ -461,17 +462,6 @@ import { createUrl } from '../lib/utils';
     backLink.href = basePath + `details/${type}/${id}`;
     detailsLink.href = basePath + `details/${type}/${id}`;
     
-    // Populate server select
-    serverSelect.innerHTML = '';
-    alternativeServers.forEach((server, index) => {
-      const option = document.createElement('option');
-      option.value = index.toString();
-      option.textContent = server.name;
-      option.selected = index === 0;
-      option.dataset.playerType = server.playerType;
-      serverSelect.appendChild(option);
-    });
-    
     // Set up server switching with error handling
     let currentServerIndex = 0;
     let webtorrentClient = null;
@@ -544,6 +534,63 @@ import { createUrl } from '../lib/utils';
       const selectedIndex = parseInt(e.target.value);
       loadServer(selectedIndex);
     });
+    
+    // Populate server select
+    serverSelect.innerHTML = '';
+    alternativeServers.forEach((server, index) => {
+      const option = document.createElement('option');
+      option.value = index.toString();
+      option.textContent = server.name;
+      // If magnet link is provided, select WebTorrent by default
+      if (magnetLink && server.playerType === 'webtorrent') {
+        option.selected = true;
+        currentServerIndex = index;
+      } else if (!magnetLink && index === 0) {
+        option.selected = true;
+        currentServerIndex = 0;
+      }
+      option.dataset.playerType = server.playerType;
+      serverSelect.appendChild(option);
+    });
+    
+    // If magnet link is provided, auto-load WebTorrent
+    if (magnetLink) {
+      // Find WebTorrent server index
+      const webtorrentIndex = alternativeServers.findIndex(s => s.playerType === 'webtorrent');
+      if (webtorrentIndex !== -1) {
+        // Wait for DOM to be fully ready, then switch to WebTorrent
+        setTimeout(() => {
+          console.log('Auto-loading magnet link:', magnetLink);
+          // Set the server select value
+          serverSelect.value = webtorrentIndex.toString();
+          // Load the WebTorrent server (this will open the modal)
+          loadServer(webtorrentIndex);
+          
+          // Wait for modal to open, then pre-fill and auto-load
+          setTimeout(() => {
+            const magnetInput = document.getElementById('magnet-input') as HTMLInputElement;
+            if (magnetInput) {
+              const decodedMagnet = decodeURIComponent(magnetLink);
+              magnetInput.value = decodedMagnet;
+              console.log('Pre-filled magnet link in input');
+              
+              // Auto-click load button after a short delay
+              setTimeout(() => {
+                const loadBtn = document.getElementById('load-webtorrent-btn') as HTMLButtonElement;
+                if (loadBtn) {
+                  console.log('Auto-clicking load button');
+                  loadBtn.click();
+                } else {
+                  console.error('Load button not found');
+                }
+              }, 300);
+            } else {
+              console.error('Magnet input not found');
+            }
+          }, 800); // Give modal time to open
+        }, 200);
+      }
+    }
     
     // WebTorrent functionality
     function showWebTorrentModal() {

@@ -76,9 +76,36 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
   const [searchingActors, setSearchingActors] = useState(false);
   const [selectedActors, setSelectedActors] = useState<{ id: number; name: string; profile_path?: string }[]>([]);
   const [showActorDropdown, setShowActorDropdown] = useState(false);
+  
+  // Streams/Torrent state
+  const [showStreams, setShowStreams] = useState(false);
+  const [torrentStreams, setTorrentStreams] = useState<Record<string, any[]>>({});
+  const [loadingStreams, setLoadingStreams] = useState<Record<string, boolean>>({});
+  // Direct torrent search (independent of TMDB)
+  const [directTorrentResults, setDirectTorrentResults] = useState<any[]>([]);
+  const [loadingDirectTorrents, setLoadingDirectTorrents] = useState(false);
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    
+    // If streams mode is active, search torrents directly
+    if (showStreams && query.trim()) {
+      setIsLoading(true);
+      setHasSearched(true);
+      setSearchMode('search');
+      
+      try {
+        // Determine category based on filters or default to Movies
+        const category = filters.mediaType === 'tv' ? 'TV' : 'Movies';
+        await searchTorrentsDirectly(query.trim(), category);
+      } catch (error) {
+        console.error('Torrent search error:', error);
+        setDirectTorrentResults([]);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
     
     // If no query and no filters, don't search
     if (!query.trim() && !hasActiveFilters) return;
@@ -258,6 +285,282 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     return new Date(date).getFullYear().toString();
   };
 
+  // Direct torrent search (independent of TMDB)
+  const searchTorrentsDirectly = async (searchQuery: string, category: 'Movies' | 'TV' = 'Movies'): Promise<any[]> => {
+    if (!searchQuery.trim()) {
+      return [];
+    }
+
+    setLoadingDirectTorrents(true);
+    
+    try {
+      // Clean up search query
+      let cleanQuery = searchQuery
+        .replace(/[^\w\s'-]/g, ' ')
+        .trim()
+        .replace(/\s+/g, ' ');
+      
+      console.log(`🔍 Direct torrent search for: "${cleanQuery}" (category: ${category})`);
+      
+      // Variable to hold successful data
+      let data: any = null;
+      
+      // Direct torrent search using public APIs (no external libraries needed)
+      console.log('🔍 Starting direct torrent search via public APIs...');
+      
+      // Try multiple public torrent search APIs
+      const corsProxies = [
+        'https://api.allorigins.win/raw?url=',
+        'https://corsproxy.io/?',
+        'https://api.codetabs.com/v1/proxy?quest=',
+      ];
+      
+      // Try searching via public torrent search services
+      const searchEndpoints = [
+        // Try a public torrent search API
+        {
+          name: 'torrentapi',
+          url: `https://torrentapi.org/pubapi_v2.php?mode=search&search_string=${encodeURIComponent(cleanQuery)}&format=json_extended&app_id=torrent_search`,
+          parse: (responseData: any) => {
+            if (responseData.torrent_results && Array.isArray(responseData.torrent_results)) {
+              return responseData.torrent_results.map((torrent: any) => ({
+                title: torrent.title || 'Unknown',
+                magnet: torrent.download || torrent.magnet || '',
+                size: torrent.size ? formatBytes(torrent.size) : '',
+                seeders: torrent.seeders || 0,
+                leechers: torrent.leechers || 0,
+                category: torrent.category || category,
+                provider: 'torrentapi'
+              })).filter((t: any) => t.magnet && t.magnet.startsWith('magnet:'));
+            }
+            return [];
+          }
+        }
+      ];
+      
+      // Try each endpoint with CORS proxies
+      for (const endpoint of searchEndpoints) {
+        for (const proxy of corsProxies) {
+          try {
+            const apiUrl = proxy ? `${proxy}${encodeURIComponent(endpoint.url)}` : endpoint.url;
+            console.log(`Trying ${endpoint.name} via ${proxy ? 'CORS proxy' : 'direct'}...`);
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
+            const response = await fetch(apiUrl, {
+              method: 'GET',
+              headers: { 'Accept': 'application/json' },
+              signal: controller.signal,
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+              const responseData = await response.json();
+              const parsed = endpoint.parse(responseData);
+              
+              if (parsed && parsed.length > 0) {
+                data = parsed;
+                console.log(`✅ Found ${data.length} torrents from ${endpoint.name}`);
+                break; // Success!
+              }
+            }
+          } catch (error: any) {
+            if (error.name !== 'AbortError') {
+              console.warn(`${endpoint.name} failed:`, error.message);
+            }
+            continue;
+          }
+        }
+        
+        if (data && data.length > 0) break; // Exit if we got results
+      }
+      
+      // Helper function to format bytes
+      function formatBytes(bytes: number): string {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+      }
+      
+      // If still no data, try HTML-based search via proxy (less reliable but might work)
+      if (!data || data.length === 0) {
+        console.log('Trying HTML-based search via proxy...');
+        
+        // Try 1337x search via proxy
+        const searchUrl = `https://1337x.to/search/${encodeURIComponent(cleanQuery)}/1/`;
+        
+        for (const proxy of corsProxies) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            
+            const response = await fetch(`${proxy}${encodeURIComponent(searchUrl)}`, {
+              method: 'GET',
+              headers: { 'Accept': 'text/html' },
+              signal: controller.signal,
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+              const html = await response.text();
+              
+              // Extract magnet links using regex
+              const magnetRegex = /magnet:\?xt=urn:btih:[a-zA-Z0-9]{40}[^"'\s<>]*/gi;
+              const magnetMatches = html.match(magnetRegex);
+              
+              if (magnetMatches && magnetMatches.length > 0) {
+                console.log(`✅ Found ${magnetMatches.length} magnet links in HTML`);
+                
+                // Try to extract titles (basic approach)
+                const titleRegex = /<a[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/a>/gi;
+                const titles: string[] = [];
+                let match;
+                while ((match = titleRegex.exec(html)) !== null && titles.length < magnetMatches.length) {
+                  const title = match[1].trim();
+                  if (title && title.length > 3 && title.length < 200) {
+                    titles.push(title);
+                  }
+                }
+                
+                data = magnetMatches.slice(0, 20).map((magnet, i) => ({
+                  title: titles[i] || `Torrent ${i + 1} - ${cleanQuery}`,
+                  magnet: magnet,
+                  size: '',
+                  seeders: 0,
+                  leechers: 0,
+                  category: category,
+                  provider: '1337x'
+                }));
+                
+                if (data.length > 0) {
+                  console.log(`✅ Successfully extracted ${data.length} torrents from HTML`);
+                  break;
+                }
+              }
+            }
+          } catch (error: any) {
+            if (error.name !== 'AbortError') {
+              console.warn(`HTML search via ${proxy} failed:`, error.message);
+            }
+            continue;
+          }
+        }
+      }
+      
+      // Process and format results
+      if (!data || data.length === 0) {
+        console.warn(`No torrent data retrieved`);
+        setLoadingDirectTorrents(false);
+        setDirectTorrentResults([]);
+        return [];
+      }
+
+      // Format streams with quality extraction
+      const formattedStreams = data.map((torrent: any) => ({
+        title: torrent.title,
+        quality: extractQuality(torrent.title),
+        size: torrent.size,
+        magnet: torrent.magnet,
+        seeders: torrent.seeders || 0,
+        leechers: torrent.leechers || 0,
+        category: torrent.category || category,
+        provider: torrent.provider || 'torrent-search-api',
+      }));
+
+      // Sort by seeders (highest first)
+      formattedStreams.sort((a: any, b: any) => b.seeders - a.seeders);
+      
+      setLoadingDirectTorrents(false);
+      setDirectTorrentResults(formattedStreams);
+      return formattedStreams;
+    } catch (error) {
+      console.error('Error in direct torrent search:', error);
+      setLoadingDirectTorrents(false);
+      setDirectTorrentResults([]);
+      return [];
+    }
+  };
+
+  // Fetch torrent streams using Torrent Search API (for TMDB results - kept for backward compatibility)
+  // API: https://itorrentsearch.vercel.app/api/{site}/{query}/{page}
+  const fetchTorrentStreams = async (tmdbId: number, type: 'movie' | 'tv', season?: number, episode?: number): Promise<any[]> => {
+    const key = `${type}-${tmdbId}${season && episode ? `-${season}-${episode}` : ''}`;
+    
+    // Set loading state
+    setLoadingStreams(prev => ({ ...prev, [key]: true }));
+    
+    try {
+      // Get title from TMDB to use as search query
+      let searchQuery: string = '';
+      try {
+        const detailsEndpoint = type === 'movie' 
+          ? `/movie/${tmdbId}`
+          : `/tv/${tmdbId}`;
+        const details = await fetchFromTMDB(detailsEndpoint);
+        searchQuery = type === 'movie' ? details.title : details.name;
+        
+        // For TV shows, add season/episode info to search
+        if (type === 'tv' && season && episode) {
+          searchQuery = `${searchQuery} S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
+        }
+        
+        console.log(`Searching torrents for: ${searchQuery}`);
+      } catch (error) {
+        console.error('Error fetching title from TMDB:', error);
+        setLoadingStreams(prev => ({ ...prev, [key]: false }));
+        setTorrentStreams(prev => ({ ...prev, [key]: [] }));
+        return [];
+      }
+
+      if (!searchQuery) {
+        console.warn(`No title found for ${type} ${tmdbId}`);
+        setLoadingStreams(prev => ({ ...prev, [key]: false }));
+        setTorrentStreams(prev => ({ ...prev, [key]: [] }));
+        return [];
+      }
+
+      // Use direct search function
+      const category = type === 'movie' ? 'Movies' : 'TV';
+      const results = await searchTorrentsDirectly(searchQuery, category);
+      
+      if (results.length > 0) {
+        setTorrentStreams(prev => ({ ...prev, [key]: results }));
+        setLoadingStreams(prev => ({ ...prev, [key]: false }));
+        return results;
+      } else {
+        setTorrentStreams(prev => ({ ...prev, [key]: [] }));
+        setLoadingStreams(prev => ({ ...prev, [key]: false }));
+        return [];
+      }
+    } catch (error) {
+      console.error('Error fetching torrent streams:', error);
+      setLoadingStreams(prev => ({ ...prev, [key]: false }));
+      setTorrentStreams(prev => ({ ...prev, [key]: [] }));
+      return [];
+    }
+  };
+
+  // Helper functions to extract info from stream titles
+  const extractQuality = (title: string): string => {
+    const qualityMatch = title.match(/\b(4K|2160p|1080p|720p|480p|360p|HD|SD)\b/i);
+    return qualityMatch ? qualityMatch[1] : 'Unknown';
+  };
+
+  const extractSize = (title: string): string => {
+    const sizeMatch = title.match(/(\d+\.?\d*)\s*(GB|MB|GiB|MiB)/i);
+    return sizeMatch ? `${sizeMatch[1]} ${sizeMatch[2]}` : '';
+  };
+
+  const extractSeeders = (title: string): number => {
+    const seederMatch = title.match(/(\d+)\s*seed/i);
+    return seederMatch ? parseInt(seederMatch[1]) : 0;
+  };
+
   // Auto-search if sectionId is provided in URL - fetch filters and apply them
   useEffect(() => {
     const loadSectionFilters = async () => {
@@ -428,6 +731,10 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     loadGenres();
     loadCertifications();
   }, []);
+
+  // Auto-fetch torrent streams when streams mode is active
+  // Removed: Auto-fetch streams for TMDB results
+  // Now using direct torrent search when streams mode is active (independent of TMDB)
 
   // Apply filters to results whenever filters or allResults change
   // For search mode, apply client-side filters. For discover mode, results are already filtered.
@@ -701,11 +1008,11 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
             {/* Media Type - Button Selectors - Wider Column */}
             <div className="md:col-span-2 lg:col-span-3">
               <label className="block text-white mb-2 text-xs md:text-sm font-semibold">Media Type</label>
-              <div className="flex gap-1.5 md:gap-2">
+              <div className="flex gap-1 md:gap-1.5 flex-nowrap">
                 <button
                   type="button"
                   onClick={() => handleFilterChange('mediaType', 'all')}
-                  className={`flex-1 px-4 py-2.5 md:px-5 md:py-2 rounded transition-colors text-sm md:text-base whitespace-nowrap ${
+                  className={`px-2.5 py-2 md:px-3 md:py-2 rounded transition-colors text-xs md:text-sm whitespace-nowrap ${
                     filters.mediaType === 'all'
                       ? 'bg-red-600 text-white'
                       : 'bg-gray-700 text-white hover:bg-gray-600'
@@ -716,7 +1023,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                 <button
                   type="button"
                   onClick={() => handleFilterChange('mediaType', 'movie')}
-                  className={`flex-1 px-4 py-2.5 md:px-5 md:py-2 rounded transition-colors text-sm md:text-base whitespace-nowrap ${
+                  className={`px-2.5 py-2 md:px-3 md:py-2 rounded transition-colors text-xs md:text-sm whitespace-nowrap ${
                     filters.mediaType === 'movie'
                       ? 'bg-red-600 text-white'
                       : 'bg-gray-700 text-white hover:bg-gray-600'
@@ -727,13 +1034,26 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                 <button
                   type="button"
                   onClick={() => handleFilterChange('mediaType', 'tv')}
-                  className={`flex-1 px-4 py-2.5 md:px-5 md:py-2 rounded transition-colors text-sm md:text-base whitespace-nowrap ${
+                  className={`px-2.5 py-2 md:px-3 md:py-2 rounded transition-colors text-xs md:text-sm whitespace-nowrap ${
                     filters.mediaType === 'tv'
                       ? 'bg-red-600 text-white'
                       : 'bg-gray-700 text-white hover:bg-gray-600'
                   }`}
                 >
                   TV Shows
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowStreams(!showStreams)}
+                  className={`px-2.5 py-2 md:px-3 md:py-2 rounded transition-colors text-xs md:text-sm whitespace-nowrap ${
+                    showStreams
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-gray-700 text-white hover:bg-gray-600'
+                  }`}
+                  title="Show torrent streams"
+                >
+                  <i className="fas fa-stream mr-1"></i>
+                  Streams
                 </button>
               </div>
             </div>
@@ -1276,7 +1596,146 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       {/* Results */}
       {!isLoading && hasSearched && (
         <div className="max-w-6xl mx-auto">
-          {filteredResults.length > 0 ? (
+          {showStreams ? (
+            // Direct torrent search results (independent of TMDB)
+            <>
+              <h2 className="text-2xl font-bold text-white mb-6">
+                Torrent Search Results {query.trim() && `for "${query}"`}
+                {directTorrentResults.length > 0 && ` (${directTorrentResults.length})`}
+              </h2>
+              {loadingDirectTorrents ? (
+                <div className="flex items-center justify-center py-20">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+                  <p className="text-white">Searching torrents...</p>
+                </div>
+              ) : directTorrentResults.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {directTorrentResults.map((stream, index) => (
+                    <div
+                      key={index}
+                      className="bg-gray-800 rounded-lg overflow-hidden p-4"
+                    >
+                      <div className="flex flex-col">
+                        <h3 className="text-white text-sm font-medium mb-2 line-clamp-2">
+                          {stream.title}
+                        </h3>
+                        <div className="flex items-center gap-2 mb-3 flex-wrap">
+                          {stream.quality && (
+                            <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">
+                              {stream.quality}
+                            </span>
+                          )}
+                          {stream.size && (
+                            <span className="text-xs text-gray-400">
+                              {stream.size}
+                            </span>
+                          )}
+                          {stream.seeders > 0 && (
+                            <span className="text-xs text-green-400">
+                              {stream.seeders} seeds
+                            </span>
+                          )}
+                          {stream.leechers > 0 && (
+                            <span className="text-xs text-gray-400">
+                              {stream.leechers} leech
+                            </span>
+                          )}
+                        </div>
+                        <a
+                          href={stream.magnet ? createUrl(`/watch-torrent?title=${encodeURIComponent(stream.title || '')}&magnet=${encodeURIComponent(stream.magnet)}`) : '#'}
+                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors text-center"
+                          onClick={(e) => {
+                            if (!stream.magnet) {
+                              e.preventDefault();
+                              alert('No magnet link available for this stream.');
+                            }
+                          }}
+                        >
+                          <i className="fas fa-play mr-1"></i>
+                          Watch
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="max-w-3xl mx-auto">
+                    <i className="fas fa-magnet text-6xl text-red-600 mb-6"></i>
+                    <h3 className="text-2xl font-bold text-white mb-4">Manual Magnet Link Entry</h3>
+                    <p className="text-gray-400 text-lg mb-6">
+                      Automatic torrent search is unavailable due to browser privacy restrictions and CORS limitations.
+                      <br />
+                      <span className="text-white font-medium">You can still watch torrents by adding magnet links manually.</span>
+                    </p>
+                    
+                    <div className="bg-gray-800 rounded-lg p-6 mb-6">
+                      <h4 className="text-white font-semibold mb-4 text-lg">
+                        <i className="fas fa-list-ol mr-2 text-red-500"></i>
+                        How to use:
+                      </h4>
+                      <ol className="text-left text-gray-300 space-y-3 mb-6">
+                        <li className="flex items-start">
+                          <span className="bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-3 flex-shrink-0 mt-0.5">1</span>
+                          <span>Click the button below to open the torrent player</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-3 flex-shrink-0 mt-0.5">2</span>
+                          <span>Find a magnet link from a torrent site (1337x, The Pirate Bay, YTS, etc.)</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-3 flex-shrink-0 mt-0.5">3</span>
+                          <span>Paste the magnet link into the player and start streaming</span>
+                        </li>
+                      </ol>
+                      
+                      <div className="flex flex-wrap gap-3 justify-center mb-4">
+                        <a
+                          href="https://1337x.to"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors text-sm"
+                        >
+                          <i className="fas fa-external-link-alt mr-2"></i>
+                          1337x
+                        </a>
+                        <a
+                          href="https://thepiratebay.org"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors text-sm"
+                        >
+                          <i className="fas fa-external-link-alt mr-2"></i>
+                          The Pirate Bay
+                        </a>
+                        <a
+                          href="https://yts.mx"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors text-sm"
+                        >
+                          <i className="fas fa-external-link-alt mr-2"></i>
+                          YTS
+                        </a>
+                      </div>
+                    </div>
+                    
+                    <a
+                      href={createUrl(`/watch-torrent?title=${encodeURIComponent(query.trim())}`)}
+                      className="inline-block bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-lg transition-colors font-bold text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-transform"
+                    >
+                      <i className="fas fa-magnet mr-2"></i>
+                      Open Torrent Player
+                    </a>
+                    
+                    <p className="text-gray-500 text-sm mt-4">
+                      Search query: <span className="text-gray-400 font-mono">"{query.trim()}"</span>
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : filteredResults.length > 0 ? (
             <>
               <h2 className="text-2xl font-bold text-white mb-6">
                 {searchMode === 'discover' ? 'Discover Results' : 'Search Results'} ({filteredResults.length}
@@ -1284,73 +1743,73 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                   ` of ${allResults.length}`})
               </h2>
               <div className="grid grid-cols-5 md:grid-cols-7 lg:grid-cols-8 gap-4">
-                {filteredResults.map((item) => {
-                  const title = getTitle(item);
-                  const year = getDate(item);
-                  const posterUrl = item.poster_path 
-                    ? getImageUrl(item.poster_path, 'w500')
-                    : '/images/placeholder-poster.jpg';
-                  
-                  // Determine media type - use item.media_type or infer from title/name
-                  // Filter out 'person' type and ensure we have 'movie' or 'tv'
-                  let mediaType: 'movie' | 'tv';
-                  if (item.media_type === 'movie' || item.media_type === 'tv') {
-                    mediaType = item.media_type;
-                  } else {
-                    // Infer from title/name (movies have title, TV shows have name)
-                    mediaType = item.title ? 'movie' : 'tv';
-                  }
+                  {filteredResults.map((item) => {
+                    const title = getTitle(item);
+                    const year = getDate(item);
+                    const posterUrl = item.poster_path 
+                      ? getImageUrl(item.poster_path, 'w500')
+                      : '/images/placeholder-poster.jpg';
+                    
+                    // Determine media type - use item.media_type or infer from title/name
+                    // Filter out 'person' type and ensure we have 'movie' or 'tv'
+                    let mediaType: 'movie' | 'tv';
+                    if (item.media_type === 'movie' || item.media_type === 'tv') {
+                      mediaType = item.media_type;
+                    } else {
+                      // Infer from title/name (movies have title, TV shows have name)
+                      mediaType = item.title ? 'movie' : 'tv';
+                    }
 
-                  return (
-                    <div key={`${mediaType}-${item.id}`} className="group">
-                      <a
-                        href={createUrl(`/details?type=${mediaType}&id=${item.id}`)}
-                        className="block"
-                      >
-                        <div className="bg-gray-800 rounded-lg overflow-hidden transition-transform duration-300 group-hover:scale-105 group-hover:shadow-xl">
-                          <div className="relative">
-                            <img
-                              src={posterUrl}
-                              alt={title}
-                              className="w-full aspect-[2/3] object-cover"
-                            />
-                            <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold uppercase z-10">
-                              {mediaType}
-                            </div>
-                            <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
-                              <div className="bg-black bg-opacity-70 text-yellow-400 px-2 py-1 rounded text-sm font-semibold">
-                                {item.vote_average.toFixed(1)}
+                    return (
+                      <div key={`${mediaType}-${item.id}`} className="group">
+                        <a
+                          href={createUrl(`/details?type=${mediaType}&id=${item.id}`)}
+                          className="block"
+                        >
+                          <div className="bg-gray-800 rounded-lg overflow-hidden transition-transform duration-300 group-hover:scale-105 group-hover:shadow-xl">
+                            <div className="relative">
+                              <img
+                                src={posterUrl}
+                                alt={title}
+                                className="w-full aspect-[2/3] object-cover"
+                              />
+                              <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold uppercase z-10">
+                                {mediaType}
                               </div>
-                              <div onClick={(e) => e.preventDefault()}>
-                                <WatchlistButton
-                                  movieId={item.id}
-                                  mediaType={mediaType}
-                                  title={title || ''}
-                                  posterPath={item.poster_path}
-                                />
+                              <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
+                                <div className="bg-black bg-opacity-70 text-yellow-400 px-2 py-1 rounded text-sm font-semibold">
+                                  {item.vote_average.toFixed(1)}
+                                </div>
+                                <div onClick={(e) => e.preventDefault()}>
+                                  <WatchlistButton
+                                    movieId={item.id}
+                                    mediaType={mediaType}
+                                    title={title || ''}
+                                    posterPath={item.poster_path}
+                                  />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                          
-                          <div className="p-4">
-                            <h3 className="font-semibold text-white mb-2 line-clamp-2" title={title}>
-                              {title}
-                            </h3>
-                            <p className="text-gray-400 text-sm mb-2">
-                              {year && `${year} • `}{item.media_type === 'tv' ? 'TV Show' : 'Movie'}
-                            </p>
-                            {item.overview && (
-                              <p className="text-gray-300 text-sm line-clamp-3">
-                                {item.overview}
+                            
+                            <div className="p-4">
+                              <h3 className="font-semibold text-white mb-2 line-clamp-2" title={title}>
+                                {title}
+                              </h3>
+                              <p className="text-gray-400 text-sm mb-2">
+                                {year && `${year} • `}{item.media_type === 'tv' ? 'TV Show' : 'Movie'}
                               </p>
-                            )}
+                              {item.overview && (
+                                <p className="text-gray-300 text-sm line-clamp-3">
+                                  {item.overview}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </a>
-                    </div>
-                  );
-                })}
-              </div>
+                        </a>
+                      </div>
+                    );
+                  })}
+                </div>
             </>
           ) : (
             <div className="text-center py-12">
