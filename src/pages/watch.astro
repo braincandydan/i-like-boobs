@@ -305,10 +305,17 @@ import { createUrl } from '../lib/utils';
   });
   
   // Wait for DOM to be ready
-  document.addEventListener('DOMContentLoaded', () => {
+  // Astro bundles scripts as ES modules (deferred), so DOMContentLoaded may have
+  // already fired by the time the listener is registered. Check readyState first.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      initializeWatchPage();
+      setupPopupBlocker();
+    });
+  } else {
     initializeWatchPage();
     setupPopupBlocker();
-  });
+  }
   
   function initializeWatchPage() {
     // Monitor CSP violations to see what's being blocked
