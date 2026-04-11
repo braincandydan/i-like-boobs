@@ -407,6 +407,10 @@ import { createUrl } from '../lib/utils';
       { name: 'VidSrc-embed RU', url: `https://vidsrc-embed.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
       { name: 'VidSrc-embed SU', url: `https://vidsrc-embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
       { name: 'Vsrc SU', url: `https://vsrc.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'VidSrcMe RU', url: `https://vidsrcme.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'VidSrcMe SU', url: `https://vidsrcme.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'VidSrc-me RU', url: `https://vidsrc-me.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'VidSrc-me SU', url: `https://vidsrc-me.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
       { name: 'SuperEmbed', url: `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1`, playerType: 'iframe' },
       { name: 'EmbedSu', url: `https://embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
       { name: 'WebTorrent', url: 'webtorrent', playerType: 'webtorrent' }
@@ -916,7 +920,7 @@ import { createUrl } from '../lib/utils';
       const servers = Array.from(serverSelect.options);
       servers.forEach((option, index) => {
         const serverName = option.textContent;
-        if (serverName.includes('VidSrc') || serverName.includes('Vsrc')) {
+        if (serverName.includes('VidSrc') || serverName.includes('Vsrc') || serverName.includes('VidSrcMe')) {
           // Update URL pattern for all VidSrc servers
           option.value = option.value.replace(/\/embed\/tv\/\d+\/\d+\/\d+/, `/embed/tv/${id}/${season}/${episode}`);
         }
