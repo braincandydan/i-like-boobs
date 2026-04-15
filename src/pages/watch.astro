@@ -105,6 +105,22 @@ import { createUrl } from '../lib/utils';
         </div>
       </div>
       
+      <!-- Auto Next Episode Overlay -->
+      <div id="next-episode-overlay" class="absolute bottom-0 right-0 m-4 z-20 hidden pointer-events-none">
+        <div class="bg-gray-900 bg-opacity-95 rounded-lg p-4 pointer-events-auto shadow-xl" style="min-width: 260px;">
+          <p class="text-gray-400 text-xs uppercase tracking-wide mb-1">Up Next</p>
+          <p id="next-episode-label" class="text-white font-semibold text-sm mb-3">Next Episode</p>
+          <div class="flex items-center gap-2">
+            <button id="next-episode-play-btn" class="flex-1 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm font-medium transition-colors">
+              Play Next (<span id="next-episode-countdown">15</span>s)
+            </button>
+            <button id="next-episode-cancel-btn" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded text-sm transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Server loading indicator -->
       <div id="server-loading" class="absolute inset-0 flex items-center justify-center bg-black/60 text-white z-25 hidden">
         <div class="text-center">
@@ -838,7 +854,11 @@ import { createUrl } from '../lib/utils';
     const episodeOverview = document.getElementById('episode-overview');
     
     episodeControls.classList.remove('hidden');
-    
+
+    // Track episode counts for auto-next
+    let episodeCountBySeason = {};
+    let maxSeasons = 10;
+
     // Try to get real TV show data from TMDB
     let tvShowData = null;
     try {
@@ -849,10 +869,10 @@ import { createUrl } from '../lib/utils';
     } catch (e) {
       console.log('Could not fetch TV show data:', e);
     }
-    
+
     // Populate season options
     seasonSelect.innerHTML = '';
-    const maxSeasons = tvShowData?.number_of_seasons || 10;
+    maxSeasons = tvShowData?.number_of_seasons || 10;
     for (let i = 1; i <= maxSeasons; i++) {
       const option = document.createElement('option');
       option.value = i;
@@ -878,7 +898,8 @@ import { createUrl } from '../lib/utils';
       
       const episodes = seasonData?.episodes || [];
       const maxEpisodes = episodes.length || 24;
-      
+      episodeCountBySeason[selectedSeason] = maxEpisodes;
+
       for (let i = 1; i <= maxEpisodes; i++) {
         const option = document.createElement('option');
         option.value = i;
@@ -966,6 +987,85 @@ import { createUrl } from '../lib/utils';
       const newSeason = seasonSelect.value;
       const newEpisode = episodeSelect.value;
       loadEpisode(newSeason, newEpisode);
+    });
+
+    // --- Auto Next Episode ---
+    const nextOverlay = document.getElementById('next-episode-overlay');
+    const nextLabel = document.getElementById('next-episode-label');
+    const nextCountdownEl = document.getElementById('next-episode-countdown');
+    const nextPlayBtn = document.getElementById('next-episode-play-btn');
+    const nextCancelBtn = document.getElementById('next-episode-cancel-btn');
+    let nextEpisodeTimer = null;
+    let nextEpisodeCountdown = 15;
+
+    function getNextEpisodeInfo() {
+      const curSeason = parseInt(seasonSelect.value);
+      const curEpisode = parseInt(episodeSelect.value);
+      const episodesInSeason = episodeCountBySeason[curSeason] || parseInt(episodeSelect.options.length);
+
+      if (curEpisode < episodesInSeason) {
+        return { season: curSeason, episode: curEpisode + 1 };
+      } else if (curSeason < maxSeasons) {
+        return { season: curSeason + 1, episode: 1 };
+      }
+      return null; // end of series
+    }
+
+    function showNextEpisodeOverlay() {
+      const next = getNextEpisodeInfo();
+      if (!next) return; // no next episode
+
+      nextLabel.textContent = `S${next.season} E${next.episode}`;
+      nextEpisodeCountdown = 15;
+      nextCountdownEl.textContent = nextEpisodeCountdown;
+      nextOverlay.classList.remove('hidden');
+
+      nextEpisodeTimer = setInterval(() => {
+        nextEpisodeCountdown--;
+        nextCountdownEl.textContent = nextEpisodeCountdown;
+        if (nextEpisodeCountdown <= 0) {
+          hideNextEpisodeOverlay();
+          loadEpisode(next.season, next.episode);
+          // Sync dropdowns
+          seasonSelect.value = next.season;
+          episodeSelect.value = next.episode;
+        }
+      }, 1000);
+    }
+
+    function hideNextEpisodeOverlay() {
+      clearInterval(nextEpisodeTimer);
+      nextOverlay.classList.add('hidden');
+    }
+
+    nextPlayBtn.addEventListener('click', () => {
+      const next = getNextEpisodeInfo();
+      if (!next) return;
+      hideNextEpisodeOverlay();
+      loadEpisode(next.season, next.episode);
+      seasonSelect.value = next.season;
+      episodeSelect.value = next.episode;
+    });
+
+    nextCancelBtn.addEventListener('click', hideNextEpisodeOverlay);
+
+    // Listen for postMessage video-end events from the embed iframe
+    window.addEventListener('message', (e) => {
+      try {
+        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        const isEnded =
+          data?.event === 'ended' ||
+          data?.type === 'ended' ||
+          data?.name === 'ended' ||
+          data?.event === 'complete' ||
+          data?.type === 'complete' ||
+          data?.status === 'ended';
+        if (isEnded) {
+          showNextEpisodeOverlay();
+        }
+      } catch (_) {
+        // non-JSON message, ignore
+      }
     });
   }
   
