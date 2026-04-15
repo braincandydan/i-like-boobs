@@ -400,24 +400,24 @@ import { createUrl } from '../lib/utils';
     // Build VidSrc URL as primary (auto-playing correctly)
     const buildVidSrcUrl = (type, id, season, episode) => {
       if (type === 'movie') {
-        return `https://vidsrc-embed.ru/embed/movie/${id}`;
+        return `https://vidsrcme.ru/embed/movie/${id}`;
       } else if (type === 'tv') {
-        return `https://vidsrc-embed.ru/embed/tv/${id}/${season}/${episode}`;
+        return `https://vidsrcme.ru/embed/tv/${id}/${season}/${episode}`;
       }
       return '';
     };
-    
+
     const primaryUrl = buildVidSrcUrl(type, id, season, episode);
-    
-    // Server priority: VidSrc (auto-playing correctly) → Others → WebTorrent
+
+    // Server priority: newest working domains first → fallbacks → WebTorrent
     const alternativeServers = [
-      { name: 'VidSrc-embed RU', url: `https://vidsrc-embed.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
-      { name: 'VidSrc-embed SU', url: `https://vidsrc-embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
-      { name: 'Vsrc SU', url: `https://vsrc.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
       { name: 'VidSrcMe RU', url: `https://vidsrcme.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
       { name: 'VidSrcMe SU', url: `https://vidsrcme.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
       { name: 'VidSrc-me RU', url: `https://vidsrc-me.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
       { name: 'VidSrc-me SU', url: `https://vidsrc-me.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'VidSrc-embed RU', url: `https://vidsrc-embed.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'VidSrc-embed SU', url: `https://vidsrc-embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'Vsrc SU', url: `https://vsrc.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
       { name: 'SuperEmbed', url: `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1`, playerType: 'iframe' },
       { name: 'EmbedSu', url: `https://embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
       { name: 'WebTorrent', url: 'webtorrent', playerType: 'webtorrent' }
@@ -915,7 +915,7 @@ import { createUrl } from '../lib/utils';
       
       // Update video player with VidSrc format (primary with auto-play)
       const videoPlayer = document.getElementById('video-player');
-      const newUrl = `https://vidsrc-embed.ru/embed/tv/${id}/${season}/${episode}`;
+      const newUrl = `https://vidsrcme.ru/embed/tv/${id}/${season}/${episode}`;
       videoPlayer.src = newUrl;
       
       // Update title
