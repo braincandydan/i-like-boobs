@@ -1742,21 +1742,18 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                 {searchMode === 'search' && hasActiveFilters && allResults.length !== filteredResults.length && 
                   ` of ${allResults.length}`})
               </h2>
-              <div className="grid grid-cols-5 md:grid-cols-7 lg:grid-cols-8 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                   {filteredResults.map((item) => {
                     const title = getTitle(item);
                     const year = getDate(item);
-                    const posterUrl = item.poster_path 
+                    const posterUrl = item.poster_path
                       ? getImageUrl(item.poster_path, 'w500')
                       : '/images/placeholder-poster.jpg';
-                    
-                    // Determine media type - use item.media_type or infer from title/name
-                    // Filter out 'person' type and ensure we have 'movie' or 'tv'
+
                     let mediaType: 'movie' | 'tv';
                     if (item.media_type === 'movie' || item.media_type === 'tv') {
                       mediaType = item.media_type;
                     } else {
-                      // Infer from title/name (movies have title, TV shows have name)
                       mediaType = item.title ? 'movie' : 'tv';
                     }
 
@@ -1766,43 +1763,43 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                           href={createUrl(`/details?type=${mediaType}&id=${item.id}`)}
                           className="block"
                         >
-                          <div className="bg-gray-800 rounded-lg overflow-hidden transition-transform duration-300 group-hover:scale-105 group-hover:shadow-xl">
-                            <div className="relative">
-                              <img
-                                src={posterUrl}
-                                alt={title}
-                                className="w-full aspect-[2/3] object-cover"
-                              />
-                              <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold uppercase z-10">
-                                {mediaType}
-                              </div>
-                              <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
-                                <div className="bg-black bg-opacity-70 text-yellow-400 px-2 py-1 rounded text-sm font-semibold">
-                                  {item.vote_average.toFixed(1)}
-                                </div>
-                                <div onClick={(e) => e.preventDefault()}>
-                                  <WatchlistButton
-                                    movieId={item.id}
-                                    mediaType={mediaType}
-                                    title={title || ''}
-                                    posterPath={item.poster_path}
-                                  />
-                                </div>
-                              </div>
+                          <div className="relative rounded-lg overflow-hidden shadow-md transition-transform duration-200 active:scale-95 group-hover:scale-105 group-hover:shadow-xl bg-gray-800">
+                            {/* Poster */}
+                            <img
+                              src={posterUrl}
+                              alt={title}
+                              className="w-full aspect-[2/3] object-cover"
+                              loading="lazy"
+                            />
+
+                            {/* Bottom gradient + title */}
+                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent pt-10 pb-2 px-2">
+                              <h3 className="text-white text-xs font-semibold line-clamp-2 leading-tight">{title}</h3>
+                              {year && <p className="text-gray-400 text-xs mt-0.5">{year}</p>}
                             </div>
-                            
-                            <div className="p-4">
-                              <h3 className="font-semibold text-white mb-2 line-clamp-2" title={title}>
-                                {title}
-                              </h3>
-                              <p className="text-gray-400 text-sm mb-2">
-                                {year && `${year} • `}{item.media_type === 'tv' ? 'TV Show' : 'Movie'}
-                              </p>
-                              {item.overview && (
-                                <p className="text-gray-300 text-sm line-clamp-3">
-                                  {item.overview}
-                                </p>
-                              )}
+
+                            {/* Top-left: type badge */}
+                            <div className="absolute top-1.5 left-1.5">
+                              <span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-xs font-bold uppercase leading-none">
+                                {mediaType === 'tv' ? 'TV' : 'Film'}
+                              </span>
+                            </div>
+
+                            {/* Top-right: rating */}
+                            <div className="absolute top-1.5 right-1.5">
+                              <span className="bg-black/70 text-yellow-400 px-1.5 py-0.5 rounded text-xs font-semibold leading-none">
+                                ★ {item.vote_average.toFixed(1)}
+                              </span>
+                            </div>
+
+                            {/* Bottom-right: watchlist */}
+                            <div className="absolute bottom-2 right-1.5" onClick={(e) => e.preventDefault()}>
+                              <WatchlistButton
+                                movieId={item.id}
+                                mediaType={mediaType}
+                                title={title || ''}
+                                posterPath={item.poster_path}
+                              />
                             </div>
                           </div>
                         </a>
