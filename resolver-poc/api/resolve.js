@@ -11,9 +11,7 @@ const DOMAINS = [
 ];
 
 function buildEmbedUrl(domain, type, id, season, episode) {
-  if (type === 'tv') {
-    return `https://${domain}/embed/tv/${id}/${season}/${episode}`;
-  }
+  if (type === 'tv') return `https://${domain}/embed/tv/${id}/${season}/${episode}`;
   return `https://${domain}/embed/movie/${id}`;
 }
 
@@ -21,17 +19,40 @@ function classifyUrl(url) {
   if (url.includes('.m3u8'))  return 'hls';
   if (url.includes('.mpd'))   return 'dash';
   if (url.includes('.mp4'))   return 'mp4';
+  if (url.includes('.ts'))    return 'hls-segment';
   return 'unknown';
 }
 
 function isStreamUrl(url) {
   if (!url || url.startsWith('blob:') || url.startsWith('data:')) return false;
   return (
-    url.includes('.m3u8') ||
-    url.includes('.mpd')  ||
-    (url.includes('.mp4') && !url.includes('thumbnail') && !url.includes('poster') && !url.includes('logo'))
+    url.includes('.m3u8')  ||
+    url.includes('.mpd')   ||
+    url.includes('/hls/')  ||
+    url.includes('master.') ||
+    url.includes('playlist') ||
+    (url.includes('.mp4') &&
+      !url.includes('thumbnail') &&
+      !url.includes('poster') &&
+      !url.includes('logo') &&
+      !url.includes('sprite'))
   );
 }
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Selectors to try clicking in order
+const PLAY_SELECTORS = [
+  'video',
+  '.play-button',
+  '[class*="play-btn"]',
+  '[class*="play-icon"]',
+  '.jw-display-click',
+  '.jw-display',
+  '.plyr__control--overlaid',
+  '[aria-label*="play" i]',
+  'button',
+];
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -41,7 +62,7 @@ module.exports = async function handler(req, res) {
   const token = process.env.BROWSERLESS_TOKEN;
   if (!token) {
     return res.status(500).json({
-      error: 'BROWSERLESS_TOKEN is not set. Sign up at browserless.io (free), get your API token, and add it as a Vercel environment variable.',
+      error: 'BROWSERLESS_TOKEN is not set. Sign up at browserless.io, get your API token, and add it as a Vercel environment variable.',
     });
   }
 
@@ -53,13 +74,13 @@ module.exports = async function handler(req, res) {
     domain  = DOMAINS[0],
   } = req.query;
 
-  if (!id) {
-    return res.status(400).json({ error: 'Missing required parameter: id' });
-  }
+  if (!id) return res.status(400).json({ error: 'Missing required parameter: id' });
 
   const embedUrl = buildEmbedUrl(domain, type, id, season, episode);
   const startTime = Date.now();
   const log = [];
+  // All responses seen (for debugging when no stream is found)
+  const allResponses = [];
 
   const tick = (msg) => {
     const entry = { ms: Date.now() - startTime, msg };
@@ -72,7 +93,6 @@ module.exports = async function handler(req, res) {
   try {
     tick(`Connecting to Browserless for ${embedUrl}`);
 
-    // Browserless hosts the browser — no local Chromium needed at all
     browser = await puppeteer.connect({
       browserWSEndpoint: `wss://chrome.browserless.io?token=${token}&timeout=55000&stealth`,
     });
@@ -87,35 +107,45 @@ module.exports = async function handler(req, res) {
       'Accept-Language': 'en-US,en;q=0.9',
       'Referer': `https://${domain}/`,
     });
+    await page.setViewport({ width: 1280, height: 720 });
 
     const foundUrls = [];
 
-    // Monitor responses across all frames
+    // Log ALL responses for debugging — helps diagnose when nothing is found
     page.on('response', async (response) => {
       try {
-        const url = response.url();
-        const ct  = response.headers()['content-type'] || '';
+        const url  = response.url();
+        const ct   = response.headers()['content-type'] || '';
+        const status = response.status();
+
+        // Track all non-trivial requests for the debug log
+        if (!url.includes('favicon') && !url.includes('.png') && !url.includes('.jpg') &&
+            !url.includes('.svg') && !url.includes('.woff') && !url.includes('.css')) {
+          allResponses.push({ url: url.slice(0, 150), status, ct: ct.slice(0, 60) });
+        }
+
         if (
           isStreamUrl(url) ||
           ct.includes('mpegURL') ||
           ct.includes('x-mpegurl') ||
-          ct.includes('dash+xml')
+          ct.includes('dash+xml') ||
+          ct.includes('octet-stream')
         ) {
           const streamType = classifyUrl(url);
-          tick(`Found stream candidate (${streamType}): ${url.slice(0, 120)}`);
+          tick(`✓ Stream found (${streamType}) [${status}]: ${url.slice(0, 120)}`);
           foundUrls.push({ url, type: streamType, ms: Date.now() - startTime });
         }
       } catch (_) {}
     });
 
-    // Also intercept requests before they complete
+    // Intercept requests too (catches URLs before response arrives)
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       try {
         const url = request.url();
         if (isStreamUrl(url) && !foundUrls.some(f => f.url === url)) {
           const streamType = classifyUrl(url);
-          tick(`Intercepted stream request (${streamType}): ${url.slice(0, 120)}`);
+          tick(`→ Stream request intercepted (${streamType}): ${url.slice(0, 120)}`);
           foundUrls.push({ url, type: streamType, ms: Date.now() - startTime });
         }
         request.continue();
@@ -124,26 +154,45 @@ module.exports = async function handler(req, res) {
       }
     });
 
+    // --- Navigation ---
     tick('Navigating to embed page…');
     await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    tick('Page DOM loaded, waiting for stream…');
+    tick('DOM loaded — waiting 3s for scripts to initialise…');
+    await sleep(3000);
 
-    // Poll until a stream URL appears or 20s elapses
+    // --- Click to trigger playback ---
+    // Embeds show a static overlay until clicked; without this no stream loads
+    tick('Clicking centre of page to trigger playback…');
+    await page.mouse.click(640, 360);
+    await sleep(1000);
+
+    // Also try known play button selectors
+    for (const sel of PLAY_SELECTORS) {
+      try {
+        const el = await page.$(sel);
+        if (el) {
+          await el.click();
+          tick(`Clicked element: ${sel}`);
+          break;
+        }
+      } catch (_) {}
+    }
+
+    tick('Waiting up to 25s for stream URL to appear…');
+
+    // Poll until stream found or 25s elapsed
     const streamResult = await Promise.race([
       new Promise(resolve => {
         const interval = setInterval(() => {
-          if (foundUrls.length > 0) {
-            clearInterval(interval);
-            resolve(foundUrls[0]);
-          }
+          if (foundUrls.length > 0) { clearInterval(interval); resolve(foundUrls[0]); }
         }, 300);
       }),
-      new Promise(resolve => setTimeout(() => resolve(null), 20000)),
+      new Promise(resolve => setTimeout(() => resolve(null), 25000)),
     ]);
 
-    // Last resort: check <video> elements in the DOM
+    // Last resort: check <video> src in DOM
     if (!streamResult) {
-      tick('No stream intercepted — checking DOM for <video> elements…');
+      tick('Polling timed out — checking DOM for <video> src…');
       try {
         const videoSrcs = await page.evaluate(() => {
           const srcs = [];
@@ -172,10 +221,12 @@ module.exports = async function handler(req, res) {
       tick('No stream URL found');
       return res.status(404).json({
         success: false,
-        error:   'No stream URL found — the embed may be blocking headless browsers or needs more time',
+        error: 'No stream URL found',
         embedUrl,
         elapsed,
         log,
+        // Return all network requests seen so we can diagnose
+        networkSample: allResponses.slice(-40),
       });
     }
 
