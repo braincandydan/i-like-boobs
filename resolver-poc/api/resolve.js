@@ -1,9 +1,4 @@
-const chromium = require('@sparticuz/chromium-min');
 const puppeteer = require('puppeteer-core');
-
-// Pinned Chromium build — downloaded at runtime into /tmp (avoids bundling issues)
-const CHROMIUM_URL =
-  'https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar';
 
 const DOMAINS = [
   'vidsrcme.ru',
@@ -43,6 +38,13 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  const token = process.env.BROWSERLESS_TOKEN;
+  if (!token) {
+    return res.status(500).json({
+      error: 'BROWSERLESS_TOKEN is not set. Sign up at browserless.io (free), get your API token, and add it as a Vercel environment variable.',
+    });
+  }
+
   const {
     id,
     type    = 'movie',
@@ -68,24 +70,11 @@ module.exports = async function handler(req, res) {
   let browser = null;
 
   try {
-    tick(`Launching browser for ${embedUrl}`);
+    tick(`Connecting to Browserless for ${embedUrl}`);
 
-    const executablePath = await chromium.executablePath(CHROMIUM_URL);
-    browser = await puppeteer.launch({
-      args: [
-        ...chromium.args,
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-extensions',
-      ],
-      executablePath,
-      headless: true,
-      defaultViewport: { width: 1280, height: 720 },
+    // Browserless hosts the browser — no local Chromium needed at all
+    browser = await puppeteer.connect({
+      browserWSEndpoint: `wss://chrome.browserless.io?token=${token}&timeout=55000&stealth`,
     });
 
     const page = await browser.newPage();
@@ -101,8 +90,7 @@ module.exports = async function handler(req, res) {
 
     const foundUrls = [];
 
-    // Monitor responses across all frames — more reliable than request
-    // interception for cross-origin iframes
+    // Monitor responses across all frames
     page.on('response', async (response) => {
       try {
         const url = response.url();
@@ -113,22 +101,22 @@ module.exports = async function handler(req, res) {
           ct.includes('x-mpegurl') ||
           ct.includes('dash+xml')
         ) {
-          const type = classifyUrl(url);
-          tick(`Found stream candidate (${type}): ${url.slice(0, 120)}`);
-          foundUrls.push({ url, type, ms: Date.now() - startTime });
+          const streamType = classifyUrl(url);
+          tick(`Found stream candidate (${streamType}): ${url.slice(0, 120)}`);
+          foundUrls.push({ url, type: streamType, ms: Date.now() - startTime });
         }
       } catch (_) {}
     });
 
-    // Also catch via request interception (catches URLs before response)
+    // Also intercept requests before they complete
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       try {
         const url = request.url();
         if (isStreamUrl(url) && !foundUrls.some(f => f.url === url)) {
-          const type = classifyUrl(url);
-          tick(`Intercepted stream request (${type}): ${url.slice(0, 120)}`);
-          foundUrls.push({ url, type, ms: Date.now() - startTime });
+          const streamType = classifyUrl(url);
+          tick(`Intercepted stream request (${streamType}): ${url.slice(0, 120)}`);
+          foundUrls.push({ url, type: streamType, ms: Date.now() - startTime });
         }
         request.continue();
       } catch (_) {
@@ -140,7 +128,7 @@ module.exports = async function handler(req, res) {
     await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
     tick('Page DOM loaded, waiting for stream…');
 
-    // Poll for stream URL — stop early if found, give up at 20s
+    // Poll until a stream URL appears or 20s elapses
     const streamResult = await Promise.race([
       new Promise(resolve => {
         const interval = setInterval(() => {
@@ -153,7 +141,7 @@ module.exports = async function handler(req, res) {
       new Promise(resolve => setTimeout(() => resolve(null), 20000)),
     ]);
 
-    // Last resort: check for <video> src attributes in the DOM
+    // Last resort: check <video> elements in the DOM
     if (!streamResult) {
       tick('No stream intercepted — checking DOM for <video> elements…');
       try {
@@ -174,7 +162,8 @@ module.exports = async function handler(req, res) {
       } catch (_) {}
     }
 
-    await browser.close();
+    await page.close();
+    await browser.disconnect();
     browser = null;
 
     const elapsed = Date.now() - startTime;
@@ -183,14 +172,14 @@ module.exports = async function handler(req, res) {
       tick('No stream URL found');
       return res.status(404).json({
         success: false,
-        error:   'No stream URL found — the embed may require more time or the domain is blocking headless browsers',
+        error:   'No stream URL found — the embed may be blocking headless browsers or needs more time',
         embedUrl,
         elapsed,
         log,
       });
     }
 
-    tick(`Done — returning best result`);
+    tick('Done — returning best result');
     return res.status(200).json({
       success:  true,
       url:      foundUrls[0].url,
@@ -202,7 +191,7 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (err) {
-    if (browser) { try { await browser.close(); } catch (_) {} }
+    if (browser) { try { await browser.disconnect(); } catch (_) {} }
     const elapsed = Date.now() - startTime;
     tick(`Error: ${err.message}`);
     return res.status(500).json({
