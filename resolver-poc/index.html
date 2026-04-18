@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stream Resolver — POC</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f0f;
+      color: #e5e5e5;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    .container { max-width: 860px; margin: 0 auto; }
+
+    h1 { font-size: 1.5rem; font-weight: 700; color: #fff; margin-bottom: .25rem; }
+    .subtitle { color: #888; font-size: .875rem; margin-bottom: 2rem; }
+
+    /* ── Form ── */
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+    .card h2 { font-size: 1rem; font-weight: 600; color: #fff; margin-bottom: 1rem; }
+
+    .row { display: flex; gap: .75rem; flex-wrap: wrap; margin-bottom: .75rem; }
+    .field { display: flex; flex-direction: column; gap: .35rem; flex: 1; min-width: 120px; }
+    .field label { font-size: .75rem; color: #888; text-transform: uppercase; letter-spacing: .05em; }
+
+    input, select {
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e5e5e5;
+      padding: .5rem .75rem;
+      font-size: .9rem;
+      width: 100%;
+      outline: none;
+      transition: border-color .15s;
+    }
+    input:focus, select:focus { border-color: #e50914; }
+
+    .tv-fields { display: none; }
+    .tv-fields.visible { display: flex; }
+
+    button {
+      background: #e50914;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: .6rem 1.5rem;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, opacity .15s;
+      white-space: nowrap;
+    }
+    button:hover  { background: #c4070f; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.secondary {
+      background: #2a2a2a;
+      color: #ccc;
+    }
+    button.secondary:hover { background: #333; }
+
+    /* ── Status bar ── */
+    .status-bar {
+      display: none;
+      align-items: center;
+      gap: .75rem;
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: .75rem 1rem;
+      margin-bottom: 1.25rem;
+      font-size: .875rem;
+    }
+    .status-bar.visible { display: flex; }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid #333;
+      border-top-color: #e50914;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status-text { color: #aaa; }
+
+    /* ── Result card ── */
+    .result-url {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: .8rem;
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      padding: .75rem;
+      word-break: break-all;
+      color: #7dd3fc;
+      margin-bottom: 1rem;
+    }
+
+    .badges { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .badge {
+      font-size: .7rem;
+      font-weight: 600;
+      padding: .2rem .6rem;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .badge.hls    { background: #14532d; color: #86efac; }
+    .badge.dash   { background: #1e3a5f; color: #93c5fd; }
+    .badge.mp4    { background: #3b1f5e; color: #c4b5fd; }
+    .badge.time   { background: #292524; color: #a8a29e; }
+    .badge.ok     { background: #14532d; color: #86efac; }
+    .badge.fail   { background: #7f1d1d; color: #fca5a5; }
+
+    .actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+
+    /* ── Player ── */
+    .player-wrap {
+      position: relative;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      aspect-ratio: 16/9;
+      margin-bottom: 1rem;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .player-status {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0a;
+      color: #666;
+      font-size: .875rem;
+      gap: .5rem;
+    }
+    .player-status.hidden { display: none; }
+
+    /* ── IP test result ── */
+    .ip-result {
+      padding: .75rem 1rem;
+      border-radius: 6px;
+      font-size: .875rem;
+      margin-bottom: 1rem;
+    }
+    .ip-result.success { background: #14532d22; border: 1px solid #14532d; color: #86efac; }
+    .ip-result.fail    { background: #7f1d1d22; border: 1px solid #7f1d1d; color: #fca5a5; }
+
+    /* ── Log ── */
+    .log-toggle {
+      background: none;
+      border: none;
+      color: #666;
+      font-size: .8rem;
+      cursor: pointer;
+      padding: 0;
+      margin-bottom: .5rem;
+      text-decoration: underline;
+    }
+    .log-toggle:hover { color: #aaa; background: none; }
+    .log {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: .75rem;
+      background: #0a0a0a;
+      border: 1px solid #1f1f1f;
+      border-radius: 6px;
+      padding: .75rem;
+      max-height: 220px;
+      overflow-y: auto;
+      color: #555;
+      display: none;
+    }
+    .log.visible { display: block; }
+    .log-line { margin-bottom: .2rem; }
+    .log-line .ms  { color: #444; margin-right: .5rem; }
+    .log-line .msg { color: #888; }
+
+    /* ── Error ── */
+    .error-box {
+      background: #7f1d1d22;
+      border: 1px solid #7f1d1d;
+      border-radius: 8px;
+      padding: 1rem;
+      color: #fca5a5;
+      font-size: .875rem;
+    }
+
+    /* ── Domain list ── */
+    .domain-list {
+      display: flex; gap: .4rem; flex-wrap: wrap;
+    }
+    .domain-chip {
+      font-size: .75rem;
+      padding: .2rem .65rem;
+      border-radius: 20px;
+      border: 1px solid #333;
+      background: #111;
+      color: #888;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .domain-chip:hover, .domain-chip.active {
+      border-color: #e50914;
+      color: #fff;
+      background: #1a0a0a;
+    }
+
+    #result-section  { display: none; }
+    #error-section   { display: none; }
+
+    hr { border: none; border-top: 1px solid #1f1f1f; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <h1>Stream Resolver <span style="color:#e50914">POC</span></h1>
+  <p class="subtitle">Enter a TMDB ID — the resolver will launch a headless browser, intercept the real stream URL, and try to play it here.</p>
+
+  <!-- ── Query Form ── -->
+  <div class="card">
+    <h2>Query</h2>
+    <div class="row">
+      <div class="field" style="flex:2; min-width:160px;">
+        <label>TMDB ID</label>
+        <input id="tmdb-id" type="number" placeholder="e.g. 550 (Fight Club)" />
+      </div>
+      <div class="field" style="max-width:130px;">
+        <label>Type</label>
+        <select id="media-type">
+          <option value="movie">Movie</option>
+          <option value="tv">TV Show</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row tv-fields" id="tv-fields">
+      <div class="field" style="max-width:110px;">
+        <label>Season</label>
+        <input id="season" type="number" value="1" min="1" />
+      </div>
+      <div class="field" style="max-width:110px;">
+        <label>Episode</label>
+        <input id="episode" type="number" value="1" min="1" />
+      </div>
+    </div>
+
+    <div style="margin-bottom:.75rem;">
+      <label style="font-size:.75rem;color:#888;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.5rem;">Domain to try</label>
+      <div class="domain-list" id="domain-list">
+        <div class="domain-chip active" data-domain="vidsrcme.ru">vidsrcme.ru</div>
+        <div class="domain-chip" data-domain="vidsrcme.su">vidsrcme.su</div>
+        <div class="domain-chip" data-domain="vidsrc-me.ru">vidsrc-me.ru</div>
+        <div class="domain-chip" data-domain="vidsrc-me.su">vidsrc-me.su</div>
+        <div class="domain-chip" data-domain="vidsrc-embed.ru">vidsrc-embed.ru</div>
+        <div class="domain-chip" data-domain="vidsrc-embed.su">vidsrc-embed.su</div>
+        <div class="domain-chip" data-domain="vsrc.su">vsrc.su</div>
+      </div>
+    </div>
+
+    <button id="resolve-btn" onclick="resolve()">Resolve Stream</button>
+  </div>
+
+  <!-- ── Status ── -->
+  <div class="status-bar" id="status-bar">
+    <div class="spinner"></div>
+    <span class="status-text" id="status-text">Launching headless browser…</span>
+  </div>
+
+  <!-- ── Result ── -->
+  <div id="result-section">
+    <div class="card">
+      <h2>Result</h2>
+      <div class="badges" id="badges"></div>
+      <div class="result-url" id="result-url"></div>
+      <div class="actions">
+        <button onclick="playStream()">▶ Play in Player Below</button>
+        <button class="secondary" onclick="copyUrl()">Copy URL</button>
+        <button class="secondary" onclick="openRaw()">Open Raw URL</button>
+      </div>
+
+      <!-- IP test -->
+      <div id="ip-result" style="display:none;"></div>
+
+      <hr />
+
+      <!-- Native player -->
+      <div class="player-wrap">
+        <video id="video" controls></video>
+        <div class="player-status" id="player-status">
+          <span>Hit "Play in Player" to test the stream</span>
+          <span style="font-size:.75rem;color:#444;">This confirms whether the URL is IP-locked</span>
+        </div>
+      </div>
+
+      <button class="log-toggle" onclick="toggleLog()">Show debug log</button>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <!-- ── Error ── -->
+  <div id="error-section">
+    <div class="card">
+      <h2>Failed</h2>
+      <div class="error-box" id="error-box"></div>
+      <div style="margin-top:1rem;">
+        <button class="log-toggle" onclick="toggleLog()" style="margin-bottom:.5rem;display:block;">Show debug log</button>
+        <div class="log" id="error-log"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let selectedDomain = 'vidsrcme.ru';
+  let resolvedUrl    = null;
+  let hlsInstance    = null;
+
+  // Domain chip selection
+  document.querySelectorAll('.domain-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.domain-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      selectedDomain = chip.dataset.domain;
+    });
+  });
+
+  // Show/hide TV fields
+  document.getElementById('media-type').addEventListener('change', function () {
+    document.getElementById('tv-fields').classList.toggle('visible', this.value === 'tv');
+  });
+
+  function setStatus(msg) {
+    document.getElementById('status-text').textContent = msg;
+  }
+
+  async function resolve() {
+    const id   = document.getElementById('tmdb-id').value.trim();
+    const type = document.getElementById('media-type').value;
+
+    if (!id) {
+      alert('Enter a TMDB ID first.');
+      return;
+    }
+
+    // Reset UI
+    resolvedUrl = null;
+    document.getElementById('result-section').style.display = 'none';
+    document.getElementById('error-section').style.display  = 'none';
+    document.getElementById('ip-result').style.display      = 'none';
+    document.getElementById('player-status').classList.remove('hidden');
+
+    const btn = document.getElementById('resolve-btn');
+    btn.disabled = true;
+    btn.textContent = 'Resolving…';
+
+    const bar = document.getElementById('status-bar');
+    bar.classList.add('visible');
+    setStatus('Launching headless browser…');
+
+    // Build query string
+    const params = new URLSearchParams({ id, type, domain: selectedDomain });
+    if (type === 'tv') {
+      params.set('season',  document.getElementById('season').value  || '1');
+      params.set('episode', document.getElementById('episode').value || '1');
+    }
+
+    try {
+      setStatus('Browser loading embed page — this takes 10–20s on first run…');
+      const res  = await fetch(`/api/resolve?${params}`);
+      const data = await res.json();
+
+      bar.classList.remove('visible');
+      btn.disabled = false;
+      btn.textContent = 'Resolve Stream';
+
+      if (data.success) {
+        showResult(data);
+      } else {
+        showError(data);
+      }
+    } catch (err) {
+      bar.classList.remove('visible');
+      btn.disabled = false;
+      btn.textContent = 'Resolve Stream';
+      showError({ error: err.message, log: [] });
+    }
+  }
+
+  function showResult(data) {
+    resolvedUrl = data.url;
+
+    // Badges
+    const badges = document.getElementById('badges');
+    badges.innerHTML = `
+      <span class="badge ${data.type}">${data.type.toUpperCase()}</span>
+      <span class="badge time">${(data.elapsed / 1000).toFixed(1)}s</span>
+    `;
+
+    document.getElementById('result-url').textContent = data.url;
+    document.getElementById('result-section').style.display = 'block';
+
+    // Log
+    renderLog(data.log, 'log');
+
+    // All found
+    if (data.allFound && data.allFound.length > 1) {
+      const extra = document.createElement('div');
+      extra.style.cssText = 'font-size:.75rem;color:#666;margin-top:.5rem;';
+      extra.textContent = `${data.allFound.length} stream URL(s) found — using first. Open console to see all.`;
+      document.getElementById('badges').after(extra);
+      console.table(data.allFound);
+    }
+  }
+
+  function showError(data) {
+    document.getElementById('error-box').textContent = data.error || 'Unknown error';
+    document.getElementById('error-section').style.display = 'block';
+    if (data.log) renderLog(data.log, 'error-log');
+  }
+
+  function renderLog(entries, elId) {
+    const el = document.getElementById(elId);
+    el.innerHTML = (entries || []).map(e =>
+      `<div class="log-line"><span class="ms">[${e.ms}ms]</span><span class="msg">${escHtml(e.msg)}</span></div>`
+    ).join('');
+  }
+
+  function toggleLog() {
+    ['log', 'error-log'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('visible');
+    });
+  }
+
+  function playStream() {
+    if (!resolvedUrl) return;
+
+    const video  = document.getElementById('video');
+    const status = document.getElementById('player-status');
+    status.classList.add('hidden');
+
+    // Destroy any previous HLS instance
+    if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+    video.src = '';
+
+    if (resolvedUrl.includes('.m3u8') && Hls.isSupported()) {
+      hlsInstance = new Hls();
+      hlsInstance.loadSource(resolvedUrl);
+      hlsInstance.attachMedia(video);
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => {});
+        markIpResult(true);
+      });
+      hlsInstance.on(Hls.Events.ERROR, (_, d) => {
+        if (d.fatal) markIpResult(false, d.details);
+      });
+    } else {
+      video.src = resolvedUrl;
+      video.play()
+        .then(() => markIpResult(true))
+        .catch(err => markIpResult(false, err.message));
+    }
+  }
+
+  function markIpResult(ok, detail) {
+    const el = document.getElementById('ip-result');
+    el.style.display = 'block';
+    el.className = `ip-result ${ok ? 'success' : 'fail'}`;
+    if (ok) {
+      el.innerHTML = '✅ <strong>Stream plays from your browser</strong> — URL is not IP-locked. This approach will work.';
+      // Also update the badge
+      const badges = document.getElementById('badges');
+      const existing = badges.querySelector('.badge.ok, .badge.fail');
+      if (!existing) badges.insertAdjacentHTML('beforeend', '<span class="badge ok">PLAYS ✓</span>');
+    } else {
+      el.innerHTML = `❌ <strong>Stream failed to play</strong>${detail ? ` — ${escHtml(detail)}` : ''}.<br>
+        The URL is likely IP-locked to the Vercel server. Full proxying would be needed.`;
+      const badges = document.getElementById('badges');
+      const existing = badges.querySelector('.badge.ok, .badge.fail');
+      if (!existing) badges.insertAdjacentHTML('beforeend', '<span class="badge fail">IP-LOCKED ✗</span>');
+    }
+  }
+
+  function copyUrl() {
+    if (!resolvedUrl) return;
+    navigator.clipboard.writeText(resolvedUrl).then(() => {
+      const btn = event.target;
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy URL', 1500);
+    });
+  }
+
+  function openRaw() {
+    if (resolvedUrl) window.open(resolvedUrl, '_blank');
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  // Allow Enter key to trigger resolve
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && document.activeElement.tagName !== 'BUTTON') resolve();
+  });
+</script>
+</body>
+</html>
