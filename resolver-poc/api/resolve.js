@@ -1,5 +1,9 @@
-const chromium = require('@sparticuz/chromium');
+const chromium = require('@sparticuz/chromium-min');
 const puppeteer = require('puppeteer-core');
+
+// Pinned Chromium build — downloaded at runtime into /tmp (avoids bundling issues)
+const CHROMIUM_URL =
+  'https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar';
 
 const DOMAINS = [
   'vidsrcme.ru',
@@ -66,10 +70,21 @@ module.exports = async function handler(req, res) {
   try {
     tick(`Launching browser for ${embedUrl}`);
 
+    const executablePath = await chromium.executablePath(CHROMIUM_URL);
     browser = await puppeteer.launch({
-      args:            chromium.args,
-      executablePath:  await chromium.executablePath(),
-      headless:        chromium.headless,
+      args: [
+        ...chromium.args,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-extensions',
+      ],
+      executablePath,
+      headless: true,
       defaultViewport: { width: 1280, height: 720 },
     });
 
