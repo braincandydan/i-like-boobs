@@ -123,7 +123,7 @@ import { createUrl } from '../lib/utils';
           <p id="next-episode-label" class="text-white font-semibold text-sm mb-3">Next Episode</p>
           <div class="flex items-center gap-2">
             <button id="next-episode-play-btn" class="flex-1 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm font-medium transition-colors">
-              Play Next (<span id="next-episode-countdown">15</span>s)
+              Play Next Episode
             </button>
             <button id="next-episode-cancel-btn" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded text-sm transition-colors">
               Cancel
@@ -444,9 +444,9 @@ import { createUrl } from '../lib/utils';
     // Build VidSrc URL as primary (auto-playing correctly)
     const buildVidSrcUrl = (type, id, season, episode) => {
       if (type === 'movie') {
-        return `https://vidsrcme.ru/embed/movie/${id}`;
+        return `https://vidsrcme.ru/embed/movie/${id}?autoplay=1`;
       } else if (type === 'tv') {
-        return `https://vidsrcme.ru/embed/tv/${id}/${season}/${episode}`;
+        return `https://vidsrcme.ru/embed/tv/${id}/${season}/${episode}?autoplay=1`;
       }
       return '';
     };
@@ -454,16 +454,17 @@ import { createUrl } from '../lib/utils';
     const primaryUrl = buildVidSrcUrl(type, id, season, episode);
 
     // Server priority: newest working domains first → fallbacks → WebTorrent
+    const epPath = type === 'tv' ? `/${season}/${episode}` : '';
     const alternativeServers = [
-      { name: 'VidSrcMe RU', url: `https://vidsrcme.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
-      { name: 'VidSrcMe SU', url: `https://vidsrcme.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
-      { name: 'VidSrc-me RU', url: `https://vidsrc-me.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
-      { name: 'VidSrc-me SU', url: `https://vidsrc-me.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
-      { name: 'VidSrc-embed RU', url: `https://vidsrc-embed.ru/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
-      { name: 'VidSrc-embed SU', url: `https://vidsrc-embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
-      { name: 'Vsrc SU', url: `https://vsrc.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'VidSrcMe RU', url: `https://vidsrcme.ru/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
+      { name: 'VidSrcMe SU', url: `https://vidsrcme.su/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
+      { name: 'VidSrc-me RU', url: `https://vidsrc-me.ru/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
+      { name: 'VidSrc-me SU', url: `https://vidsrc-me.su/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
+      { name: 'VidSrc-embed RU', url: `https://vidsrc-embed.ru/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
+      { name: 'VidSrc-embed SU', url: `https://vidsrc-embed.su/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
+      { name: 'Vsrc SU', url: `https://vsrc.su/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
       { name: 'SuperEmbed', url: `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1`, playerType: 'iframe' },
-      { name: 'EmbedSu', url: `https://embed.su/embed/${type}/${id}${type === 'tv' ? `/${season}/${episode}` : ''}`, playerType: 'iframe' },
+      { name: 'EmbedSu', url: `https://embed.su/embed/${type}/${id}${epPath}`, playerType: 'iframe' },
       { name: 'WebTorrent', url: 'webtorrent', playerType: 'webtorrent' }
     ];
     
@@ -992,7 +993,7 @@ import { createUrl } from '../lib/utils';
       
       // Update video player with VidSrc format (primary with auto-play)
       const videoPlayer = document.getElementById('video-player');
-      const newUrl = `https://vidsrcme.ru/embed/tv/${id}/${season}/${episode}`;
+      const newUrl = `https://vidsrcme.ru/embed/tv/${id}/${season}/${episode}?autoplay=1`;
       videoPlayer.src = newUrl;
       
       // Update title
@@ -1055,13 +1056,12 @@ import { createUrl } from '../lib/utils';
     // --- Auto Next Episode ---
     const nextOverlay = document.getElementById('next-episode-overlay');
     const nextLabel = document.getElementById('next-episode-label');
-    const nextCountdownEl = document.getElementById('next-episode-countdown');
     const nextPlayBtn = document.getElementById('next-episode-play-btn');
     const nextCancelBtn = document.getElementById('next-episode-cancel-btn');
-    let nextEpisodeTimer = null;
-    let nextEpisodeCountdown = 15;
-    let autoNextTimer = null;
+    let showOverlayTimer = null;
+    let autoSkipTimer = null;
     let autoNextTriggered = false;
+    let autoNextCancelled = false;
 
     function getNextEpisodeInfo() {
       const curSeason = parseInt(seasonSelect.value);
@@ -1072,69 +1072,58 @@ import { createUrl } from '../lib/utils';
       return null;
     }
 
-    function showNextEpisodeOverlay() {
+    function doAutoNext() {
+      if (autoNextTriggered || autoNextCancelled) return;
+      autoNextTriggered = true;
       const next = getNextEpisodeInfo();
       if (!next) return;
-      nextLabel.textContent = `S${next.season} E${next.episode}`;
-      nextEpisodeCountdown = 15;
-      nextCountdownEl.textContent = nextEpisodeCountdown;
-      nextOverlay.classList.remove('hidden');
-      nextEpisodeTimer = setInterval(() => {
-        nextEpisodeCountdown--;
-        nextCountdownEl.textContent = nextEpisodeCountdown;
-        if (nextEpisodeCountdown <= 0) {
-          hideNextEpisodeOverlay();
-          localStorage.removeItem(`notflix_progress_tv_${id}_s${seasonSelect.value}_e${episodeSelect.value}`);
-          loadEpisode(next.season, next.episode);
-          seasonSelect.value = next.season;
-          episodeSelect.value = next.episode;
-        }
-      }, 1000);
-    }
-
-    function hideNextEpisodeOverlay() {
-      clearInterval(nextEpisodeTimer);
-      clearTimeout(autoNextTimer);
       nextOverlay.classList.add('hidden');
-    }
-
-    // Time-based auto-next: fires at (runtime - 2 min) using TMDB data, falls back to 42 min
-    function startAutoNextTimer(season, episode) {
-      clearTimeout(autoNextTimer);
-      autoNextTriggered = false;
-      const runtimeMins = episodeRuntimes[season]?.[episode] || 42;
-      const triggerMs = Math.max(runtimeMins - 2, 1) * 60 * 1000;
-      autoNextTimer = setTimeout(() => {
-        if (!autoNextTriggered) {
-          autoNextTriggered = true;
-          showNextEpisodeOverlay();
-        }
-      }, triggerMs);
-    }
-
-    nextPlayBtn.addEventListener('click', () => {
-      const next = getNextEpisodeInfo();
-      if (!next) return;
-      hideNextEpisodeOverlay();
       localStorage.removeItem(`notflix_progress_tv_${id}_s${seasonSelect.value}_e${episodeSelect.value}`);
       loadEpisode(next.season, next.episode);
       seasonSelect.value = next.season;
       episodeSelect.value = next.episode;
+    }
+
+    function showNextEpisodeOverlay() {
+      const next = getNextEpisodeInfo();
+      if (!next || autoNextCancelled) return;
+      nextLabel.textContent = `S${next.season} E${next.episode}`;
+      nextOverlay.classList.remove('hidden');
+      // Auto-skip fires 60s after overlay appears (= at the nominal episode end)
+      autoSkipTimer = setTimeout(doAutoNext, 60 * 1000);
+    }
+
+    // Show overlay ~60s before end; auto-skip fires at the actual end time
+    function startAutoNextTimer(season, episode) {
+      clearTimeout(showOverlayTimer);
+      clearTimeout(autoSkipTimer);
+      autoNextTriggered = false;
+      autoNextCancelled = false;
+      nextOverlay.classList.add('hidden');
+      const runtimeMins = episodeRuntimes[season]?.[episode] || 42;
+      const showMs = Math.max(runtimeMins * 60 - 60, 60) * 1000;
+      showOverlayTimer = setTimeout(showNextEpisodeOverlay, showMs);
+    }
+
+    nextPlayBtn.addEventListener('click', () => {
+      clearTimeout(autoSkipTimer);
+      doAutoNext();
     });
 
-    nextCancelBtn.addEventListener('click', hideNextEpisodeOverlay);
+    nextCancelBtn.addEventListener('click', () => {
+      clearTimeout(autoSkipTimer);
+      autoNextCancelled = true;
+      nextOverlay.classList.add('hidden');
+    });
 
-    // postMessage from embed (primary trigger)
+    // postMessage from embed fires doAutoNext directly (respects cancelled flag)
     window.addEventListener('message', (e) => {
       try {
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         const isEnded =
           data?.event === 'ended' || data?.type === 'ended' || data?.name === 'ended' ||
           data?.event === 'complete' || data?.type === 'complete' || data?.status === 'ended';
-        if (isEnded && !autoNextTriggered) {
-          autoNextTriggered = true;
-          showNextEpisodeOverlay();
-        }
+        if (isEnded) doAutoNext();
       } catch (_) {}
     });
 
