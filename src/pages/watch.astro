@@ -1017,8 +1017,8 @@ import { createUrl } from '../lib/utils';
       clearInterval(progressInterval);
       elapsedSeconds = 0;
 
-      // Reset auto-next timer for the new episode
-      startAutoNextTimer(parseInt(season), parseInt(episode));
+      // Reset auto-next state for the new episode
+      resetAutoNext();
 
       // Show brief loading indicator
       const serverLoading = document.getElementById('server-loading');
@@ -1061,7 +1061,6 @@ import { createUrl } from '../lib/utils';
     const nextCountdownEl = document.getElementById('next-episode-countdown');
     const nextPlayBtn = document.getElementById('next-episode-play-btn');
     const nextCancelBtn = document.getElementById('next-episode-cancel-btn');
-    let endTimer = null;        // fires when episode is nominally over
     let countdownInterval = null;
     let autoNextTriggered = false;
     let autoNextCancelled = false;
@@ -1086,7 +1085,6 @@ import { createUrl } from '../lib/utils';
       loadEpisode(next.season, next.episode);
       seasonSelect.value = next.season;
       episodeSelect.value = next.episode;
-      // Enter fullscreen after the new episode src loads
       setTimeout(() => {
         const playerEl = document.getElementById('video-player')?.parentElement;
         if (playerEl?.requestFullscreen) playerEl.requestFullscreen().catch(() => {});
@@ -1112,20 +1110,11 @@ import { createUrl } from '../lib/utils';
       }, 1000);
     }
 
-    // Timer fires at the actual end of the episode so the overlay only appears
-    // after the video has stopped, never while it's still playing.
-    // If no runtime data is available, skip the timer entirely and rely on
-    // the postMessage ended event from the embed.
-    function startAutoNextTimer(season, episode) {
-      clearTimeout(endTimer);
+    function resetAutoNext() {
       clearInterval(countdownInterval);
       autoNextTriggered = false;
       autoNextCancelled = false;
       nextOverlay.classList.add('hidden');
-      const runtimeMins = episodeRuntimes[season]?.[episode];
-      if (runtimeMins) {
-        endTimer = setTimeout(showNextEpisodeOverlay, runtimeMins * 60 * 1000);
-      }
     }
 
     nextPlayBtn.addEventListener('click', () => {
@@ -1135,25 +1124,21 @@ import { createUrl } from '../lib/utils';
 
     nextCancelBtn.addEventListener('click', () => {
       clearInterval(countdownInterval);
-      clearTimeout(endTimer);
       autoNextCancelled = true;
       nextOverlay.classList.add('hidden');
     });
 
-    // postMessage `ended` from the embed is the most reliable trigger —
-    // use it to show the overlay immediately rather than waiting for the timer.
+    // Only trigger when the embed explicitly signals the video has ended.
+    // No timers — timers fire before the video is actually done.
     window.addEventListener('message', (e) => {
       try {
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         const isEnded =
           data?.event === 'ended' || data?.type === 'ended' || data?.name === 'ended' ||
           data?.event === 'complete' || data?.type === 'complete' || data?.status === 'ended';
-        if (isEnded) { clearTimeout(endTimer); showNextEpisodeOverlay(); }
+        if (isEnded) showNextEpisodeOverlay();
       } catch (_) {}
     });
-
-    // Start timer for the initial episode once episode data is loaded
-    startAutoNextTimer(parseInt(currentSeason), parseInt(currentEpisode));
   }
   
   function setupPopupBlocker() {
