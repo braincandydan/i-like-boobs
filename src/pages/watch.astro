@@ -1114,14 +1114,18 @@ import { createUrl } from '../lib/utils';
 
     // Timer fires at the actual end of the episode so the overlay only appears
     // after the video has stopped, never while it's still playing.
+    // If no runtime data is available, skip the timer entirely and rely on
+    // the postMessage ended event from the embed.
     function startAutoNextTimer(season, episode) {
       clearTimeout(endTimer);
       clearInterval(countdownInterval);
       autoNextTriggered = false;
       autoNextCancelled = false;
       nextOverlay.classList.add('hidden');
-      const runtimeMins = episodeRuntimes[season]?.[episode] || 50;
-      endTimer = setTimeout(showNextEpisodeOverlay, runtimeMins * 60 * 1000);
+      const runtimeMins = episodeRuntimes[season]?.[episode];
+      if (runtimeMins) {
+        endTimer = setTimeout(showNextEpisodeOverlay, runtimeMins * 60 * 1000);
+      }
     }
 
     nextPlayBtn.addEventListener('click', () => {
