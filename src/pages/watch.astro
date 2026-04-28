@@ -1110,10 +1110,27 @@ import { createUrl } from '../lib/utils';
       }, 1000);
     }
 
+    // Duration-based end detection: when the embed tells us the video duration
+    // and current position, we set a precise timer for the actual remaining time.
+    let videoDuration = null;
+    let videoCurrentTime = 0;
+    let endTimer = null;
+
+    function setEndTimer() {
+      clearTimeout(endTimer);
+      if (!videoDuration) return;
+      const remaining = Math.max(videoDuration - videoCurrentTime, 0) * 1000;
+      if (remaining < 2000) return;
+      endTimer = setTimeout(showNextEpisodeOverlay, remaining);
+    }
+
     function resetAutoNext() {
       clearInterval(countdownInterval);
+      clearTimeout(endTimer);
       autoNextTriggered = false;
       autoNextCancelled = false;
+      videoDuration = null;
+      videoCurrentTime = 0;
       nextOverlay.classList.add('hidden');
     }
 
@@ -1124,19 +1141,52 @@ import { createUrl } from '../lib/utils';
 
     nextCancelBtn.addEventListener('click', () => {
       clearInterval(countdownInterval);
+      clearTimeout(endTimer);
       autoNextCancelled = true;
       nextOverlay.classList.add('hidden');
     });
 
-    // Only trigger when the embed explicitly signals the video has ended.
-    // No timers — timers fire before the video is actually done.
+    // Listen to every postMessage from the embed.
+    // Capture duration + currentTime whenever the player reports them,
+    // then set/reset the end timer based on real playback position.
     window.addEventListener('message', (e) => {
       try {
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-        const isEnded =
-          data?.event === 'ended' || data?.type === 'ended' || data?.name === 'ended' ||
-          data?.event === 'complete' || data?.type === 'complete' || data?.status === 'ended';
-        if (isEnded) showNextEpisodeOverlay();
+        if (!data) return;
+
+        // Extract duration and position from whatever field name the player uses
+        const dur = data.duration ?? data.totalTime ?? data.length ?? data.total;
+        const cur = data.currentTime ?? data.position ?? data.time ?? data.current;
+
+        if (dur != null && !isNaN(dur) && parseFloat(dur) > 10) {
+          videoDuration = parseFloat(dur);
+        }
+        if (cur != null && !isNaN(cur)) {
+          videoCurrentTime = parseFloat(cur);
+        }
+
+        const evt = data.event ?? data.type ?? data.name ?? data.status ?? '';
+
+        // Play / resume → set timer for remaining time
+        if (evt === 'play' || evt === 'playing') {
+          setEndTimer();
+        }
+
+        // Pause → cancel timer so it doesn't fire while paused
+        if (evt === 'pause' || evt === 'paused') {
+          clearTimeout(endTimer);
+        }
+
+        // timeupdate → keep position fresh and (re)set timer on first update that gives us duration
+        if (evt === 'timeupdate' || evt === 'progress') {
+          if (videoDuration && !endTimer) setEndTimer();
+        }
+
+        // Ended signal → show overlay immediately
+        if (evt === 'ended' || evt === 'complete' || evt === 'finish') {
+          clearTimeout(endTimer);
+          showNextEpisodeOverlay();
+        }
       } catch (_) {}
     });
   }
