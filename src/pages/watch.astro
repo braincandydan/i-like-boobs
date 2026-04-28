@@ -134,6 +134,31 @@ import { createUrl } from '../lib/utils';
         </div>
       </div>
 
+      <!-- Fullscreen episode controls (TV shows) — revealed by hovering top edge -->
+      <div id="fullscreen-controls" class="absolute top-0 left-0 right-0 z-40 hidden">
+        <div class="bg-gradient-to-b from-black/95 via-black/80 to-transparent pt-4 pb-10 px-6">
+          <div class="flex items-center justify-between gap-4 flex-wrap">
+            <div class="min-w-0">
+              <p id="fs-title" class="text-white font-bold text-base truncate"></p>
+              <p id="fs-ep-label" class="text-gray-400 text-sm"></p>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <button id="fs-prev-btn" class="flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+                <i class="fas fa-step-backward"></i> Prev
+              </button>
+              <select id="fs-season-select" class="bg-gray-800 text-white px-3 py-2 rounded-lg text-sm border border-gray-600 focus:outline-none focus:border-red-500"></select>
+              <select id="fs-episode-select" class="bg-gray-800 text-white px-3 py-2 rounded-lg text-sm border border-gray-600 focus:outline-none focus:border-red-500 max-w-52"></select>
+              <button id="fs-next-btn" class="flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+                Next <i class="fas fa-step-forward"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Invisible hover trigger strip — sits above iframe at the very top -->
+      <div id="fs-trigger-zone" class="absolute top-0 left-0 right-0 z-50" style="height:48px;"></div>
+
       <!-- Server loading indicator -->
       <div id="server-loading" class="absolute inset-0 flex items-center justify-center bg-black/70 text-white z-25 hidden">
         <div class="text-center">
@@ -1213,8 +1238,101 @@ import { createUrl } from '../lib/utils';
         }
       } catch (_) {}
     });
+
+    // --- Fullscreen episode controls ---
+    const fsControls  = document.getElementById('fullscreen-controls');
+    const fsTrigger   = document.getElementById('fs-trigger-zone');
+    const fsPrevBtn   = document.getElementById('fs-prev-btn');
+    const fsNextBtn   = document.getElementById('fs-next-btn');
+    const fsSeasonSel = document.getElementById('fs-season-select');
+    const fsEpisodeSel= document.getElementById('fs-episode-select');
+    const fsTitleEl   = document.getElementById('fs-title');
+    const fsEpLabel   = document.getElementById('fs-ep-label');
+    let fsHideTimer   = null;
+
+    function syncFsSelects() {
+      fsSeasonSel.innerHTML  = seasonSelect.innerHTML;
+      fsSeasonSel.value      = seasonSelect.value;
+      fsEpisodeSel.innerHTML = episodeSelect.innerHTML;
+      fsEpisodeSel.value     = episodeSelect.value;
+      const showTitle = new URLSearchParams(window.location.search).get('title') || '';
+      fsTitleEl.textContent  = showTitle;
+      fsEpLabel.textContent  = `Season ${seasonSelect.value}  ·  Episode ${episodeSelect.value}`;
+    }
+
+    function showFsControls() {
+      if (!document.fullscreenElement) return;
+      syncFsSelects();
+      fsControls.classList.remove('hidden');
+      clearTimeout(fsHideTimer);
+      fsHideTimer = setTimeout(() => fsControls.classList.add('hidden'), 4000);
+    }
+
+    function hideFsControls(delay = 1500) {
+      clearTimeout(fsHideTimer);
+      fsHideTimer = setTimeout(() => fsControls.classList.add('hidden'), delay);
+    }
+
+    fsTrigger.addEventListener('mouseenter', showFsControls);
+    fsTrigger.addEventListener('mousemove',  showFsControls);
+    fsControls.addEventListener('mouseenter', () => clearTimeout(fsHideTimer));
+    fsControls.addEventListener('mouseleave', () => hideFsControls());
+
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement) {
+        clearTimeout(fsHideTimer);
+        fsControls.classList.add('hidden');
+      }
+    });
+
+    fsPrevBtn.addEventListener('click', () => {
+      const s = parseInt(seasonSelect.value);
+      const e = parseInt(episodeSelect.value);
+      if (e > 1) {
+        loadEpisode(s, e - 1);
+        seasonSelect.value  = s;
+        episodeSelect.value = e - 1;
+      } else if (s > 1) {
+        const prevEps = episodeCountBySeason[s - 1] || 1;
+        updateEpisodeOptions(s - 1).then(() => {
+          loadEpisode(s - 1, prevEps);
+          seasonSelect.value  = s - 1;
+          episodeSelect.value = prevEps;
+        });
+      }
+    });
+
+    fsNextBtn.addEventListener('click', () => {
+      const next = getNextEpisodeInfo();
+      if (!next) return;
+      if (next.season !== parseInt(seasonSelect.value)) {
+        updateEpisodeOptions(next.season).then(() => {
+          loadEpisode(next.season, next.episode);
+          seasonSelect.value  = next.season;
+          episodeSelect.value = next.episode;
+        });
+      } else {
+        loadEpisode(next.season, next.episode);
+        seasonSelect.value  = next.season;
+        episodeSelect.value = next.episode;
+      }
+    });
+
+    fsSeasonSel.addEventListener('change', async () => {
+      seasonSelect.value = fsSeasonSel.value;
+      await updateEpisodeOptions(fsSeasonSel.value);
+      fsEpisodeSel.innerHTML = episodeSelect.innerHTML;
+      fsEpisodeSel.value     = '1';
+      episodeSelect.value    = '1';
+      loadEpisode(fsSeasonSel.value, '1');
+    });
+
+    fsEpisodeSel.addEventListener('change', () => {
+      episodeSelect.value = fsEpisodeSel.value;
+      loadEpisode(seasonSelect.value, fsEpisodeSel.value);
+    });
   }
-  
+
   function setupPopupBlocker() {
     // Additional iframe protection
     const iframe = document.getElementById('video-player');
