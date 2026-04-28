@@ -1147,25 +1147,32 @@ import { createUrl } from '../lib/utils';
     });
 
     // Listen to every postMessage from the embed.
-    // Capture duration + currentTime whenever the player reports them,
-    // then set/reset the end timer based on real playback position.
+    // Log everything so we know exactly what events VidSrc sends.
+    // Capture duration + currentTime to drive a precise end timer.
     window.addEventListener('message', (e) => {
       try {
+        const raw = typeof e.data === 'string' ? e.data : JSON.stringify(e.data);
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         if (!data) return;
+
+        // Log every message from the embed so we can see what's available
+        console.log('[embed msg]', raw.slice(0, 300));
 
         // Extract duration and position from whatever field name the player uses
         const dur = data.duration ?? data.totalTime ?? data.length ?? data.total;
         const cur = data.currentTime ?? data.position ?? data.time ?? data.current;
 
         if (dur != null && !isNaN(dur) && parseFloat(dur) > 10) {
+          const prev = videoDuration;
           videoDuration = parseFloat(dur);
+          if (prev !== videoDuration) console.log(`[embed] duration locked: ${videoDuration}s`);
         }
         if (cur != null && !isNaN(cur)) {
           videoCurrentTime = parseFloat(cur);
         }
 
-        const evt = data.event ?? data.type ?? data.name ?? data.status ?? '';
+        const evt = (data.event ?? data.type ?? data.name ?? data.status ?? '').toString().toLowerCase();
+        if (evt) console.log(`[embed] event="${evt}" cur=${videoCurrentTime?.toFixed(1)} dur=${videoDuration?.toFixed(1)}`);
 
         // Play / resume → set timer for remaining time
         if (evt === 'play' || evt === 'playing') {
@@ -1177,13 +1184,19 @@ import { createUrl } from '../lib/utils';
           clearTimeout(endTimer);
         }
 
-        // timeupdate → keep position fresh and (re)set timer on first update that gives us duration
+        // Seek / scrub → update position and reset timer to new remaining time
+        if (evt === 'seek' || evt === 'seeked' || evt === 'seeking') {
+          clearTimeout(endTimer);
+          setEndTimer();
+        }
+
+        // timeupdate → keep position fresh; set timer once we have duration
         if (evt === 'timeupdate' || evt === 'progress') {
           if (videoDuration && !endTimer) setEndTimer();
         }
 
         // Ended signal → show overlay immediately
-        if (evt === 'ended' || evt === 'complete' || evt === 'finish') {
+        if (evt === 'ended' || evt === 'complete' || evt === 'finish' || evt === 'stop') {
           clearTimeout(endTimer);
           showNextEpisodeOverlay();
         }
