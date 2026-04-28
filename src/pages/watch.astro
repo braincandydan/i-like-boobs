@@ -1082,19 +1082,24 @@ import { createUrl } from '../lib/utils';
       const next = getNextEpisodeInfo();
       if (!next) return;
       localStorage.removeItem(`notflix_progress_tv_${id}_s${seasonSelect.value}_e${episodeSelect.value}`);
-      loadEpisode(next.season, next.episode);
-      seasonSelect.value = next.season;
-      episodeSelect.value = next.episode;
-      // Wait for the new iframe src to load, then click it to unblock autoplay
-      // and enter fullscreen. One-time listener so it doesn't fire on every load.
+
       const playerIframe = document.getElementById('video-player');
-      const onNextLoad = () => {
-        playerIframe.removeEventListener('load', onNextLoad);
-        playerIframe.click();
-        const playerEl = playerIframe.parentElement;
-        if (playerEl?.requestFullscreen) playerEl.requestFullscreen().catch(() => {});
+      const playerEl = playerIframe.parentElement;
+
+      // Enter fullscreen now while we still have a user-gesture context,
+      // then swap the src. The new episode loads inside the live fullscreen
+      // session which keeps the autoplay permission active.
+      const goNext = () => {
+        loadEpisode(next.season, next.episode);
+        seasonSelect.value = next.season;
+        episodeSelect.value = next.episode;
       };
-      playerIframe.addEventListener('load', onNextLoad);
+
+      if (playerEl?.requestFullscreen && !document.fullscreenElement) {
+        playerEl.requestFullscreen().then(goNext).catch(goNext);
+      } else {
+        goNext();
+      }
     }
 
     function showNextEpisodeOverlay() {
