@@ -1264,13 +1264,20 @@ import { createUrl } from '../lib/utils';
       if (!document.fullscreenElement) return;
       syncFsSelects();
       fsControls.classList.remove('hidden');
+      // Disable iframe pointer events so our controls can receive clicks
+      document.getElementById('video-player').style.pointerEvents = 'none';
       clearTimeout(fsHideTimer);
-      fsHideTimer = setTimeout(() => fsControls.classList.add('hidden'), 4000);
+      fsHideTimer = setTimeout(hideFsNow, 4000);
+    }
+
+    function hideFsNow() {
+      fsControls.classList.add('hidden');
+      document.getElementById('video-player').style.pointerEvents = 'auto';
     }
 
     function hideFsControls(delay = 1500) {
       clearTimeout(fsHideTimer);
-      fsHideTimer = setTimeout(() => fsControls.classList.add('hidden'), delay);
+      fsHideTimer = setTimeout(hideFsNow, delay);
     }
 
     fsTrigger.addEventListener('mouseenter', showFsControls);
@@ -1282,6 +1289,7 @@ import { createUrl } from '../lib/utils';
       if (!document.fullscreenElement) {
         clearTimeout(fsHideTimer);
         fsControls.classList.add('hidden');
+        document.getElementById('video-player').style.pointerEvents = 'auto';
       }
     });
 
