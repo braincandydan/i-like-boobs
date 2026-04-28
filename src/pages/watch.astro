@@ -1085,10 +1085,16 @@ import { createUrl } from '../lib/utils';
       loadEpisode(next.season, next.episode);
       seasonSelect.value = next.season;
       episodeSelect.value = next.episode;
-      setTimeout(() => {
-        const playerEl = document.getElementById('video-player')?.parentElement;
+      // Wait for the new iframe src to load, then click it to unblock autoplay
+      // and enter fullscreen. One-time listener so it doesn't fire on every load.
+      const playerIframe = document.getElementById('video-player');
+      const onNextLoad = () => {
+        playerIframe.removeEventListener('load', onNextLoad);
+        playerIframe.click();
+        const playerEl = playerIframe.parentElement;
         if (playerEl?.requestFullscreen) playerEl.requestFullscreen().catch(() => {});
-      }, 1500);
+      };
+      playerIframe.addEventListener('load', onNextLoad);
     }
 
     function showNextEpisodeOverlay() {
