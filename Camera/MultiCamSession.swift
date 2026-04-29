@@ -13,9 +13,14 @@ final class MultiCamSession: NSObject, ObservableObject {
     let avSession = AVCaptureMultiCamSession()
 
     // Outputs exposed for FrameSynchroniser
-    let wideOutput     = AVCaptureVideoDataOutput()
+    // YUV 4:2:0 biplanar full-range — Y-plane is greyscale, used directly by OpenCV
+    let wideOutput      = AVCaptureVideoDataOutput()
     let ultrawideOutput = AVCaptureVideoDataOutput()
-    let telephotOutput = AVCaptureVideoDataOutput()
+    let telephotOutput  = AVCaptureVideoDataOutput()
+
+    private static let pixelFormat: [String: Any] = [
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+    ]
 
     private(set) var widePreviewLayer: AVCaptureVideoPreviewLayer?
 
@@ -40,6 +45,11 @@ final class MultiCamSession: NSObject, ObservableObject {
     // MARK: – Private
 
     private func configure() {
+        // Set pixel format before outputs are added to the session
+        wideOutput.videoSettings      = MultiCamSession.pixelFormat
+        ultrawideOutput.videoSettings = MultiCamSession.pixelFormat
+        telephotOutput.videoSettings  = MultiCamSession.pixelFormat
+
         avSession.beginConfiguration()
         defer { avSession.commitConfiguration() }
 

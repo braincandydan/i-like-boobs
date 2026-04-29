@@ -3,74 +3,65 @@ import CoreImage
 import CoreVideo
 
 struct DetectedBox {
-    /// Four corner points in normalised image coordinates (origin top-left).
+    /// Four corner points in normalised image coordinates (VN convention: origin bottom-left).
     let corners: [CGPoint]
-    /// Confidence score from VNDetectRectanglesRequest.
     let confidence: Float
 }
 
 final class BoxDetector {
-    // Run rectangle detection at ~1920×1440 for edge accuracy.
-    private static let detectionSize = CGSize(width: 1920, height: 1440)
+    private func makeRequest(completion: @escaping ([DetectedBox]) -> Void) -> VNDetectRectanglesRequest {
+        let req = VNDetectRectanglesRequest { r, _ in
+            let obs = (r.results as? [VNRectangleObservation]) ?? []
+            completion(obs.map { o in
+                DetectedBox(corners: [o.topLeft, o.topRight, o.bottomRight, o.bottomLeft],
+                            confidence: o.confidence)
+            })
+        }
+        req.minimumAspectRatio  = 0.3
+        req.maximumAspectRatio  = 1.0
+        req.minimumSize         = 0.1
+        req.maximumObservations = 4
+        req.minimumConfidence   = 0.6
+        return req
+    }
 
-    private let requestHandler: (VNImageRequestHandler) throws -> Void = { try $0.perform([]) }
+    /// Synchronous — blocks the calling thread. Safe to call from a background queue.
+    /// VNImageRequestHandler.perform is itself synchronous.
+    func detectSync(in pixelBuffer: CVPixelBuffer) -> [DetectedBox] {
+        var result: [DetectedBox] = []
+        let req = makeRequest { result = $0 }
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
+        try? handler.perform([req])
+        return result
+    }
 
+    /// Async variant — dispatches onto a global queue and calls completion when done.
     func detect(in sampleBuffer: CMSampleBuffer,
                 completion: @escaping ([DetectedBox]) -> Void) {
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-            completion([])
-            return
-        }
-
-        let request = VNDetectRectanglesRequest { req, _ in
-            let results = (req.results as? [VNRectangleObservation]) ?? []
-            let boxes = results.map { obs in
-                DetectedBox(
-                    corners: [obs.topLeft, obs.topRight, obs.bottomRight, obs.bottomLeft],
-                    confidence: obs.confidence
-                )
-            }
-            completion(boxes)
-        }
-        request.minimumAspectRatio = 0.3
-        request.maximumAspectRatio = 1.0
-        request.minimumSize        = 0.1
-        request.maximumObservations = 4
-        request.minimumConfidence  = 0.6
-
-        // Scale hint to run detection near the target resolution
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
-                                            orientation: .up,
-                                            options: [:])
+        guard let pb = CMSampleBufferGetImageBuffer(sampleBuffer) else { completion([]); return }
         DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                try handler.perform([request])
-            } catch {
-                print("[BoxDetector] detection failed: \(error)")
-                completion([])
-            }
+            completion(self.detectSync(in: pb))
         }
     }
 
-    /// Returns the edge points of all detected boxes as a flat array, suitable for
-    /// use as fallback match candidates when ORB produces too few inliers.
+    /// Converts detected box corners to pixel-space edge points (origin top-left).
+    /// Samples 11 points per edge (t = 0.0 … 1.0 in steps of 0.1).
     func edgePoints(from boxes: [DetectedBox], in imageSize: CGSize) -> [CGPoint] {
-        var points: [CGPoint] = []
+        var pts: [CGPoint] = []
         for box in boxes {
-            // Sample points along each of the 4 edges
-            let corners = box.corners
+            let c = box.corners
             for i in 0..<4 {
-                let a = corners[i]
-                let b = corners[(i + 1) % 4]
-                for t in stride(from: 0.0, through: 1.0, by: 0.1) {
-                    let x = a.x + (b.x - a.x) * t
-                    let y = a.y + (b.y - a.y) * t
-                    // Convert from normalised VN coords (origin bottom-left) to pixel coords (origin top-left)
-                    points.append(CGPoint(x: x * imageSize.width,
-                                          y: (1 - y) * imageSize.height))
+                let a = c[i], b = c[(i + 1) % 4]
+                for step in 0...10 {
+                    let t = Double(step) / 10.0
+                    // VN coords: y=0 at bottom → flip to top-left origin
+                    pts.append(CGPoint(
+                        x: (a.x + (b.x - a.x) * t) * imageSize.width,
+                        y: (1 - (a.y + (b.y - a.y) * t)) * imageSize.height
+                    ))
                 }
             }
         }
-        return points
+        return pts
     }
 }

@@ -7,7 +7,9 @@ struct ContentView: View {
     var body: some View {
         Group {
             if AVCaptureMultiCamSession.isMultiCamSupported {
-                CaptureView(session: session)
+                NavigationStack {
+                    CaptureView(session: session)
+                }
             } else {
                 UnsupportedDeviceView()
             }
