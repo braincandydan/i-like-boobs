@@ -63,7 +63,7 @@ export type TMDBFilters = {
   'primary_release_date.lte'?: string;
   'first_air_date.gte'?: string;
   'first_air_date.lte'?: string;
-  with_watch_providers?: string;
+  with_watch_providers?: number[];
   watch_region?: string;
   certification?: string; // Movie certification (e.g., "G", "PG", "R", "NC-17", "X")
   certification_country?: string; // Country code for certification (e.g., "US")

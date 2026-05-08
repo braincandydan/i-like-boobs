@@ -81,6 +81,7 @@ export const tmdbEndpoints = {
   languages: '/configuration/languages',
   regions: '/configuration/countries',
   certifications: (type: 'movie' | 'tv' = 'movie') => `/certification/${type}/list`,
+  watchProviders: (type: 'movie' | 'tv' = 'movie') => `/watch/providers/${type}`,
   personDetails: (id: number) => `/person/${id}`,
   personMovieCredits: (id: number) => `/person/${id}/movie_credits`,
   personTvCredits: (id: number) => `/person/${id}/tv_credits`,
@@ -134,60 +135,68 @@ export async function searchActors(query: string): Promise<{ id: number; name: s
 }
 
 /**
- * Discover movies or TV shows with filters
- * Uses TMDB discover API with comprehensive filter support
+ * Discover movies or TV shows with filters (paginated)
  */
 export async function discoverWithFilters(
   type: 'movie' | 'tv',
   filters: TMDBFilters = {},
-  limit: number = 20
-): Promise<any[]> {
+  page: number = 1
+): Promise<{ results: any[]; page: number; total_pages: number; total_results: number }> {
   try {
-    // Build query parameters from filters
-    const params: Record<string, any> = {
-      ...filters,
-    };
+    const params: Record<string, any> = { ...filters, page };
 
-    // Convert genre array to comma-separated string if present
     if (params.with_genres && Array.isArray(params.with_genres)) {
       params.with_genres = params.with_genres.join(',');
     }
-
-    // Convert keyword array to comma-separated string if present
     if (params.with_keywords && Array.isArray(params.with_keywords)) {
       params.with_keywords = params.with_keywords.join(',');
     }
-
-    // Convert companies array to comma-separated string if present
     if (params.with_companies && Array.isArray(params.with_companies)) {
       params.with_companies = params.with_companies.join(',');
     }
-
-    // Include adult content if certification filter is set (needed for X, NC-17, etc.)
-    // Also include if explicitly requested
-    // Always include adult content when filtering by certification to ensure all ratings are available
-    // Also include for adult certifications (X, NC-17, R18+, etc.)
-    if (params.certification) {
-      params.include_adult = true;
-    } else if (filters.include_adult) {
-      params.include_adult = true;
-    } else {
-      // Default to including adult content for discover API to show all available content
-      params.include_adult = true;
+    if (params.with_cast && Array.isArray(params.with_cast)) {
+      params.with_cast = params.with_cast.join(',');
+    }
+    if (params.with_watch_providers && Array.isArray(params.with_watch_providers)) {
+      params.with_watch_providers = params.with_watch_providers.join('|');
+      if (!params.watch_region) params.watch_region = 'US';
     }
 
-    // Set default sort if not provided
+    params.include_adult = true;
+
     if (!params.sort_by) {
-      params.sort_by = type === 'movie' ? 'popularity.desc' : 'popularity.desc';
+      params.sort_by = 'popularity.desc';
     }
 
-    // Remove media_type from params (it's in the endpoint)
     delete params.media_type;
 
     const data = await fetchFromTMDB(tmdbEndpoints.discover(type), params);
-    return (data.results || []).slice(0, limit);
+    return {
+      results: data.results || [],
+      page: data.page || 1,
+      total_pages: Math.min(data.total_pages || 0, 500),
+      total_results: data.total_results || 0,
+    };
   } catch (error) {
     console.error(`Error discovering ${type} with filters:`, error);
+    return { results: [], page: 1, total_pages: 0, total_results: 0 };
+  }
+}
+
+/**
+ * Fetch available streaming/watch providers
+ */
+export async function fetchWatchProviders(
+  type: 'movie' | 'tv' = 'movie'
+): Promise<{ provider_id: number; provider_name: string; logo_path: string; display_priority: number }[]> {
+  try {
+    const data = await fetchFromTMDB(tmdbEndpoints.watchProviders(type), { watch_region: 'US' });
+    return (data.results || [])
+      .filter((p: any) => p.display_priorities?.US !== undefined)
+      .sort((a: any, b: any) => (a.display_priorities?.US ?? 999) - (b.display_priorities?.US ?? 999))
+      .slice(0, 30);
+  } catch (error) {
+    console.error(`Error fetching watch providers for ${type}:`, error);
     return [];
   }
 }

@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
-import { fetchFromTMDB, tmdbEndpoints, getImageUrl, fetchGenres, sortByOptions, tvSortByOptions, discoverWithFilters, getAllMovieCertifications, searchActors } from '../lib/tmdb';
+import {
+  fetchFromTMDB, tmdbEndpoints, getImageUrl, fetchGenres,
+  discoverWithFilters, getAllMovieCertifications, searchActors,
+  searchCompanies, fetchWatchProviders,
+} from '../lib/tmdb';
 import { supabase, isSupabaseConfigured, type TMDBFilters } from '../lib/supabase';
 import WatchlistButton from './WatchlistButton';
 
@@ -20,36 +24,142 @@ interface SearchResult {
   media_type: 'movie' | 'tv' | 'person';
 }
 
+interface Provider {
+  provider_id: number;
+  provider_name: string;
+  logo_path: string;
+  display_priority: number;
+}
+
+interface Company {
+  id: number;
+  name: string;
+  logo_path?: string;
+}
+
+// ─── Pagination ───────────────────────────────────────────────────────────────
+
+function PaginationControls({
+  currentPage,
+  totalPages,
+  totalResults,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  totalResults: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+
+  const getPages = (): (number | null)[] => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    const pages: (number | null)[] = [1];
+    if (currentPage > 3) pages.push(null);
+    for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) pages.push(i);
+    if (currentPage < totalPages - 2) pages.push(null);
+    pages.push(totalPages);
+    return pages;
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <p className="text-gray-500 text-xs">
+        Page {currentPage} of {totalPages.toLocaleString()} &middot; {totalResults.toLocaleString()} results
+      </p>
+      <div className="flex items-center gap-1 flex-wrap justify-center">
+        <button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage <= 1}
+          className="px-3 py-1.5 text-sm bg-gray-700 text-white rounded-md disabled:opacity-40 hover:bg-gray-600 transition-colors"
+        >
+          ← Prev
+        </button>
+        {getPages().map((p, i) =>
+          p === null ? (
+            <span key={`el-${i}`} className="px-1 text-gray-500 text-sm select-none">…</span>
+          ) : (
+            <button
+              key={p}
+              onClick={() => onPageChange(p)}
+              className={`w-9 h-8 text-sm rounded-md transition-colors font-medium ${
+                p === currentPage ? 'bg-red-600 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
+              }`}
+            >
+              {p}
+            </button>
+          )
+        )}
+        <button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage >= totalPages}
+          className="px-3 py-1.5 text-sm bg-gray-700 text-white rounded-md disabled:opacity-40 hover:bg-gray-600 transition-colors"
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Filter button ────────────────────────────────────────────────────────────
+
+function FilterBtn({
+  label, count, active, open, onClick,
+}: {
+  label: string; count?: number; active: boolean; open: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-8 px-2.5 text-xs rounded-md transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+        active || open
+          ? 'bg-gray-700 text-white ring-1 ring-red-500'
+          : 'bg-gray-700 text-gray-400 hover:text-white'
+      }`}
+    >
+      {label}
+      {count != null && count > 0 && (
+        <span className="bg-red-600 text-white w-4 h-4 rounded-full text-xs flex items-center justify-center leading-none font-bold">
+          {count}
+        </span>
+      )}
+      <i className={`fas fa-chevron-${open ? 'up' : 'down'} text-xs opacity-60`} />
+    </button>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function SearchForm({ basePath = '/' }: SearchFormProps) {
-  // Create URL with base path for GitHub Pages
   function createUrl(path: string): string {
-    // Remove leading slash from path if it exists
     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-    
-    // Ensure base ends with slash and combine
-    const baseWithSlash = basePath.endsWith('/') ? basePath : `${basePath}/`;
-    
-    return `${baseWithSlash}${cleanPath}`;
+    const base = basePath.endsWith('/') ? basePath : `${basePath}/`;
+    return `${base}${cleanPath}`;
   }
-  
-  // Get sectionId from URL params if present
+
   const getSectionIdFromUrl = () => {
     if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      return urlParams.get('sectionId') || '';
+      return new URLSearchParams(window.location.search).get('sectionId') || '';
     }
     return '';
   };
-  
+
+  // ── Core ──
   const [query, setQuery] = useState('');
-  const [sectionId, setSectionId] = useState(getSectionIdFromUrl());
+  const [sectionId] = useState(getSectionIdFromUrl);
   const [allResults, setAllResults] = useState<SearchResult[]>([]);
-  const [filteredResults, setFilteredResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [searchMode, setSearchMode] = useState<'search' | 'discover'>('search');
-  
-  // Filter state
+
+  // ── Pagination ──
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalResults, setTotalResults] = useState(0);
+
+  // ── Pre-search filters ──
   const [filters, setFilters] = useState({
     mediaType: 'all' as 'all' | 'movie' | 'tv',
     genres: [] as number[],
@@ -57,1796 +167,1034 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     endYear: '' as string | number,
     minRating: '' as string | number,
     certification: '' as string,
-    actors: [] as number[], // Actor IDs
-    sortBy: 'popularity.desc' as string
+    actors: [] as number[],
+    watchProviders: [] as number[],
+    companies: [] as number[],
+    sortBy: 'popularity.desc' as string,
   });
-  
+
+  // ── Post-search refinement ──
+  const [postText, setPostText] = useState('');
+  const [postMediaType, setPostMediaType] = useState<'all' | 'movie' | 'tv'>('all');
+  const [postMinRating, setPostMinRating] = useState<number | ''>('');
+  const [postSortBy, setPostSortBy] = useState('');
+
+  // ── Single active dropdown ──
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  // ── Reference data ──
   const [availableGenres, setAvailableGenres] = useState<{ id: number; name: string }[]>([]);
   const [availableCertifications, setAvailableCertifications] = useState<{ certification: string; meaning: string; order: number }[]>([]);
-  const [loadingGenres, setLoadingGenres] = useState(false);
-  const [loadingCertifications, setLoadingCertifications] = useState(false);
-  const [showGenreDropdown, setShowGenreDropdown] = useState(false);
-  const [showYearDropdown, setShowYearDropdown] = useState(false);
-  const [showRatingDropdown, setShowRatingDropdown] = useState(false);
-  const [showCertificationDropdown, setShowCertificationDropdown] = useState(false);
-  
-  // Actor search state
-  const [actorSearchQuery, setActorSearchQuery] = useState('');
-  const [actorSearchResults, setActorSearchResults] = useState<{ id: number; name: string; profile_path?: string; known_for_department?: string }[]>([]);
+  const [availableProviders, setAvailableProviders] = useState<Provider[]>([]);
+  const [loadingProviders, setLoadingProviders] = useState(false);
+
+  // ── Actor search ──
+  const [actorQuery, setActorQuery] = useState('');
+  const [actorResults, setActorResults] = useState<{ id: number; name: string; profile_path?: string; known_for_department?: string }[]>([]);
   const [searchingActors, setSearchingActors] = useState(false);
   const [selectedActors, setSelectedActors] = useState<{ id: number; name: string; profile_path?: string }[]>([]);
-  const [showActorDropdown, setShowActorDropdown] = useState(false);
-  
-  // Streams/Torrent state
+
+  // ── Company search ──
+  const [companyQuery, setCompanyQuery] = useState('');
+  const [companyResults, setCompanyResults] = useState<Company[]>([]);
+  const [searchingCompanies, setSearchingCompanies] = useState(false);
+  const [selectedCompanies, setSelectedCompanies] = useState<Company[]>([]);
+  const [selectedProviders, setSelectedProviders] = useState<Provider[]>([]);
+
+  // ── Torrent ──
   const [showStreams, setShowStreams] = useState(false);
-  const [torrentStreams, setTorrentStreams] = useState<Record<string, any[]>>({});
-  const [loadingStreams, setLoadingStreams] = useState<Record<string, boolean>>({});
-  // Direct torrent search (independent of TMDB)
   const [directTorrentResults, setDirectTorrentResults] = useState<any[]>([]);
   const [loadingDirectTorrents, setLoadingDirectTorrents] = useState(false);
 
-  const handleSearch = async (e?: React.FormEvent) => {
+  // ── Helpers ──
+  const toggleDropdown = (name: string) =>
+    setActiveDropdown(prev => (prev === name ? null : name));
+
+  const getTitle = (item: SearchResult) => item.media_type === 'movie' ? item.title : item.name;
+
+  const getYear = (item: SearchResult) => {
+    const d = item.media_type === 'movie' ? item.release_date : item.first_air_date;
+    return d ? new Date(d).getFullYear().toString() : '';
+  };
+
+  const extractQuality = (title: string) => {
+    const m = title.match(/\b(4K|2160p|1080p|720p|480p|360p|HD|SD)\b/i);
+    return m ? m[1] : 'Unknown';
+  };
+
+  // ── Computed ──
+  const hasActiveFilters =
+    filters.mediaType !== 'all' ||
+    filters.genres.length > 0 ||
+    filters.startYear !== '' ||
+    filters.endYear !== '' ||
+    filters.minRating !== '' ||
+    filters.certification !== '' ||
+    filters.actors.length > 0 ||
+    filters.watchProviders.length > 0 ||
+    filters.companies.length > 0 ||
+    (filters.sortBy !== 'relevance' && filters.sortBy !== 'popularity.desc');
+
+  const hasPostFilters =
+    postText.trim() !== '' ||
+    postMediaType !== 'all' ||
+    postMinRating !== '' ||
+    postSortBy !== '';
+
+  const displayedResults = (() => {
+    let results = [...allResults];
+    if (postText.trim()) {
+      const t = postText.toLowerCase();
+      results = results.filter(item => (item.title || item.name || '').toLowerCase().includes(t));
+    }
+    if (postMediaType !== 'all') results = results.filter(item => item.media_type === postMediaType);
+    if (postMinRating !== '') {
+      const min = typeof postMinRating === 'string' ? parseFloat(postMinRating as string) : postMinRating;
+      if (!isNaN(min as number)) results = results.filter(item => item.vote_average >= (min as number));
+    }
+    const sortBy = postSortBy || filters.sortBy;
+    if (sortBy && sortBy !== 'relevance') {
+      results = [...results].sort((a, b) => {
+        switch (sortBy) {
+          case 'popularity.desc': return ((b as any).popularity || 0) - ((a as any).popularity || 0);
+          case 'popularity.asc': return ((a as any).popularity || 0) - ((b as any).popularity || 0);
+          case 'rating.desc': case 'vote_average.desc': return b.vote_average - a.vote_average;
+          case 'rating.asc': case 'vote_average.asc': return a.vote_average - b.vote_average;
+          case 'year.desc': case 'release_date.desc': case 'first_air_date.desc': {
+            const ad = a.media_type === 'movie' ? a.release_date : a.first_air_date;
+            const bd = b.media_type === 'movie' ? b.release_date : b.first_air_date;
+            if (!ad) return 1; if (!bd) return -1;
+            return new Date(bd).getTime() - new Date(ad).getTime();
+          }
+          case 'year.asc': case 'release_date.asc': case 'first_air_date.asc': {
+            const ad = a.media_type === 'movie' ? a.release_date : a.first_air_date;
+            const bd = b.media_type === 'movie' ? b.release_date : b.first_air_date;
+            if (!ad) return 1; if (!bd) return -1;
+            return new Date(ad).getTime() - new Date(bd).getTime();
+          }
+          case 'title.asc': case 'original_title.asc': case 'name.asc':
+            return (a.title || a.name || '').localeCompare(b.title || b.name || '');
+          case 'title.desc': case 'original_title.desc': case 'name.desc':
+            return (b.title || b.name || '').localeCompare(a.title || a.name || '');
+          default: return 0;
+        }
+      });
+    }
+    return results;
+  })();
+
+  // ── Build TMDB filters ──
+  const buildTMDBFilters = (mediaType: 'movie' | 'tv'): TMDBFilters => {
+    const f: TMDBFilters = {};
+    if (filters.genres.length > 0) f.with_genres = filters.genres;
+
+    if (filters.startYear || filters.endYear) {
+      const sy = filters.startYear ? (typeof filters.startYear === 'string' ? parseInt(filters.startYear) : filters.startYear as number) : undefined;
+      const ey = filters.endYear ? (typeof filters.endYear === 'string' ? parseInt(filters.endYear) : filters.endYear as number) : undefined;
+      if (sy && ey && sy === ey) {
+        if (mediaType === 'movie') f.primary_release_year = sy;
+        else f.first_air_date_year = sy;
+      } else {
+        if (sy && !isNaN(sy)) {
+          if (mediaType === 'movie') f['primary_release_date.gte'] = `${sy}-01-01`;
+          else f['first_air_date.gte'] = `${sy}-01-01`;
+        }
+        if (ey && !isNaN(ey)) {
+          if (mediaType === 'movie') f['primary_release_date.lte'] = `${ey}-12-31`;
+          else f['first_air_date.lte'] = `${ey}-12-31`;
+        }
+      }
+    }
+
+    if (filters.minRating) {
+      const r = typeof filters.minRating === 'string' ? parseFloat(filters.minRating) : filters.minRating as number;
+      if (!isNaN(r)) f['vote_average.gte'] = r;
+    }
+    if (filters.certification && mediaType === 'movie') {
+      f.certification = filters.certification;
+      f.certification_country = 'US';
+    }
+    if (filters.actors.length > 0) f.with_cast = filters.actors;
+    if (filters.companies.length > 0) f.with_companies = filters.companies;
+    if (filters.watchProviders.length > 0) {
+      f.with_watch_providers = filters.watchProviders;
+      f.watch_region = 'US';
+    }
+    const sortMap: Record<string, string> = {
+      'rating.desc': 'vote_average.desc', 'rating.asc': 'vote_average.asc',
+      'year.desc': mediaType === 'movie' ? 'primary_release_date.desc' : 'first_air_date.desc',
+      'year.asc': mediaType === 'movie' ? 'primary_release_date.asc' : 'first_air_date.asc',
+      'title.asc': mediaType === 'movie' ? 'original_title.asc' : 'name.asc',
+      'title.desc': mediaType === 'movie' ? 'original_title.desc' : 'name.desc',
+    };
+    f.sort_by = sortMap[filters.sortBy] || filters.sortBy || 'popularity.desc';
+    return f;
+  };
+
+  // ── Search handlers ──
+  const handleSearch = async (e?: React.FormEvent, page = 1) => {
     if (e) e.preventDefault();
-    
-    // If streams mode is active, search torrents directly
+    setActiveDropdown(null);
+
     if (showStreams && query.trim()) {
       setIsLoading(true);
       setHasSearched(true);
       setSearchMode('search');
-      
       try {
-        // Determine category based on filters or default to Movies
-        const category = filters.mediaType === 'tv' ? 'TV' : 'Movies';
-        await searchTorrentsDirectly(query.trim(), category);
-      } catch (error) {
-        console.error('Torrent search error:', error);
-        setDirectTorrentResults([]);
-      } finally {
-        setIsLoading(false);
-      }
+        await searchTorrentsDirectly(query.trim(), filters.mediaType === 'tv' ? 'TV' : 'Movies');
+      } catch { setDirectTorrentResults([]); }
+      finally { setIsLoading(false); }
       return;
     }
-    
-    // If no query and no filters, don't search
+
     if (!query.trim() && !hasActiveFilters) return;
-    
     setIsLoading(true);
     setHasSearched(true);
-    
+    setCurrentPage(page);
+    if (page === 1) { setPostText(''); setPostMediaType('all'); setPostMinRating(''); setPostSortBy(''); }
+
     try {
-      // If there's a text query, use search API
       if (query.trim()) {
         setSearchMode('search');
-        // Always include adult content in search to show all available results
-        // Users can filter results client-side if needed
-        const data = await fetchFromTMDB(tmdbEndpoints.search, {
-          query: query.trim(),
-          include_adult: true
-        });
-        
-        // Filter out person results and only keep movies and TV shows
-        const movieTvResults = data.results.filter(
+        const data = await fetchFromTMDB(tmdbEndpoints.search, { query: query.trim(), include_adult: true, page });
+        const results = (data.results || []).filter(
           (item: SearchResult) => item.media_type === 'movie' || item.media_type === 'tv'
         );
-        
-        setAllResults(movieTvResults);
+        setAllResults(results);
+        setTotalPages(Math.min(data.total_pages || 0, 500));
+        setTotalResults(data.total_results || 0);
       } else {
-        // No query but filters are set - use discover API
-        setSearchMode('discover');
-        await handleDiscover();
+        await handleDiscover(page);
       }
-    } catch (error) {
-      console.error('Search error:', error);
-      setAllResults([]);
-      setFilteredResults([]);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (err) {
+      console.error('Search error:', err);
+      setAllResults([]); setTotalPages(0); setTotalResults(0);
+    } finally { setIsLoading(false); }
   };
 
-  const handleDiscover = async () => {
+  const handleDiscover = async (page = 1) => {
     if (!hasActiveFilters) return;
-    
-    setIsLoading(true);
-    setHasSearched(true);
-    setSearchMode('discover');
-    
+    setIsLoading(true); setHasSearched(true); setSearchMode('discover'); setCurrentPage(page);
+    if (page === 1) { setPostText(''); setPostMediaType('all'); setPostMinRating(''); setPostSortBy(''); }
+
     try {
-      // Build TMDB filters
-      const tmdbFilters: TMDBFilters = {};
-      
-      // Media type is required for discover
       const mediaType = filters.mediaType === 'all' ? 'movie' : filters.mediaType;
+      const tmdbFilters = buildTMDBFilters(mediaType);
       tmdbFilters.media_type = mediaType;
-      
-      // Genres
-      if (filters.genres.length > 0) {
-        tmdbFilters.with_genres = filters.genres;
-      }
-      
-      // Year range
-      if (filters.startYear || filters.endYear) {
-        const startYear = filters.startYear ? (typeof filters.startYear === 'string' ? parseInt(filters.startYear) : filters.startYear) : undefined;
-        const endYear = filters.endYear ? (typeof filters.endYear === 'string' ? parseInt(filters.endYear) : filters.endYear) : undefined;
-        
-        if (startYear && !isNaN(startYear) && endYear && !isNaN(endYear) && startYear === endYear) {
-          // Single year selected
-          if (mediaType === 'movie') {
-            tmdbFilters.primary_release_year = startYear;
-          } else {
-            tmdbFilters.first_air_date_year = startYear;
-          }
-        } else {
-          // Year range
-          if (startYear && !isNaN(startYear)) {
-            if (mediaType === 'movie') {
-              tmdbFilters['primary_release_date.gte'] = `${startYear}-01-01`;
-            } else {
-              tmdbFilters['first_air_date.gte'] = `${startYear}-01-01`;
-            }
-          }
-          if (endYear && !isNaN(endYear)) {
-            if (mediaType === 'movie') {
-              tmdbFilters['primary_release_date.lte'] = `${endYear}-12-31`;
-            } else {
-              tmdbFilters['first_air_date.lte'] = `${endYear}-12-31`;
-            }
-          }
-        }
-      }
-      
-      // Rating
-      if (filters.minRating) {
-        const minRating = typeof filters.minRating === 'string' ? parseFloat(filters.minRating) : filters.minRating;
-        if (!isNaN(minRating)) {
-          tmdbFilters['vote_average.gte'] = minRating;
-        }
-      }
-      
-      // Certification (only for movies)
-      if (filters.certification && mediaType === 'movie') {
-        tmdbFilters.certification = filters.certification;
-        tmdbFilters.certification_country = 'US'; // Default to US certifications
-      }
-      
-      // Actors
-      if (filters.actors.length > 0) {
-        tmdbFilters.with_cast = filters.actors;
-      }
-      
-      // Sort
-      if (filters.sortBy && filters.sortBy !== 'relevance') {
-        // Map our sort options to TMDB sort options
-        const sortMap: Record<string, string> = {
-          'rating.desc': 'vote_average.desc',
-          'rating.asc': 'vote_average.asc',
-          'year.desc': mediaType === 'movie' ? 'primary_release_date.desc' : 'first_air_date.desc',
-          'year.asc': mediaType === 'movie' ? 'primary_release_date.asc' : 'first_air_date.asc',
-          'title.asc': mediaType === 'movie' ? 'original_title.asc' : 'name.asc',
-          'title.desc': mediaType === 'movie' ? 'original_title.desc' : 'name.desc',
-        };
-        tmdbFilters.sort_by = sortMap[filters.sortBy] || 'popularity.desc';
-      } else {
-        tmdbFilters.sort_by = 'popularity.desc';
-      }
-      
-      // Discover for the selected media type
-      let results = await discoverWithFilters(mediaType, tmdbFilters, 100);
-      
-      // Ensure all results have media_type set
-      results = results.map(item => ({
-        ...item,
-        media_type: item.media_type || mediaType
-      }));
-      
-      // If "all" was selected, also get the other type
+      const res = await discoverWithFilters(mediaType, tmdbFilters, page);
+      let results = res.results.map((item: any) => ({ ...item, media_type: item.media_type || mediaType }));
+      let tp = res.total_pages, tr = res.total_results;
+
       if (filters.mediaType === 'all') {
         const otherType: 'movie' | 'tv' = mediaType === 'movie' ? 'tv' : 'movie';
-        const otherFilters: TMDBFilters = { ...tmdbFilters, media_type: otherType };
-        // Adjust year field for the other type if we have a single year
-        if (filters.startYear && filters.endYear && filters.startYear === filters.endYear) {
-          const year = typeof filters.startYear === 'string' ? parseInt(filters.startYear) : filters.startYear;
-          if (!isNaN(year)) {
-            delete otherFilters.primary_release_year;
-            delete otherFilters.first_air_date_year;
-            if (otherType === 'movie') {
-              otherFilters.primary_release_year = year;
-            } else {
-              otherFilters.first_air_date_year = year;
-            }
-          }
-        }
-        const otherResults = await discoverWithFilters(otherType, otherFilters, 100);
-        // Ensure other results also have media_type set
-        const typedOtherResults = otherResults.map(item => ({
-          ...item,
-          media_type: item.media_type || otherType
-        }));
-        results = [...results, ...typedOtherResults];
+        const otherFilters = buildTMDBFilters(otherType);
+        otherFilters.media_type = otherType;
+        const otherRes = await discoverWithFilters(otherType, otherFilters, page);
+        const otherResults = otherRes.results.map((item: any) => ({ ...item, media_type: item.media_type || otherType }));
+        results = [...results, ...otherResults];
+        tp = Math.max(tp, otherRes.total_pages);
+        tr = tr + otherRes.total_results;
       }
-      
+
       setAllResults(results);
-    } catch (error) {
-      console.error('Discover error:', error);
-      setAllResults([]);
-      setFilteredResults([]);
-    } finally {
-      setIsLoading(false);
-    }
+      setTotalPages(Math.min(tp, 500));
+      setTotalResults(tr);
+    } catch (err) {
+      console.error('Discover error:', err);
+      setAllResults([]); setTotalPages(0); setTotalResults(0);
+    } finally { setIsLoading(false); }
   };
 
-  const getTitle = (item: SearchResult) => {
-    return item.media_type === 'movie' ? item.title : item.name;
+  const handlePageChange = async (page: number) => {
+    if (page < 1 || page > totalPages || page === currentPage) return;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (searchMode === 'search' && query.trim()) await handleSearch(undefined, page);
+    else await handleDiscover(page);
   };
 
-  const getDate = (item: SearchResult) => {
-    const date = item.media_type === 'movie' ? item.release_date : item.first_air_date;
-    if (!date) return '';
-    return new Date(date).getFullYear().toString();
-  };
-
-  // Direct torrent search (independent of TMDB)
-  const searchTorrentsDirectly = async (searchQuery: string, category: 'Movies' | 'TV' = 'Movies'): Promise<any[]> => {
-    if (!searchQuery.trim()) {
-      return [];
-    }
-
-    setLoadingDirectTorrents(true);
-    
-    try {
-      // Clean up search query
-      let cleanQuery = searchQuery
-        .replace(/[^\w\s'-]/g, ' ')
-        .trim()
-        .replace(/\s+/g, ' ');
-      
-      console.log(`🔍 Direct torrent search for: "${cleanQuery}" (category: ${category})`);
-      
-      // Variable to hold successful data
-      let data: any = null;
-      
-      // Direct torrent search using public APIs (no external libraries needed)
-      console.log('🔍 Starting direct torrent search via public APIs...');
-      
-      // Try multiple public torrent search APIs
-      const corsProxies = [
-        'https://api.allorigins.win/raw?url=',
-        'https://corsproxy.io/?',
-        'https://api.codetabs.com/v1/proxy?quest=',
-      ];
-      
-      // Try searching via public torrent search services
-      const searchEndpoints = [
-        // Try a public torrent search API
-        {
-          name: 'torrentapi',
-          url: `https://torrentapi.org/pubapi_v2.php?mode=search&search_string=${encodeURIComponent(cleanQuery)}&format=json_extended&app_id=torrent_search`,
-          parse: (responseData: any) => {
-            if (responseData.torrent_results && Array.isArray(responseData.torrent_results)) {
-              return responseData.torrent_results.map((torrent: any) => ({
-                title: torrent.title || 'Unknown',
-                magnet: torrent.download || torrent.magnet || '',
-                size: torrent.size ? formatBytes(torrent.size) : '',
-                seeders: torrent.seeders || 0,
-                leechers: torrent.leechers || 0,
-                category: torrent.category || category,
-                provider: 'torrentapi'
-              })).filter((t: any) => t.magnet && t.magnet.startsWith('magnet:'));
-            }
-            return [];
-          }
-        }
-      ];
-      
-      // Try each endpoint with CORS proxies
-      for (const endpoint of searchEndpoints) {
-        for (const proxy of corsProxies) {
-          try {
-            const apiUrl = proxy ? `${proxy}${encodeURIComponent(endpoint.url)}` : endpoint.url;
-            console.log(`Trying ${endpoint.name} via ${proxy ? 'CORS proxy' : 'direct'}...`);
-            
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
-            
-            const response = await fetch(apiUrl, {
-              method: 'GET',
-              headers: { 'Accept': 'application/json' },
-              signal: controller.signal,
-            });
-            
-            clearTimeout(timeoutId);
-            
-            if (response.ok) {
-              const responseData = await response.json();
-              const parsed = endpoint.parse(responseData);
-              
-              if (parsed && parsed.length > 0) {
-                data = parsed;
-                console.log(`✅ Found ${data.length} torrents from ${endpoint.name}`);
-                break; // Success!
-              }
-            }
-          } catch (error: any) {
-            if (error.name !== 'AbortError') {
-              console.warn(`${endpoint.name} failed:`, error.message);
-            }
-            continue;
-          }
-        }
-        
-        if (data && data.length > 0) break; // Exit if we got results
-      }
-      
-      // Helper function to format bytes
-      function formatBytes(bytes: number): string {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-      }
-      
-      // If still no data, try HTML-based search via proxy (less reliable but might work)
-      if (!data || data.length === 0) {
-        console.log('Trying HTML-based search via proxy...');
-        
-        // Try 1337x search via proxy
-        const searchUrl = `https://1337x.to/search/${encodeURIComponent(cleanQuery)}/1/`;
-        
-        for (const proxy of corsProxies) {
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
-            
-            const response = await fetch(`${proxy}${encodeURIComponent(searchUrl)}`, {
-              method: 'GET',
-              headers: { 'Accept': 'text/html' },
-              signal: controller.signal,
-            });
-            
-            clearTimeout(timeoutId);
-            
-            if (response.ok) {
-              const html = await response.text();
-              
-              // Extract magnet links using regex
-              const magnetRegex = /magnet:\?xt=urn:btih:[a-zA-Z0-9]{40}[^"'\s<>]*/gi;
-              const magnetMatches = html.match(magnetRegex);
-              
-              if (magnetMatches && magnetMatches.length > 0) {
-                console.log(`✅ Found ${magnetMatches.length} magnet links in HTML`);
-                
-                // Try to extract titles (basic approach)
-                const titleRegex = /<a[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/a>/gi;
-                const titles: string[] = [];
-                let match;
-                while ((match = titleRegex.exec(html)) !== null && titles.length < magnetMatches.length) {
-                  const title = match[1].trim();
-                  if (title && title.length > 3 && title.length < 200) {
-                    titles.push(title);
-                  }
-                }
-                
-                data = magnetMatches.slice(0, 20).map((magnet, i) => ({
-                  title: titles[i] || `Torrent ${i + 1} - ${cleanQuery}`,
-                  magnet: magnet,
-                  size: '',
-                  seeders: 0,
-                  leechers: 0,
-                  category: category,
-                  provider: '1337x'
-                }));
-                
-                if (data.length > 0) {
-                  console.log(`✅ Successfully extracted ${data.length} torrents from HTML`);
-                  break;
-                }
-              }
-            }
-          } catch (error: any) {
-            if (error.name !== 'AbortError') {
-              console.warn(`HTML search via ${proxy} failed:`, error.message);
-            }
-            continue;
-          }
-        }
-      }
-      
-      // Process and format results
-      if (!data || data.length === 0) {
-        console.warn(`No torrent data retrieved`);
-        setLoadingDirectTorrents(false);
-        setDirectTorrentResults([]);
-        return [];
-      }
-
-      // Format streams with quality extraction
-      const formattedStreams = data.map((torrent: any) => ({
-        title: torrent.title,
-        quality: extractQuality(torrent.title),
-        size: torrent.size,
-        magnet: torrent.magnet,
-        seeders: torrent.seeders || 0,
-        leechers: torrent.leechers || 0,
-        category: torrent.category || category,
-        provider: torrent.provider || 'torrent-search-api',
-      }));
-
-      // Sort by seeders (highest first)
-      formattedStreams.sort((a: any, b: any) => b.seeders - a.seeders);
-      
-      setLoadingDirectTorrents(false);
-      setDirectTorrentResults(formattedStreams);
-      return formattedStreams;
-    } catch (error) {
-      console.error('Error in direct torrent search:', error);
-      setLoadingDirectTorrents(false);
-      setDirectTorrentResults([]);
-      return [];
-    }
-  };
-
-  // Fetch torrent streams using Torrent Search API (for TMDB results - kept for backward compatibility)
-  // API: https://itorrentsearch.vercel.app/api/{site}/{query}/{page}
-  const fetchTorrentStreams = async (tmdbId: number, type: 'movie' | 'tv', season?: number, episode?: number): Promise<any[]> => {
-    const key = `${type}-${tmdbId}${season && episode ? `-${season}-${episode}` : ''}`;
-    
-    // Set loading state
-    setLoadingStreams(prev => ({ ...prev, [key]: true }));
-    
-    try {
-      // Get title from TMDB to use as search query
-      let searchQuery: string = '';
-      try {
-        const detailsEndpoint = type === 'movie' 
-          ? `/movie/${tmdbId}`
-          : `/tv/${tmdbId}`;
-        const details = await fetchFromTMDB(detailsEndpoint);
-        searchQuery = type === 'movie' ? details.title : details.name;
-        
-        // For TV shows, add season/episode info to search
-        if (type === 'tv' && season && episode) {
-          searchQuery = `${searchQuery} S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
-        }
-        
-        console.log(`Searching torrents for: ${searchQuery}`);
-      } catch (error) {
-        console.error('Error fetching title from TMDB:', error);
-        setLoadingStreams(prev => ({ ...prev, [key]: false }));
-        setTorrentStreams(prev => ({ ...prev, [key]: [] }));
-        return [];
-      }
-
-      if (!searchQuery) {
-        console.warn(`No title found for ${type} ${tmdbId}`);
-        setLoadingStreams(prev => ({ ...prev, [key]: false }));
-        setTorrentStreams(prev => ({ ...prev, [key]: [] }));
-        return [];
-      }
-
-      // Use direct search function
-      const category = type === 'movie' ? 'Movies' : 'TV';
-      const results = await searchTorrentsDirectly(searchQuery, category);
-      
-      if (results.length > 0) {
-        setTorrentStreams(prev => ({ ...prev, [key]: results }));
-        setLoadingStreams(prev => ({ ...prev, [key]: false }));
-        return results;
-      } else {
-        setTorrentStreams(prev => ({ ...prev, [key]: [] }));
-        setLoadingStreams(prev => ({ ...prev, [key]: false }));
-        return [];
-      }
-    } catch (error) {
-      console.error('Error fetching torrent streams:', error);
-      setLoadingStreams(prev => ({ ...prev, [key]: false }));
-      setTorrentStreams(prev => ({ ...prev, [key]: [] }));
-      return [];
-    }
-  };
-
-  // Helper functions to extract info from stream titles
-  const extractQuality = (title: string): string => {
-    const qualityMatch = title.match(/\b(4K|2160p|1080p|720p|480p|360p|HD|SD)\b/i);
-    return qualityMatch ? qualityMatch[1] : 'Unknown';
-  };
-
-  const extractSize = (title: string): string => {
-    const sizeMatch = title.match(/(\d+\.?\d*)\s*(GB|MB|GiB|MiB)/i);
-    return sizeMatch ? `${sizeMatch[1]} ${sizeMatch[2]}` : '';
-  };
-
-  const extractSeeders = (title: string): number => {
-    const seederMatch = title.match(/(\d+)\s*seed/i);
-    return seederMatch ? parseInt(seederMatch[1]) : 0;
-  };
-
-  // Auto-search if sectionId is provided in URL - fetch filters and apply them
-  useEffect(() => {
-    const loadSectionFilters = async () => {
-      if (!sectionId || hasSearched || !isSupabaseConfigured() || !supabase) return;
-      
-      try {
-        // Fetch the section from homepage_sections
-        const { data: section, error } = await supabase
-          .from('homepage_sections')
-          .select('id, title, config')
-          .eq('id', sectionId)
-          .single();
-        
-        if (error || !section) {
-          console.error('Error fetching section:', error);
-          return;
-        }
-        
-        // Check if section has TMDB filters
-        if (section.config?.tmdb_filters) {
-          const tmdbFilters = section.config.tmdb_filters as TMDBFilters;
-          
-          // Apply filters to the filter state
-          if (tmdbFilters.media_type) {
-            setFilters(prev => ({
-              ...prev,
-              mediaType: tmdbFilters.media_type === 'movie' ? 'movie' : tmdbFilters.media_type === 'tv' ? 'tv' : 'all',
-            }));
-          }
-          
-          if (tmdbFilters.with_genres && Array.isArray(tmdbFilters.with_genres)) {
-            setFilters(prev => ({
-              ...prev,
-              genres: tmdbFilters.with_genres!,
-            }));
-          }
-          
-          if (tmdbFilters['vote_average.gte']) {
-            setFilters(prev => ({
-              ...prev,
-              minRating: tmdbFilters['vote_average.gte']!,
-            }));
-          }
-          
-          if (tmdbFilters.certification) {
-            setFilters(prev => ({
-              ...prev,
-              certification: tmdbFilters.certification!,
-            }));
-          }
-          
-          if (tmdbFilters.sort_by) {
-            setFilters(prev => ({
-              ...prev,
-              sortBy: tmdbFilters.sort_by!,
-            }));
-          }
-          
-          // Handle year filters
-          if (tmdbFilters.primary_release_year) {
-            const year = tmdbFilters.primary_release_year;
-            setFilters(prev => ({
-              ...prev,
-              startYear: year,
-              endYear: year,
-            }));
-          } else if (tmdbFilters['primary_release_date.gte'] || tmdbFilters['primary_release_date.lte']) {
-            const startYear = tmdbFilters['primary_release_date.gte'] 
-              ? new Date(tmdbFilters['primary_release_date.gte']).getFullYear() 
-              : '';
-            const endYear = tmdbFilters['primary_release_date.lte'] 
-              ? new Date(tmdbFilters['primary_release_date.lte']).getFullYear() 
-              : '';
-            setFilters(prev => ({
-              ...prev,
-              startYear,
-              endYear,
-            }));
-          }
-          
-          if (tmdbFilters.first_air_date_year) {
-            const year = tmdbFilters.first_air_date_year;
-            setFilters(prev => ({
-              ...prev,
-              startYear: year,
-              endYear: year,
-            }));
-          } else if (tmdbFilters['first_air_date.gte'] || tmdbFilters['first_air_date.lte']) {
-            const startYear = tmdbFilters['first_air_date.gte'] 
-              ? new Date(tmdbFilters['first_air_date.gte']).getFullYear() 
-              : '';
-            const endYear = tmdbFilters['first_air_date.lte'] 
-              ? new Date(tmdbFilters['first_air_date.lte']).getFullYear() 
-              : '';
-            setFilters(prev => ({
-              ...prev,
-              startYear,
-              endYear,
-            }));
-          }
-          
-          // Use discover API with the section's filters
-          setSearchMode('discover');
-          setIsLoading(true);
-          setHasSearched(true);
-          
-          const mediaType = tmdbFilters.media_type || 'movie';
-          const results = await discoverWithFilters(mediaType, tmdbFilters, 100);
-          
-          // Ensure all results have media_type set
-          const typedResults = results.map(item => ({
-            ...item,
-            media_type: item.media_type || mediaType
-          }));
-          
-          setAllResults(typedResults);
-          setIsLoading(false);
-        } else {
-          // No filters - this shouldn't happen for auto-generated categories, but handle it
-          console.warn('Section has no TMDB filters');
-        }
-      } catch (error) {
-        console.error('Error loading section filters:', error);
-        setIsLoading(false);
-      }
-    };
-    
-    loadSectionFilters();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sectionId]);
-
-  // Load genres and certifications on mount
-  useEffect(() => {
-    const loadGenres = async () => {
-      setLoadingGenres(true);
-      try {
-        const [movieGenres, tvGenres] = await Promise.all([
-          fetchGenres('movie'),
-          fetchGenres('tv')
-        ]);
-        // Combine and deduplicate genres
-        const allGenres = [...movieGenres];
-        tvGenres.forEach(tvGenre => {
-          if (!allGenres.find(g => g.id === tvGenre.id)) {
-            allGenres.push(tvGenre);
-          }
-        });
-        setAvailableGenres(allGenres.sort((a, b) => a.name.localeCompare(b.name)));
-      } catch (error) {
-        console.error('Error loading genres:', error);
-      } finally {
-        setLoadingGenres(false);
-      }
-    };
-    
-    const loadCertifications = async () => {
-      setLoadingCertifications(true);
-      try {
-        const certs = await getAllMovieCertifications();
-        setAvailableCertifications(certs);
-      } catch (error) {
-        console.error('Error loading certifications:', error);
-      } finally {
-        setLoadingCertifications(false);
-      }
-    };
-    
-    loadGenres();
-    loadCertifications();
-  }, []);
-
-  // Auto-fetch torrent streams when streams mode is active
-  // Removed: Auto-fetch streams for TMDB results
-  // Now using direct torrent search when streams mode is active (independent of TMDB)
-
-  // Apply filters to results whenever filters or allResults change
-  // For search mode, apply client-side filters. For discover mode, results are already filtered.
-  useEffect(() => {
-    if (allResults.length === 0) {
-      setFilteredResults([]);
-      return;
-    }
-
-    // If using discover API, results are already filtered, just apply sorting if needed
-    if (searchMode === 'discover') {
-      let filtered = [...allResults];
-      
-      // Only apply sorting if not already sorted by TMDB
-      if (filters.sortBy && filters.sortBy !== 'relevance' && filters.sortBy !== 'popularity.desc') {
-        filtered.sort((a, b) => {
-          switch (filters.sortBy) {
-            case 'rating.desc':
-              return b.vote_average - a.vote_average;
-            case 'rating.asc':
-              return a.vote_average - b.vote_average;
-            case 'year.desc': {
-              const aDate = a.media_type === 'movie' ? a.release_date : a.first_air_date;
-              const bDate = b.media_type === 'movie' ? b.release_date : b.first_air_date;
-              if (!aDate) return 1;
-              if (!bDate) return -1;
-              return new Date(bDate).getTime() - new Date(aDate).getTime();
-            }
-            case 'year.asc': {
-              const aDate = a.media_type === 'movie' ? a.release_date : a.first_air_date;
-              const bDate = b.media_type === 'movie' ? b.release_date : b.first_air_date;
-              if (!aDate) return 1;
-              if (!bDate) return -1;
-              return new Date(aDate).getTime() - new Date(bDate).getTime();
-            }
-            case 'title.asc': {
-              const aTitle = a.media_type === 'movie' ? a.title : a.name;
-              const bTitle = b.media_type === 'movie' ? b.title : b.name;
-              return (aTitle || '').localeCompare(bTitle || '');
-            }
-            case 'title.desc': {
-              const aTitle = a.media_type === 'movie' ? a.title : a.name;
-              const bTitle = b.media_type === 'movie' ? b.title : b.name;
-              return (bTitle || '').localeCompare(aTitle || '');
-            }
-            default:
-              return 0;
-          }
-        });
-      }
-      
-      setFilteredResults(filtered);
-      return;
-    }
-
-    // For search mode, apply all filters client-side
-    let filtered = [...allResults];
-
-    // Filter by media type
-    if (filters.mediaType !== 'all') {
-      filtered = filtered.filter(item => item.media_type === filters.mediaType);
-    }
-
-    // Filter by year range
-    if (filters.startYear || filters.endYear) {
-      const startYear = filters.startYear ? (typeof filters.startYear === 'string' ? parseInt(filters.startYear) : filters.startYear) : undefined;
-      const endYear = filters.endYear ? (typeof filters.endYear === 'string' ? parseInt(filters.endYear) : filters.endYear) : undefined;
-      
-      if (startYear && !isNaN(startYear) || endYear && !isNaN(endYear)) {
-        filtered = filtered.filter(item => {
-          const date = item.media_type === 'movie' ? item.release_date : item.first_air_date;
-          if (!date) return false;
-          const itemYear = new Date(date).getFullYear();
-          
-          if (startYear && endYear && startYear === endYear) {
-            // Single year
-            return itemYear === startYear;
-          } else {
-            // Year range
-            const meetsStart = !startYear || itemYear >= startYear;
-            const meetsEnd = !endYear || itemYear <= endYear;
-            return meetsStart && meetsEnd;
-          }
-        });
-      }
-    }
-
-    // Filter by minimum rating
-    if (filters.minRating) {
-      const minRating = typeof filters.minRating === 'string' ? parseFloat(filters.minRating) : filters.minRating;
-      if (!isNaN(minRating)) {
-        filtered = filtered.filter(item => item.vote_average >= minRating);
-      }
-    }
-
-    // Sort results
-    if (filters.sortBy !== 'relevance') {
-      filtered.sort((a, b) => {
-        switch (filters.sortBy) {
-          case 'rating.desc':
-            return b.vote_average - a.vote_average;
-          case 'rating.asc':
-            return a.vote_average - b.vote_average;
-          case 'year.desc': {
-            const aDate = a.media_type === 'movie' ? a.release_date : a.first_air_date;
-            const bDate = b.media_type === 'movie' ? b.release_date : b.first_air_date;
-            if (!aDate) return 1;
-            if (!bDate) return -1;
-            return new Date(bDate).getTime() - new Date(aDate).getTime();
-          }
-          case 'year.asc': {
-            const aDate = a.media_type === 'movie' ? a.release_date : a.first_air_date;
-            const bDate = b.media_type === 'movie' ? b.release_date : b.first_air_date;
-            if (!aDate) return 1;
-            if (!bDate) return -1;
-            return new Date(aDate).getTime() - new Date(bDate).getTime();
-          }
-          case 'title.asc': {
-            const aTitle = a.media_type === 'movie' ? a.title : a.name;
-            const bTitle = b.media_type === 'movie' ? b.title : b.name;
-            return (aTitle || '').localeCompare(bTitle || '');
-          }
-          case 'title.desc': {
-            const aTitle = a.media_type === 'movie' ? a.title : a.name;
-            const bTitle = b.media_type === 'movie' ? b.title : b.name;
-            return (bTitle || '').localeCompare(aTitle || '');
-          }
-          default:
-            return 0;
-        }
-      });
-    }
-
-    setFilteredResults(filtered);
-  }, [filters, allResults, searchMode]);
-
+  // ── Filter helpers ──
   const handleFilterChange = (key: string, value: any) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
-    // Close certification dropdown if media type changes to TV (certification only applies to movies)
-    if (key === 'mediaType' && value === 'tv') {
-      setShowCertificationDropdown(false);
-      setFilters(prev => ({ ...prev, certification: '' }));
-    }
+    setFilters(prev => {
+      const next = { ...prev, [key]: value };
+      if (key === 'mediaType' && value === 'tv') next.certification = '';
+      return next;
+    });
   };
 
   const clearFilters = () => {
-    setFilters({
-      mediaType: 'all',
-      genres: [],
-      startYear: '',
-      endYear: '',
-      minRating: '',
-      certification: '',
-      actors: [],
-      sortBy: 'popularity.desc'
-    });
-    setShowGenreDropdown(false);
-    setShowYearDropdown(false);
-    setShowRatingDropdown(false);
-    setShowCertificationDropdown(false);
-    setShowActorDropdown(false);
-    setSelectedActors([]);
-    setActorSearchQuery('');
-    setActorSearchResults([]);
+    setFilters({ mediaType: 'all', genres: [], startYear: '', endYear: '', minRating: '', certification: '', actors: [], watchProviders: [], companies: [], sortBy: 'popularity.desc' });
+    setSelectedActors([]); setActorQuery(''); setActorResults([]);
+    setSelectedCompanies([]); setCompanyQuery(''); setCompanyResults([]);
+    setSelectedProviders([]); setActiveDropdown(null);
   };
 
-  // Handle actor search
-  const handleActorSearch = async (query: string) => {
-    setActorSearchQuery(query);
-    if (!query.trim()) {
-      setActorSearchResults([]);
-      return;
-    }
-    
+  // ── Actor search ──
+  const handleActorSearch = async (q: string) => {
+    setActorQuery(q);
+    if (!q.trim()) { setActorResults([]); return; }
     setSearchingActors(true);
-    try {
-      const results = await searchActors(query);
-      setActorSearchResults(results);
-    } catch (error) {
-      console.error('Error searching actors:', error);
-      setActorSearchResults([]);
-    } finally {
-      setSearchingActors(false);
-    }
+    try { setActorResults(await searchActors(q)); }
+    catch { setActorResults([]); }
+    finally { setSearchingActors(false); }
   };
 
-  // Add actor to selected list
   const addActor = (actor: { id: number; name: string; profile_path?: string }) => {
-    if (!selectedActors.find(a => a.id === actor.id)) {
-      setSelectedActors([...selectedActors, actor]);
-      setFilters(prev => ({
-        ...prev,
-        actors: [...prev.actors, actor.id]
-      }));
+    if (selectedActors.find(a => a.id === actor.id)) return;
+    setSelectedActors(prev => [...prev, actor]);
+    setFilters(prev => ({ ...prev, actors: [...prev.actors, actor.id] }));
+    setActorQuery(''); setActorResults([]);
+  };
+
+  const removeActor = (id: number) => {
+    setSelectedActors(prev => prev.filter(a => a.id !== id));
+    setFilters(prev => ({ ...prev, actors: prev.actors.filter(aid => aid !== id) }));
+  };
+
+  // ── Company search ──
+  const handleCompanySearch = async (q: string) => {
+    setCompanyQuery(q);
+    if (!q.trim()) { setCompanyResults([]); return; }
+    setSearchingCompanies(true);
+    try { setCompanyResults(await searchCompanies(q)); }
+    catch { setCompanyResults([]); }
+    finally { setSearchingCompanies(false); }
+  };
+
+  const addCompany = (company: Company) => {
+    if (selectedCompanies.find(c => c.id === company.id)) return;
+    setSelectedCompanies(prev => [...prev, company]);
+    setFilters(prev => ({ ...prev, companies: [...prev.companies, company.id] }));
+    setCompanyQuery(''); setCompanyResults([]);
+  };
+
+  const removeCompany = (id: number) => {
+    setSelectedCompanies(prev => prev.filter(c => c.id !== id));
+    setFilters(prev => ({ ...prev, companies: prev.companies.filter(cid => cid !== id) }));
+  };
+
+  // ── Provider toggle ──
+  const toggleProvider = (provider: Provider) => {
+    const exists = filters.watchProviders.includes(provider.provider_id);
+    if (exists) {
+      setFilters(prev => ({ ...prev, watchProviders: prev.watchProviders.filter(id => id !== provider.provider_id) }));
+      setSelectedProviders(prev => prev.filter(p => p.provider_id !== provider.provider_id));
+    } else {
+      setFilters(prev => ({ ...prev, watchProviders: [...prev.watchProviders, provider.provider_id] }));
+      setSelectedProviders(prev => [...prev, provider]);
     }
-    setActorSearchQuery('');
-    setActorSearchResults([]);
   };
 
-  // Remove actor from selected list
-  const removeActor = (actorId: number) => {
-    setSelectedActors(selectedActors.filter(a => a.id !== actorId));
-    setFilters(prev => ({
-      ...prev,
-      actors: prev.actors.filter(id => id !== actorId)
-    }));
+  // ── Torrent search ──
+  const searchTorrentsDirectly = async (searchQuery: string, category: 'Movies' | 'TV' = 'Movies'): Promise<any[]> => {
+    if (!searchQuery.trim()) return [];
+    setLoadingDirectTorrents(true);
+    try {
+      const cleanQuery = searchQuery.replace(/[^\w\s'-]/g, ' ').trim().replace(/\s+/g, ' ');
+      let data: any = null;
+      const proxies = ['https://api.allorigins.win/raw?url=', 'https://corsproxy.io/?', 'https://api.codetabs.com/v1/proxy?quest='];
+
+      for (const proxy of proxies) {
+        try {
+          const searchUrl = `https://1337x.to/search/${encodeURIComponent(cleanQuery)}/1/`;
+          const ctrl = new AbortController();
+          const tid = setTimeout(() => ctrl.abort(), 15000);
+          const res = await fetch(`${proxy}${encodeURIComponent(searchUrl)}`, { headers: { Accept: 'text/html' }, signal: ctrl.signal });
+          clearTimeout(tid);
+          if (res.ok) {
+            const html = await res.text();
+            const magnets = html.match(/magnet:\?xt=urn:btih:[a-zA-Z0-9]{40}[^"'\s<>]*/gi);
+            if (magnets && magnets.length > 0) {
+              const titleRe = /<a[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/a>/gi;
+              const titles: string[] = [];
+              let m;
+              while ((m = titleRe.exec(html)) !== null && titles.length < magnets.length) {
+                const t = m[1].trim();
+                if (t && t.length > 3 && t.length < 200) titles.push(t);
+              }
+              data = magnets.slice(0, 20).map((mag, i) => ({ title: titles[i] || `Torrent ${i + 1} - ${cleanQuery}`, magnet: mag, size: '', seeders: 0, leechers: 0, category, provider: '1337x' }));
+              if (data.length > 0) break;
+            }
+          }
+        } catch (e: any) { if (e.name !== 'AbortError') console.warn('Torrent proxy failed:', e.message); }
+      }
+
+      if (!data || data.length === 0) { setDirectTorrentResults([]); return []; }
+      const formatted = data.map((t: any) => ({ ...t, quality: extractQuality(t.title) }));
+      setDirectTorrentResults(formatted);
+      return formatted;
+    } catch { setDirectTorrentResults([]); return []; }
+    finally { setLoadingDirectTorrents(false); }
   };
 
-  const hasActiveFilters = filters.mediaType !== 'all' || 
-    filters.genres.length > 0 || 
-    filters.startYear !== '' || 
-    filters.endYear !== '' ||
-    filters.minRating !== '' || 
-    filters.certification !== '' ||
-    filters.actors.length > 0 ||
-    (filters.sortBy !== 'relevance' && filters.sortBy !== 'popularity.desc');
+  // ── Effects ──
+  useEffect(() => {
+    const load = async () => {
+      setLoadingProviders(true);
+      const [movieGenres, tvGenres, certs, mp, tvp] = await Promise.all([
+        fetchGenres('movie').catch(() => [] as { id: number; name: string }[]),
+        fetchGenres('tv').catch(() => [] as { id: number; name: string }[]),
+        getAllMovieCertifications().catch(() => [] as { certification: string; meaning: string; order: number }[]),
+        fetchWatchProviders('movie').catch(() => [] as Provider[]),
+        fetchWatchProviders('tv').catch(() => [] as Provider[]),
+      ]);
+      setLoadingProviders(false);
+      const allGenres = [...movieGenres];
+      tvGenres.forEach(g => { if (!allGenres.find(ag => ag.id === g.id)) allGenres.push(g); });
+      setAvailableGenres(allGenres.sort((a, b) => a.name.localeCompare(b.name)));
+      setAvailableCertifications(certs);
+      const combined = new Map<number, Provider>();
+      [...mp, ...tvp].forEach(p => combined.set(p.provider_id, p));
+      setAvailableProviders(Array.from(combined.values()).sort((a, b) => a.display_priority - b.display_priority).slice(0, 30));
+    };
+    load();
+  }, []);
+
+  useEffect(() => {
+    const loadSection = async () => {
+      if (!sectionId || hasSearched || !isSupabaseConfigured() || !supabase) return;
+      try {
+        const { data: section } = await supabase
+          .from('homepage_sections').select('id, title, config').eq('id', sectionId).single();
+        if (!section?.config?.tmdb_filters) return;
+        const tf = section.config.tmdb_filters as TMDBFilters;
+        setFilters(prev => ({
+          ...prev,
+          mediaType: tf.media_type === 'movie' ? 'movie' : tf.media_type === 'tv' ? 'tv' : 'all',
+          genres: tf.with_genres || prev.genres,
+          minRating: tf['vote_average.gte'] ?? prev.minRating,
+          certification: tf.certification || prev.certification,
+          sortBy: tf.sort_by || prev.sortBy,
+        }));
+        setSearchMode('discover'); setIsLoading(true); setHasSearched(true);
+        const mediaType = tf.media_type || 'movie';
+        const res = await discoverWithFilters(mediaType, tf, 1);
+        setAllResults(res.results.map((item: any) => ({ ...item, media_type: item.media_type || mediaType })));
+        setTotalPages(res.total_pages); setTotalResults(res.total_results); setCurrentPage(1);
+      } catch (err) { console.error('Error loading section:', err); }
+      finally { setIsLoading(false); }
+    };
+    loadSection();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sectionId]);
+
+  // ── Render ──
+  const yearLabel = (() => {
+    const s = filters.startYear, e = filters.endYear;
+    if (s && e && s === e) return String(s);
+    if (s && e) return `${s}–${e}`;
+    if (s) return `${s}+`;
+    if (e) return `–${e}`;
+    return '';
+  })();
 
   return (
     <div className="w-full">
-      {/* Search Form */}
-      <form onSubmit={handleSearch} className="max-w-2xl mx-auto mb-8">
-        <div className="relative flex gap-2">
+      {/* Search bar */}
+      <form onSubmit={handleSearch} className="max-w-2xl mx-auto mb-4">
+        <div className="flex gap-2">
           <div className="relative flex-1">
+            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm pointer-events-none" />
             <input
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search for movies, TV shows..."
-              className="w-full px-4 py-3 text-lg bg-gray-800 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600 focus:border-transparent pr-16"
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search movies, TV shows..."
+              className="w-full pl-9 pr-4 py-2.5 bg-gray-800 text-white border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600 focus:border-transparent text-sm"
             />
-            <button 
-              type="submit"
-              disabled={isLoading || (!query.trim() && !hasActiveFilters)}
-              className="absolute right-2 top-2 bottom-2 px-6 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <i className="fas fa-search"></i>
-              )}
-            </button>
           </div>
+          <button
+            type="submit"
+            disabled={isLoading || (!query.trim() && !hasActiveFilters)}
+            className="px-5 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+          >
+            {isLoading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Search'}
+          </button>
           {hasActiveFilters && !query.trim() && (
-            <button
-              type="button"
-              onClick={() => handleDiscover()}
-              disabled={isLoading}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-            >
-              <i className="fas fa-compass mr-2"></i>
-              Discover
+            <button type="button" onClick={() => handleDiscover(1)} disabled={isLoading}
+              className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 text-sm font-medium whitespace-nowrap">
+              <i className="fas fa-compass mr-1.5" />Discover
             </button>
           )}
         </div>
       </form>
 
-      {/* Loading State */}
-      {isLoading && (
-        <div className="flex justify-center py-12">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-400">Searching...</p>
-          </div>
-        </div>
-      )}
-
-      {/* Filter Panel - Always Visible */}
-      <div className="max-w-6xl mx-auto mb-6">
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 md:gap-4">
-            {/* Media Type - Button Selectors - Wider Column */}
-            <div className="md:col-span-2 lg:col-span-3">
-              <label className="block text-white mb-2 text-xs md:text-sm font-semibold">Media Type</label>
-              <div className="flex gap-1 md:gap-1.5 flex-nowrap">
-                <button
-                  type="button"
-                  onClick={() => handleFilterChange('mediaType', 'all')}
-                  className={`px-2.5 py-2 md:px-3 md:py-2 rounded transition-colors text-xs md:text-sm whitespace-nowrap ${
-                    filters.mediaType === 'all'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-gray-700 text-white hover:bg-gray-600'
-                  }`}
-                >
-                  All
+      {/* Compact filter bar */}
+      <div className="max-w-6xl mx-auto mb-4">
+        <div className="bg-gray-900/80 border border-gray-800 rounded-lg p-2.5">
+          <div className="flex flex-wrap gap-1.5 items-center">
+            {/* Media type */}
+            <div className="flex bg-gray-800 rounded-md p-0.5 gap-0.5">
+              {(['all', 'movie', 'tv'] as const).map(t => (
+                <button key={t} type="button" onClick={() => handleFilterChange('mediaType', t)}
+                  className={`px-2.5 py-1 text-xs rounded transition-colors font-medium ${filters.mediaType === t ? 'bg-red-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                  {t === 'all' ? 'All' : t === 'movie' ? 'Movies' : 'TV Shows'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleFilterChange('mediaType', 'movie')}
-                  className={`px-2.5 py-2 md:px-3 md:py-2 rounded transition-colors text-xs md:text-sm whitespace-nowrap ${
-                    filters.mediaType === 'movie'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-gray-700 text-white hover:bg-gray-600'
-                  }`}
-                >
-                  Movies
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleFilterChange('mediaType', 'tv')}
-                  className={`px-2.5 py-2 md:px-3 md:py-2 rounded transition-colors text-xs md:text-sm whitespace-nowrap ${
-                    filters.mediaType === 'tv'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-gray-700 text-white hover:bg-gray-600'
-                  }`}
-                >
-                  TV Shows
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowStreams(!showStreams)}
-                  className={`px-2.5 py-2 md:px-3 md:py-2 rounded transition-colors text-xs md:text-sm whitespace-nowrap ${
-                    showStreams
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-gray-700 text-white hover:bg-gray-600'
-                  }`}
-                  title="Show torrent streams"
-                >
-                  <i className="fas fa-stream mr-1"></i>
-                  Streams
-                </button>
-              </div>
+              ))}
             </div>
 
-            {/* Genres - Dropdown Button */}
-            <div className="relative md:col-span-1 lg:col-span-2">
-              <label className="block text-white mb-2 text-xs md:text-sm font-semibold">Genres</label>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowGenreDropdown(!showGenreDropdown);
-                  setShowYearDropdown(false);
-                  setShowRatingDropdown(false);
-                  setShowCertificationDropdown(false);
-                }}
-                className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center justify-between text-sm md:text-base h-[42px] ${
-                  filters.genres.length > 0 ? 'ring-2 ring-red-600' : ''
-                }`}
-              >
-                <span className="truncate">
-                  {filters.genres.length === 0
-                    ? 'Select Genres'
-                    : filters.genres.length === 1
-                    ? availableGenres.find(g => g.id === filters.genres[0])?.name || '1 Selected'
-                    : `${filters.genres.length} Selected`}
-                </span>
-                <i className={`fas fa-chevron-${showGenreDropdown ? 'up' : 'down'} ml-2 flex-shrink-0`}></i>
+            {/* Streams */}
+            <button type="button" onClick={() => setShowStreams(s => !s)}
+              className={`h-8 px-2.5 text-xs rounded-md transition-colors flex items-center gap-1 ${showStreams ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'}`}>
+              <i className="fas fa-stream text-xs" />Streams
+            </button>
+
+            <div className="w-px h-5 bg-gray-700 mx-0.5" />
+
+            <FilterBtn label="Genres" count={filters.genres.length} active={filters.genres.length > 0} open={activeDropdown === 'genre'} onClick={() => toggleDropdown('genre')} />
+            <FilterBtn label={yearLabel ? `Year: ${yearLabel}` : 'Year'} active={!!(filters.startYear || filters.endYear)} open={activeDropdown === 'year'} onClick={() => toggleDropdown('year')} />
+            <FilterBtn label={filters.minRating !== '' ? `★ ${filters.minRating}+` : 'Rating'} active={filters.minRating !== ''} open={activeDropdown === 'rating'} onClick={() => toggleDropdown('rating')} />
+            {filters.mediaType !== 'tv' && (
+              <FilterBtn label={filters.certification || 'Certification'} active={!!filters.certification} open={activeDropdown === 'cert'} onClick={() => toggleDropdown('cert')} />
+            )}
+            <FilterBtn label="Streaming" count={filters.watchProviders.length} active={filters.watchProviders.length > 0} open={activeDropdown === 'providers'} onClick={() => toggleDropdown('providers')} />
+            <FilterBtn label="Cast" count={filters.actors.length} active={filters.actors.length > 0} open={activeDropdown === 'actor'} onClick={() => toggleDropdown('actor')} />
+            <FilterBtn label="Studio" count={filters.companies.length} active={filters.companies.length > 0} open={activeDropdown === 'company'} onClick={() => toggleDropdown('company')} />
+
+            <div className="w-px h-5 bg-gray-700 mx-0.5" />
+
+            <select value={filters.sortBy} onChange={e => handleFilterChange('sortBy', e.target.value)}
+              className="h-8 px-2 text-xs bg-gray-700 text-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-red-500 hover:text-white">
+              <option value="popularity.desc">Popular ↓</option>
+              <option value="popularity.asc">Popular ↑</option>
+              <option value="rating.desc">Rating ↓</option>
+              <option value="rating.asc">Rating ↑</option>
+              <option value="year.desc">Newest</option>
+              <option value="year.asc">Oldest</option>
+              <option value="title.asc">Title A–Z</option>
+              <option value="title.desc">Title Z–A</option>
+            </select>
+
+            {hasActiveFilters && (
+              <button type="button" onClick={clearFilters}
+                className="h-8 px-2.5 text-xs rounded-md bg-gray-700 text-red-400 hover:text-red-300 hover:bg-gray-600 transition-colors flex items-center gap-1">
+                <i className="fas fa-times text-xs" />Clear
               </button>
-            </div>
-
-            {/* Year - Dropdown */}
-            <div className="relative md:col-span-1 lg:col-span-2">
-              <label className="block text-white mb-2 text-xs md:text-sm font-semibold">Year</label>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowYearDropdown(!showYearDropdown);
-                  setShowGenreDropdown(false);
-                  setShowRatingDropdown(false);
-                  setShowCertificationDropdown(false);
-                  setShowActorDropdown(false);
-                }}
-                className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center justify-between text-sm md:text-base h-[42px] ${
-                  filters.startYear || filters.endYear ? 'ring-2 ring-red-600' : ''
-                }`}
-              >
-                <span className="truncate">
-                  {filters.startYear && filters.endYear && filters.startYear === filters.endYear
-                    ? filters.startYear
-                    : filters.startYear && filters.endYear
-                    ? `${filters.startYear}-${filters.endYear}`
-                    : filters.startYear
-                    ? `${filters.startYear}+`
-                    : filters.endYear
-                    ? `-${filters.endYear}`
-                    : 'Any Year'}
-                </span>
-                <i className={`fas fa-chevron-${showYearDropdown ? 'up' : 'down'} ml-2 flex-shrink-0`}></i>
-              </button>
-            </div>
-
-            {/* Rating - Dropdown Button */}
-            <div className="relative md:col-span-1 lg:col-span-2">
-              <label className="block text-white mb-2 text-xs md:text-sm font-semibold">Min Rating</label>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowRatingDropdown(!showRatingDropdown);
-                  setShowGenreDropdown(false);
-                  setShowYearDropdown(false);
-                  setShowCertificationDropdown(false);
-                  setShowActorDropdown(false);
-                }}
-                className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center justify-between text-sm md:text-base h-[42px] ${
-                  filters.minRating ? 'ring-2 ring-red-600' : ''
-                }`}
-              >
-                <span className="truncate">{filters.minRating ? `${filters.minRating}+` : 'Any Rating'}</span>
-                <i className={`fas fa-chevron-${showRatingDropdown ? 'up' : 'down'} ml-2 flex-shrink-0`}></i>
-              </button>
-            </div>
-
-            {/* Certification - Dropdown Button (Movies Only) */}
-            {filters.mediaType === 'movie' || filters.mediaType === 'all' ? (
-              <div className="relative md:col-span-1 lg:col-span-2">
-                <label className="block text-white mb-2 text-xs md:text-sm font-semibold">Certification</label>
-                <button
-                  type="button"
-                    onClick={() => {
-                      setShowCertificationDropdown(!showCertificationDropdown);
-                      setShowGenreDropdown(false);
-                      setShowYearDropdown(false);
-                      setShowRatingDropdown(false);
-                      setShowActorDropdown(false);
-                    }}
-                  className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center justify-between text-sm md:text-base h-[42px] ${
-                    filters.certification ? 'ring-2 ring-red-600' : ''
-                  }`}
-                >
-                  <span className="truncate">
-                    {filters.certification 
-                      ? availableCertifications.find(c => c.certification === filters.certification)?.certification || filters.certification
-                      : 'Any Rating'}
-                  </span>
-                  <i className={`fas fa-chevron-${showCertificationDropdown ? 'up' : 'down'} ml-2 flex-shrink-0`}></i>
-                </button>
-              </div>
-            ) : null}
-
-            {/* Actors - Search and Select */}
-            <div className="relative md:col-span-2 lg:col-span-3">
-              <label className="block text-white mb-2 text-xs md:text-sm font-semibold">Actors</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={actorSearchQuery}
-                  onChange={(e) => handleActorSearch(e.target.value)}
-                  onFocus={() => setShowActorDropdown(true)}
-                  placeholder="Search for actors..."
-                  className={`w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 text-sm md:text-base h-[42px] ${
-                    filters.actors.length > 0 ? 'ring-2 ring-red-600' : ''
-                  }`}
-                />
-                {searchingActors && (
-                  <div className="absolute right-3 top-2.5">
-                    <i className="fas fa-spinner fa-spin text-gray-400"></i>
-                  </div>
-                )}
-              </div>
-              
-              {/* Actor Search Results Dropdown */}
-              {showActorDropdown && actorSearchResults.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto bg-gray-800 rounded border border-gray-700 shadow-lg">
-                  {actorSearchResults.map(actor => (
-                    <button
-                      key={actor.id}
-                      type="button"
-                      onClick={() => {
-                        addActor(actor);
-                        setShowActorDropdown(false);
-                      }}
-                      className="w-full px-4 py-2 text-left hover:bg-gray-700 flex items-center gap-3"
-                    >
-                      {actor.profile_path && (
-                        <img
-                          src={getImageUrl(actor.profile_path, 'w92')}
-                          alt={actor.name}
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
-                      )}
-                      <div className="flex-1">
-                        <span className="text-white block">{actor.name}</span>
-                        {actor.known_for_department && (
-                          <span className="text-gray-400 text-xs">{actor.known_for_department}</span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-              
-              {/* Selected Actors */}
-              {selectedActors.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedActors.map(actor => (
-                    <div
-                      key={actor.id}
-                      className="bg-red-600 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2"
-                    >
-                      {actor.profile_path && (
-                        <img
-                          src={getImageUrl(actor.profile_path, 'w92')}
-                          alt={actor.name}
-                          className="w-5 h-5 rounded-full object-cover"
-                        />
-                      )}
-                      <span>{actor.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeActor(actor.id)}
-                        className="ml-1 hover:text-red-200"
-                      >
-                        <i className="fas fa-times"></i>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Sort By - Dropdown on the Right */}
-            <div className="md:col-span-1 lg:col-span-3">
-              <label className="block text-white mb-2 text-xs md:text-sm font-semibold">Sort By</label>
-              <select
-                value={filters.sortBy}
-                onChange={(e) => handleFilterChange('sortBy', e.target.value)}
-                className="w-full px-3 py-2.5 md:px-4 md:py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 text-sm md:text-base h-[42px]"
-              >
-                <option value="popularity.desc">Popularity (Default)</option>
-                <option value="rating.desc">Rating (Highest)</option>
-                <option value="rating.asc">Rating (Lowest)</option>
-                <option value="year.desc">Year (Newest)</option>
-                <option value="year.asc">Year (Oldest)</option>
-                <option value="title.asc">Title (A-Z)</option>
-                <option value="title.desc">Title (Z-A)</option>
-              </select>
-            </div>
+            )}
           </div>
 
-          {/* Clear Filters Button */}
-          {hasActiveFilters && (
-            <div className="mt-3 md:mt-4">
-              <button
-                onClick={clearFilters}
-                className="px-4 py-2.5 md:py-2 bg-gray-600 text-white rounded hover:bg-gray-500 transition-colors text-sm md:text-base"
-              >
-                <i className="fas fa-times mr-2"></i>
-                Clear All Filters
-              </button>
+          {/* Active selection chips */}
+          {(selectedActors.length > 0 || selectedCompanies.length > 0 || selectedProviders.length > 0) && (
+            <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-800">
+              {selectedActors.map(actor => (
+                <span key={actor.id} className="flex items-center gap-1 bg-gray-700 text-white text-xs px-2 py-0.5 rounded-full">
+                  {actor.profile_path && <img src={getImageUrl(actor.profile_path, 'w45')} alt="" className="w-4 h-4 rounded-full object-cover" />}
+                  {actor.name}
+                  <button onClick={() => removeActor(actor.id)} className="ml-0.5 text-gray-400 hover:text-white"><i className="fas fa-times text-xs" /></button>
+                </span>
+              ))}
+              {selectedCompanies.map(c => (
+                <span key={c.id} className="flex items-center gap-1 bg-gray-700 text-white text-xs px-2 py-0.5 rounded-full">
+                  {c.name}
+                  <button onClick={() => removeCompany(c.id)} className="ml-0.5 text-gray-400 hover:text-white"><i className="fas fa-times text-xs" /></button>
+                </span>
+              ))}
+              {selectedProviders.map(p => (
+                <span key={p.provider_id} className="flex items-center gap-1 bg-gray-700 text-white text-xs px-2 py-0.5 rounded-full">
+                  {p.logo_path && <img src={getImageUrl(p.logo_path, 'w45')} alt="" className="w-4 h-4 rounded object-contain" />}
+                  {p.provider_name}
+                  <button onClick={() => toggleProvider(p)} className="ml-0.5 text-gray-400 hover:text-white"><i className="fas fa-times text-xs" /></button>
+                </span>
+              ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* Click outside to close actor dropdown */}
-      {showActorDropdown && actorSearchResults.length > 0 && (
-        <div
-          className="fixed inset-0 z-30"
-          onClick={() => setShowActorDropdown(false)}
-        ></div>
+      {/* Backdrop */}
+      {activeDropdown && (
+        <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setActiveDropdown(null)} />
       )}
 
-      {/* Genre Mega Menu - Full Width Below Filters */}
-      {showGenreDropdown && (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-black bg-opacity-50"
-            onClick={() => setShowGenreDropdown(false)}
-          ></div>
-          <div className="max-w-6xl mx-auto mb-6 relative z-50">
-            <div className="bg-gray-800 rounded-lg shadow-2xl overflow-hidden">
-              <div className="p-4 md:p-6 border-b border-gray-700 flex justify-between items-center">
-                <span className="text-white font-semibold text-base md:text-lg">Select Genres</span>
-                <div className="flex items-center gap-3">
-                  {filters.genres.length > 0 && (
-                    <>
-                      <span className="text-gray-400 text-sm">
-                        {filters.genres.length} selected
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleFilterChange('genres', [])}
-                        className="text-red-400 text-sm hover:text-red-300 px-3 py-1.5 rounded hover:bg-gray-700 transition-colors"
-                      >
-                        Clear All
-                      </button>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowGenreDropdown(false)}
-                    className="text-gray-400 hover:text-white transition-colors p-2"
-                  >
-                    <i className="fas fa-times text-lg"></i>
+      {/* Genre dropdown */}
+      {activeDropdown === 'genre' && (
+        <div className="max-w-6xl mx-auto mb-4 relative z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <span className="text-white font-semibold text-sm">Select Genres</span>
+              <div className="flex items-center gap-2">
+                {filters.genres.length > 0 && (
+                  <button onClick={() => handleFilterChange('genres', [])} className="text-red-400 text-xs hover:text-red-300">Clear all</button>
+                )}
+                <button onClick={() => setActiveDropdown(null)} className="text-gray-500 hover:text-white"><i className="fas fa-times" /></button>
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                {availableGenres.map(genre => {
+                  const on = filters.genres.includes(genre.id);
+                  return (
+                    <button key={genre.id} type="button"
+                      onClick={() => handleFilterChange('genres', on ? filters.genres.filter(id => id !== genre.id) : [...filters.genres, genre.id])}
+                      className={`px-2 py-1.5 rounded text-xs font-medium transition-all text-center ${on ? 'bg-red-600 text-white ring-1 ring-red-400' : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'}`}>
+                      {genre.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Year dropdown */}
+      {activeDropdown === 'year' && (
+        <div className="max-w-6xl mx-auto mb-4 relative z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <span className="text-white font-semibold text-sm">Year Range</span>
+              <div className="flex items-center gap-2">
+                {(filters.startYear || filters.endYear) && (
+                  <button onClick={() => { handleFilterChange('startYear', ''); handleFilterChange('endYear', ''); }} className="text-red-400 text-xs hover:text-red-300">Clear</button>
+                )}
+                <button onClick={() => setActiveDropdown(null)} className="text-gray-500 hover:text-white"><i className="fas fa-times" /></button>
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="flex flex-wrap gap-2 mb-4">
+                {[2020, 2010, 2000, 1990, 1980].map(decade => (
+                  <button key={decade} type="button"
+                    onClick={() => { handleFilterChange('startYear', decade); handleFilterChange('endYear', decade + 9); }}
+                    className="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white rounded transition-colors">
+                    {decade}s
                   </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-400 text-xs mb-1">From</label>
+                  <input type="number" value={filters.startYear || ''} placeholder="e.g. 2010"
+                    min="1900" max={new Date().getFullYear() + 1}
+                    onChange={e => { const v = e.target.value === '' ? '' : parseInt(e.target.value); if (v === '' || (!isNaN(v as number) && (v as number) >= 1900)) handleFilterChange('startYear', v); }}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 text-white rounded focus:outline-none focus:ring-1 focus:ring-red-500" />
+                </div>
+                <div>
+                  <label className="block text-gray-400 text-xs mb-1">To</label>
+                  <input type="number" value={filters.endYear || ''} placeholder="e.g. 2024"
+                    min="1900" max={new Date().getFullYear() + 1}
+                    onChange={e => { const v = e.target.value === '' ? '' : parseInt(e.target.value); if (v === '' || (!isNaN(v as number) && (v as number) >= 1900)) handleFilterChange('endYear', v); }}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 text-white rounded focus:outline-none focus:ring-1 focus:ring-red-500" />
                 </div>
               </div>
-              <div className="p-4 md:p-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-3">
-                  {availableGenres.map(genre => {
-                    const isSelected = filters.genres.includes(genre.id);
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rating dropdown */}
+      {activeDropdown === 'rating' && (
+        <div className="max-w-6xl mx-auto mb-4 relative z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <span className="text-white font-semibold text-sm">Minimum Rating</span>
+              <div className="flex items-center gap-2">
+                {filters.minRating !== '' && <button onClick={() => handleFilterChange('minRating', '')} className="text-red-400 text-xs hover:text-red-300">Clear</button>}
+                <button onClick={() => setActiveDropdown(null)} className="text-gray-500 hover:text-white"><i className="fas fa-times" /></button>
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => handleFilterChange('minRating', '')}
+                  className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${filters.minRating === '' ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
+                  Any
+                </button>
+                {[9, 8, 7, 6, 5, 4, 3].map(r => (
+                  <button key={r} onClick={() => handleFilterChange('minRating', r)}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${filters.minRating === r ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
+                    ★ {r}+
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Certification dropdown */}
+      {activeDropdown === 'cert' && filters.mediaType !== 'tv' && (
+        <div className="max-w-6xl mx-auto mb-4 relative z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <span className="text-white font-semibold text-sm">Certification</span>
+              <div className="flex items-center gap-2">
+                {filters.certification && <button onClick={() => handleFilterChange('certification', '')} className="text-red-400 text-xs hover:text-red-300">Clear</button>}
+                <button onClick={() => setActiveDropdown(null)} className="text-gray-500 hover:text-white"><i className="fas fa-times" /></button>
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => handleFilterChange('certification', '')}
+                  className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${!filters.certification ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
+                  Any
+                </button>
+                {availableCertifications.map(cert => (
+                  <button key={cert.certification} onClick={() => handleFilterChange('certification', cert.certification)} title={cert.meaning}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${filters.certification === cert.certification ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
+                    {cert.certification}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Streaming providers dropdown */}
+      {activeDropdown === 'providers' && (
+        <div className="max-w-6xl mx-auto mb-4 relative z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <span className="text-white font-semibold text-sm">Streaming Services</span>
+              <div className="flex items-center gap-2">
+                {filters.watchProviders.length > 0 && (
+                  <button onClick={() => { setFilters(p => ({ ...p, watchProviders: [] })); setSelectedProviders([]); }} className="text-red-400 text-xs hover:text-red-300">Clear all</button>
+                )}
+                <button onClick={() => setActiveDropdown(null)} className="text-gray-500 hover:text-white"><i className="fas fa-times" /></button>
+              </div>
+            </div>
+            <div className="p-4">
+              {loadingProviders ? (
+                <div className="flex justify-center py-6"><div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin" /></div>
+              ) : (
+                <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-2">
+                  {availableProviders.map(provider => {
+                    const on = filters.watchProviders.includes(provider.provider_id);
                     return (
-                      <button
-                        key={genre.id}
-                        type="button"
-                        onClick={() => {
-                          if (isSelected) {
-                            handleFilterChange('genres', filters.genres.filter(id => id !== genre.id));
-                          } else {
-                            handleFilterChange('genres', [...filters.genres, genre.id]);
-                          }
-                        }}
-                        className={`px-3 py-2.5 md:px-4 md:py-3 rounded transition-all text-sm md:text-base font-medium ${
-                          isSelected
-                            ? 'bg-red-600 text-white ring-2 ring-red-400'
-                            : 'bg-gray-700 text-white hover:bg-gray-600'
-                        }`}
-                      >
-                        {genre.name}
+                      <button key={provider.provider_id} type="button" onClick={() => toggleProvider(provider)} title={provider.provider_name}
+                        className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all ${on ? 'bg-red-600/20 ring-1 ring-red-500' : 'bg-gray-800 hover:bg-gray-700'}`}>
+                        {provider.logo_path ? (
+                          <img src={getImageUrl(provider.logo_path, 'w92')} alt={provider.provider_name} className="w-10 h-10 rounded-lg object-cover" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-gray-700 flex items-center justify-center">
+                            <i className="fas fa-play text-gray-400 text-xs" />
+                          </div>
+                        )}
+                        <span className="text-xs text-gray-300 text-center line-clamp-1 leading-tight w-full">{provider.provider_name}</span>
                       </button>
                     );
                   })}
                 </div>
-              </div>
+              )}
             </div>
           </div>
-        </>
+        </div>
       )}
 
-      {/* Year Range Mega Menu */}
-      {showYearDropdown && (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-black bg-opacity-50"
-            onClick={() => setShowYearDropdown(false)}
-          ></div>
-          <div className="max-w-6xl mx-auto mb-6 relative z-50">
-            <div className="bg-gray-800 rounded-lg shadow-2xl overflow-hidden">
-              <div className="p-4 md:p-6 border-b border-gray-700 flex justify-between items-center">
-                <span className="text-white font-semibold text-base md:text-lg">Select Year Range</span>
-                <div className="flex items-center gap-3">
-                  {(filters.startYear || filters.endYear) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleFilterChange('startYear', '');
-                        handleFilterChange('endYear', '');
-                      }}
-                      className="text-red-400 text-sm hover:text-red-300 px-3 py-1.5 rounded hover:bg-gray-700 transition-colors"
-                    >
-                      Clear
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowYearDropdown(false)}
-                    className="text-gray-400 hover:text-white transition-colors p-2"
-                  >
-                    <i className="fas fa-times text-lg"></i>
-                  </button>
-                </div>
-              </div>
-              <div className="p-4 md:p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  {/* Start Year */}
-                  <div>
-                    <label className="block text-white mb-3 text-sm font-semibold">Start Year</label>
-                    <input
-                      type="number"
-                      value={filters.startYear || ''}
-                      onChange={(e) => {
-                        const value = e.target.value === '' ? '' : parseInt(e.target.value);
-                        if (value === '' || (!isNaN(value) && value >= 1900 && value <= new Date().getFullYear() + 1)) {
-                          handleFilterChange('startYear', value);
-                        }
-                      }}
-                      placeholder="From year (e.g., 2020)"
-                      min="1900"
-                      max={new Date().getFullYear() + 1}
-                      className="w-full px-4 py-3 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 text-base"
-                    />
-                    <p className="text-gray-400 text-xs mt-2">Leave empty for no start limit</p>
-                  </div>
-                  
-                  {/* End Year */}
-                  <div>
-                    <label className="block text-white mb-3 text-sm font-semibold">End Year</label>
-                    <input
-                      type="number"
-                      value={filters.endYear || ''}
-                      onChange={(e) => {
-                        const value = e.target.value === '' ? '' : parseInt(e.target.value);
-                        if (value === '' || (!isNaN(value) && value >= 1900 && value <= new Date().getFullYear() + 1)) {
-                          handleFilterChange('endYear', value);
-                        }
-                      }}
-                      placeholder="To year (e.g., 2023)"
-                      min="1900"
-                      max={new Date().getFullYear() + 1}
-                      className="w-full px-4 py-3 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 text-base"
-                    />
-                    <p className="text-gray-400 text-xs mt-2">Leave empty for no end limit</p>
-                  </div>
-                </div>
-                <div className="text-center text-gray-400 text-sm">
-                  {filters.startYear && filters.endYear && filters.startYear === filters.endYear
-                    ? `Selected: ${filters.startYear}`
-                    : filters.startYear && filters.endYear
-                    ? `Range: ${filters.startYear} - ${filters.endYear}`
-                    : filters.startYear
-                    ? `From: ${filters.startYear}`
-                    : filters.endYear
-                    ? `Until: ${filters.endYear}`
-                    : 'Enter start and/or end year'}
-                </div>
-              </div>
+      {/* Actor dropdown */}
+      {activeDropdown === 'actor' && (
+        <div className="max-w-6xl mx-auto mb-4 relative z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <span className="text-white font-semibold text-sm">Cast / Actors</span>
+              <button onClick={() => setActiveDropdown(null)} className="text-gray-500 hover:text-white"><i className="fas fa-times" /></button>
             </div>
-          </div>
-        </>
-      )}
-
-      {/* Rating Mega Menu */}
-      {showRatingDropdown && (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-black bg-opacity-50"
-            onClick={() => setShowRatingDropdown(false)}
-          ></div>
-          <div className="max-w-6xl mx-auto mb-6 relative z-50">
-            <div className="bg-gray-800 rounded-lg shadow-2xl overflow-hidden">
-              <div className="p-4 md:p-6 border-b border-gray-700 flex justify-between items-center">
-                <span className="text-white font-semibold text-base md:text-lg">Select Minimum Rating</span>
-                <div className="flex items-center gap-3">
-                  {filters.minRating !== '' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleFilterChange('minRating', '');
-                      }}
-                      className="text-red-400 text-sm hover:text-red-300 px-3 py-1.5 rounded hover:bg-gray-700 transition-colors"
-                    >
-                      Clear
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowRatingDropdown(false)}
-                    className="text-gray-400 hover:text-white transition-colors p-2"
-                  >
-                    <i className="fas fa-times text-lg"></i>
-                  </button>
-                </div>
+            <div className="p-4">
+              <div className="relative mb-3">
+                <input type="text" value={actorQuery} onChange={e => handleActorSearch(e.target.value)}
+                  placeholder="Search actors..." autoFocus
+                  className="w-full px-3 py-2 text-sm bg-gray-800 text-white rounded focus:outline-none focus:ring-1 focus:ring-red-500" />
+                {searchingActors && <i className="fas fa-spinner fa-spin absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />}
               </div>
-              <div className="p-4 md:p-6">
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-11 gap-2 md:gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleFilterChange('minRating', '');
-                    }}
-                    className={`px-4 py-3 md:px-6 md:py-4 rounded transition-all text-sm md:text-base font-medium ${
-                      filters.minRating === ''
-                        ? 'bg-red-600 text-white ring-2 ring-red-400'
-                        : 'bg-gray-700 text-white hover:bg-gray-600'
-                    }`}
-                  >
-                    Any
-                  </button>
-                  {[9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map(rating => (
-                    <button
-                      key={rating}
-                      type="button"
-                      onClick={() => {
-                        handleFilterChange('minRating', rating);
-                      }}
-                      className={`px-4 py-3 md:px-6 md:py-4 rounded transition-all text-sm md:text-base font-medium ${
-                        filters.minRating === rating
-                          ? 'bg-red-600 text-white ring-2 ring-red-400'
-                          : 'bg-gray-700 text-white hover:bg-gray-600'
-                      }`}
-                    >
-                      {rating}+
+              {actorResults.length > 0 && (
+                <div className="max-h-48 overflow-y-auto space-y-1 mb-3">
+                  {actorResults.map(actor => (
+                    <button key={actor.id} type="button" onClick={() => addActor(actor)}
+                      className="w-full px-3 py-2 text-left hover:bg-gray-800 rounded flex items-center gap-3">
+                      {actor.profile_path ? (
+                        <img src={getImageUrl(actor.profile_path, 'w45')} alt={actor.name} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center flex-shrink-0"><i className="fas fa-user text-gray-500 text-xs" /></div>
+                      )}
+                      <div>
+                        <div className="text-white text-sm">{actor.name}</div>
+                        {actor.known_for_department && <div className="text-gray-500 text-xs">{actor.known_for_department}</div>}
+                      </div>
                     </button>
                   ))}
                 </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Certification Mega Menu */}
-      {showCertificationDropdown && (filters.mediaType === 'movie' || filters.mediaType === 'all') && (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-black bg-opacity-50"
-            onClick={() => setShowCertificationDropdown(false)}
-          ></div>
-          <div className="max-w-6xl mx-auto mb-6 relative z-50">
-            <div className="bg-gray-800 rounded-lg shadow-2xl overflow-hidden">
-              <div className="p-4 md:p-6 border-b border-gray-700 flex justify-between items-center">
-                <span className="text-white font-semibold text-base md:text-lg">Select Movie Certification</span>
-                <div className="flex items-center gap-3">
-                  {filters.certification !== '' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleFilterChange('certification', '');
-                      }}
-                      className="text-red-400 text-sm hover:text-red-300 px-3 py-1.5 rounded hover:bg-gray-700 transition-colors"
-                    >
-                      Clear
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowCertificationDropdown(false)}
-                    className="text-gray-400 hover:text-white transition-colors p-2"
-                  >
-                    <i className="fas fa-times text-lg"></i>
-                  </button>
-                </div>
-              </div>
-              <div className="p-4 md:p-6">
-                {loadingCertifications ? (
-                  <div className="text-center py-8">
-                    <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-gray-400">Loading certifications...</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-11 gap-2 md:gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleFilterChange('certification', '');
-                      }}
-                      className={`px-4 py-3 md:px-6 md:py-4 rounded transition-all text-sm md:text-base font-medium ${
-                        filters.certification === ''
-                          ? 'bg-red-600 text-white ring-2 ring-red-400'
-                          : 'bg-gray-700 text-white hover:bg-gray-600'
-                      }`}
-                    >
-                      Any
-                    </button>
-                    {availableCertifications.map(cert => (
-                      <button
-                        key={cert.certification}
-                        type="button"
-                        onClick={() => {
-                          handleFilterChange('certification', cert.certification);
-                        }}
-                        className={`px-4 py-3 md:px-6 md:py-4 rounded transition-all text-sm md:text-base font-medium ${
-                          filters.certification === cert.certification
-                            ? 'bg-red-600 text-white ring-2 ring-red-400'
-                            : 'bg-gray-700 text-white hover:bg-gray-600'
-                        }`}
-                        title={cert.meaning}
-                      >
-                        {cert.certification}
-                      </button>
+              )}
+              {selectedActors.length > 0 && (
+                <div>
+                  <p className="text-gray-500 text-xs mb-2">Selected:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedActors.map(actor => (
+                      <span key={actor.id} className="flex items-center gap-1 bg-gray-700 text-white text-xs px-2 py-1 rounded-full">
+                        {actor.name}
+                        <button onClick={() => removeActor(actor.id)} className="text-gray-400 hover:text-white"><i className="fas fa-times text-xs" /></button>
+                      </span>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
-        </>
+        </div>
+      )}
+
+      {/* Studio/Company dropdown */}
+      {activeDropdown === 'company' && (
+        <div className="max-w-6xl mx-auto mb-4 relative z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <span className="text-white font-semibold text-sm">Production Studio</span>
+              <button onClick={() => setActiveDropdown(null)} className="text-gray-500 hover:text-white"><i className="fas fa-times" /></button>
+            </div>
+            <div className="p-4">
+              <div className="relative mb-3">
+                <input type="text" value={companyQuery} onChange={e => handleCompanySearch(e.target.value)}
+                  placeholder="Search studios (e.g. Marvel, A24, Pixar)..." autoFocus
+                  className="w-full px-3 py-2 text-sm bg-gray-800 text-white rounded focus:outline-none focus:ring-1 focus:ring-red-500" />
+                {searchingCompanies && <i className="fas fa-spinner fa-spin absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />}
+              </div>
+              {companyResults.length > 0 && (
+                <div className="max-h-48 overflow-y-auto space-y-1 mb-3">
+                  {companyResults.map(company => (
+                    <button key={company.id} type="button" onClick={() => addCompany(company)}
+                      className="w-full px-3 py-2 text-left hover:bg-gray-800 rounded flex items-center gap-3">
+                      {company.logo_path ? (
+                        <img src={getImageUrl(company.logo_path, 'w92')} alt={company.name} className="w-10 h-6 object-contain flex-shrink-0 bg-white rounded px-1" />
+                      ) : (
+                        <div className="w-10 h-6 bg-gray-700 rounded flex items-center justify-center flex-shrink-0"><i className="fas fa-building text-gray-500 text-xs" /></div>
+                      )}
+                      <span className="text-white text-sm">{company.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {selectedCompanies.length > 0 && (
+                <div>
+                  <p className="text-gray-500 text-xs mb-2">Selected:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedCompanies.map(c => (
+                      <span key={c.id} className="flex items-center gap-1 bg-gray-700 text-white text-xs px-2 py-1 rounded-full">
+                        {c.name}
+                        <button onClick={() => removeCompany(c.id)} className="text-gray-400 hover:text-white"><i className="fas fa-times text-xs" /></button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading */}
+      {isLoading && (
+        <div className="flex justify-center py-16">
+          <div className="text-center">
+            <div className="w-10 h-10 border-4 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-gray-400 text-sm">Searching...</p>
+          </div>
+        </div>
       )}
 
       {/* Results */}
       {!isLoading && hasSearched && (
         <div className="max-w-6xl mx-auto">
           {showStreams ? (
-            // Direct torrent search results (independent of TMDB)
             <>
-              <h2 className="text-2xl font-bold text-white mb-6">
-                Torrent Search Results {query.trim() && `for "${query}"`}
+              <h2 className="text-xl font-bold text-white mb-4">
+                Torrent Results {query.trim() && `for "${query}"`}
                 {directTorrentResults.length > 0 && ` (${directTorrentResults.length})`}
               </h2>
               {loadingDirectTorrents ? (
-                <div className="flex items-center justify-center py-20">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
-                  <p className="text-white">Searching torrents...</p>
+                <div className="flex items-center justify-center py-16 gap-3">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600" />
+                  <p className="text-white text-sm">Searching torrents...</p>
                 </div>
               ) : directTorrentResults.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {directTorrentResults.map((stream, index) => (
-                    <div
-                      key={index}
-                      className="bg-gray-800 rounded-lg overflow-hidden p-4"
-                    >
-                      <div className="flex flex-col">
-                        <h3 className="text-white text-sm font-medium mb-2 line-clamp-2">
-                          {stream.title}
-                        </h3>
-                        <div className="flex items-center gap-2 mb-3 flex-wrap">
-                          {stream.quality && (
-                            <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">
-                              {stream.quality}
-                            </span>
-                          )}
-                          {stream.size && (
-                            <span className="text-xs text-gray-400">
-                              {stream.size}
-                            </span>
-                          )}
-                          {stream.seeders > 0 && (
-                            <span className="text-xs text-green-400">
-                              {stream.seeders} seeds
-                            </span>
-                          )}
-                          {stream.leechers > 0 && (
-                            <span className="text-xs text-gray-400">
-                              {stream.leechers} leech
-                            </span>
-                          )}
-                        </div>
-                        <a
-                          href={stream.magnet ? createUrl(`/watch-torrent?title=${encodeURIComponent(stream.title || '')}&magnet=${encodeURIComponent(stream.magnet)}`) : '#'}
-                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors text-center"
-                          onClick={(e) => {
-                            if (!stream.magnet) {
-                              e.preventDefault();
-                              alert('No magnet link available for this stream.');
-                            }
-                          }}
-                        >
-                          <i className="fas fa-play mr-1"></i>
-                          Watch
-                        </a>
+                    <div key={index} className="bg-gray-800 rounded-lg p-4">
+                      <h3 className="text-white text-sm font-medium mb-2 line-clamp-2">{stream.title}</h3>
+                      <div className="flex items-center gap-2 mb-3 flex-wrap">
+                        {stream.quality && <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">{stream.quality}</span>}
+                        {stream.size && <span className="text-xs text-gray-400">{stream.size}</span>}
+                        {stream.seeders > 0 && <span className="text-xs text-green-400">{stream.seeders} seeds</span>}
                       </div>
+                      <a
+                        href={stream.magnet ? createUrl(`/watch-torrent?title=${encodeURIComponent(stream.title || '')}&magnet=${encodeURIComponent(stream.magnet)}`) : '#'}
+                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-xs font-medium transition-colors text-center block"
+                        onClick={e => { if (!stream.magnet) { e.preventDefault(); alert('No magnet link available.'); } }}
+                      >
+                        <i className="fas fa-play mr-1" />Watch
+                      </a>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="text-center py-12">
-                  <div className="max-w-3xl mx-auto">
-                    <i className="fas fa-magnet text-6xl text-red-600 mb-6"></i>
-                    <h3 className="text-2xl font-bold text-white mb-4">Manual Magnet Link Entry</h3>
-                    <p className="text-gray-400 text-lg mb-6">
-                      Automatic torrent search is unavailable due to browser privacy restrictions and CORS limitations.
-                      <br />
-                      <span className="text-white font-medium">You can still watch torrents by adding magnet links manually.</span>
-                    </p>
-                    
-                    <div className="bg-gray-800 rounded-lg p-6 mb-6">
-                      <h4 className="text-white font-semibold mb-4 text-lg">
-                        <i className="fas fa-list-ol mr-2 text-red-500"></i>
-                        How to use:
-                      </h4>
-                      <ol className="text-left text-gray-300 space-y-3 mb-6">
-                        <li className="flex items-start">
-                          <span className="bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-3 flex-shrink-0 mt-0.5">1</span>
-                          <span>Click the button below to open the torrent player</span>
-                        </li>
-                        <li className="flex items-start">
-                          <span className="bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-3 flex-shrink-0 mt-0.5">2</span>
-                          <span>Find a magnet link from a torrent site (1337x, The Pirate Bay, YTS, etc.)</span>
-                        </li>
-                        <li className="flex items-start">
-                          <span className="bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-3 flex-shrink-0 mt-0.5">3</span>
-                          <span>Paste the magnet link into the player and start streaming</span>
-                        </li>
-                      </ol>
-                      
-                      <div className="flex flex-wrap gap-3 justify-center mb-4">
-                        <a
-                          href="https://1337x.to"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors text-sm"
-                        >
-                          <i className="fas fa-external-link-alt mr-2"></i>
-                          1337x
-                        </a>
-                        <a
-                          href="https://thepiratebay.org"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors text-sm"
-                        >
-                          <i className="fas fa-external-link-alt mr-2"></i>
-                          The Pirate Bay
-                        </a>
-                        <a
-                          href="https://yts.mx"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors text-sm"
-                        >
-                          <i className="fas fa-external-link-alt mr-2"></i>
-                          YTS
-                        </a>
-                      </div>
-                    </div>
-                    
-                    <a
-                      href={createUrl(`/watch-torrent?title=${encodeURIComponent(query.trim())}`)}
-                      className="inline-block bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-lg transition-colors font-bold text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-transform"
-                    >
-                      <i className="fas fa-magnet mr-2"></i>
-                      Open Torrent Player
-                    </a>
-                    
-                    <p className="text-gray-500 text-sm mt-4">
-                      Search query: <span className="text-gray-400 font-mono">"{query.trim()}"</span>
-                    </p>
+                  <i className="fas fa-magnet text-5xl text-red-600 mb-4" />
+                  <h3 className="text-xl font-bold text-white mb-3">Manual Magnet Entry</h3>
+                  <p className="text-gray-400 mb-6 text-sm max-w-md mx-auto">
+                    Automatic torrent search is unavailable due to browser CORS restrictions. Paste a magnet link manually.
+                  </p>
+                  <div className="flex flex-wrap gap-2 justify-center mb-6">
+                    {['https://1337x.to', 'https://thepiratebay.org', 'https://yts.mx'].map(url => (
+                      <a key={url} href={url} target="_blank" rel="noopener noreferrer"
+                        className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded text-xs transition-colors">
+                        <i className="fas fa-external-link-alt mr-1" />{url.replace('https://', '')}
+                      </a>
+                    ))}
                   </div>
+                  <a href={createUrl(`/watch-torrent?title=${encodeURIComponent(query.trim())}`)}
+                    className="inline-block bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg transition-colors font-semibold">
+                    <i className="fas fa-magnet mr-2" />Open Torrent Player
+                  </a>
                 </div>
               )}
-            </>
-          ) : filteredResults.length > 0 ? (
-            <>
-              <h2 className="text-2xl font-bold text-white mb-6">
-                {searchMode === 'discover' ? 'Discover Results' : 'Search Results'} ({filteredResults.length}
-                {searchMode === 'search' && hasActiveFilters && allResults.length !== filteredResults.length && 
-                  ` of ${allResults.length}`})
-              </h2>
-              <div className="grid grid-cols-5 md:grid-cols-7 lg:grid-cols-8 gap-4">
-                  {filteredResults.map((item) => {
-                    const title = getTitle(item);
-                    const year = getDate(item);
-                    const posterUrl = item.poster_path 
-                      ? getImageUrl(item.poster_path, 'w500')
-                      : '/images/placeholder-poster.jpg';
-                    
-                    // Determine media type - use item.media_type or infer from title/name
-                    // Filter out 'person' type and ensure we have 'movie' or 'tv'
-                    let mediaType: 'movie' | 'tv';
-                    if (item.media_type === 'movie' || item.media_type === 'tv') {
-                      mediaType = item.media_type;
-                    } else {
-                      // Infer from title/name (movies have title, TV shows have name)
-                      mediaType = item.title ? 'movie' : 'tv';
-                    }
-
-                    return (
-                      <div key={`${mediaType}-${item.id}`} className="group">
-                        <a
-                          href={createUrl(`/details?type=${mediaType}&id=${item.id}`)}
-                          className="block"
-                        >
-                          <div className="bg-gray-800 rounded-lg overflow-hidden transition-transform duration-300 group-hover:scale-105 group-hover:shadow-xl">
-                            <div className="relative">
-                              <img
-                                src={posterUrl}
-                                alt={title}
-                                className="w-full aspect-[2/3] object-cover"
-                              />
-                              <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold uppercase z-10">
-                                {mediaType}
-                              </div>
-                              <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
-                                <div className="bg-black bg-opacity-70 text-yellow-400 px-2 py-1 rounded text-sm font-semibold">
-                                  {item.vote_average.toFixed(1)}
-                                </div>
-                                <div onClick={(e) => e.preventDefault()}>
-                                  <WatchlistButton
-                                    movieId={item.id}
-                                    mediaType={mediaType}
-                                    title={title || ''}
-                                    posterPath={item.poster_path}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <div className="p-4">
-                              <h3 className="font-semibold text-white mb-2 line-clamp-2" title={title}>
-                                {title}
-                              </h3>
-                              <p className="text-gray-400 text-sm mb-2">
-                                {year && `${year} • `}{item.media_type === 'tv' ? 'TV Show' : 'Movie'}
-                              </p>
-                              {item.overview && (
-                                <p className="text-gray-300 text-sm line-clamp-3">
-                                  {item.overview}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </a>
-                      </div>
-                    );
-                  })}
-                </div>
             </>
           ) : (
-            <div className="text-center py-12">
-              <i className="fas fa-search text-4xl text-gray-600 mb-4"></i>
-              <h2 className="text-xl font-bold text-white mb-2">
-                {allResults.length > 0 ? 'No results match your filters' : 'No results found'}
-              </h2>
-              <p className="text-gray-400 mb-4">
-                {allResults.length > 0 
-                  ? 'Try adjusting your filters or clearing them to see all results.'
-                  : 'Try searching with different keywords or check your spelling.'}
-              </p>
-              {hasActiveFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-                >
-                  Clear Filters
-                </button>
+            <>
+              {/* Header + top pagination */}
+              <div className="flex items-center justify-between mb-3 gap-4 flex-wrap">
+                <h2 className="text-lg font-bold text-white">
+                  {searchMode === 'discover' ? 'Discover' : 'Search'} Results
+                  {displayedResults.length !== allResults.length && (
+                    <span className="text-gray-400 font-normal text-sm ml-2">
+                      {displayedResults.length} shown of {allResults.length}
+                    </span>
+                  )}
+                </h2>
+                {totalPages > 1 && (
+                  <PaginationControls currentPage={currentPage} totalPages={totalPages} totalResults={totalResults} onPageChange={handlePageChange} />
+                )}
+              </div>
+
+              {/* Post-search refinement bar */}
+              {allResults.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 p-2.5 bg-gray-900/60 border border-gray-800 rounded-lg mb-4">
+                  <div className="relative flex-1 min-w-40">
+                    <i className="fas fa-filter absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-600 text-xs pointer-events-none" />
+                    <input type="text" value={postText} onChange={e => setPostText(e.target.value)}
+                      placeholder="Filter results by title..."
+                      className="w-full pl-7 pr-3 py-1.5 text-xs bg-gray-800 text-white border border-gray-700 rounded focus:outline-none focus:ring-1 focus:ring-red-500" />
+                  </div>
+
+                  <div className="flex bg-gray-800 rounded p-0.5 gap-0.5">
+                    {(['all', 'movie', 'tv'] as const).map(t => (
+                      <button key={t} onClick={() => setPostMediaType(t)}
+                        className={`px-2 py-1 text-xs rounded transition-colors ${postMediaType === t ? 'bg-red-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                        {t === 'all' ? 'All' : t === 'movie' ? 'Movies' : 'TV'}
+                      </button>
+                    ))}
+                  </div>
+
+                  <select value={postMinRating} onChange={e => setPostMinRating(e.target.value !== '' ? parseFloat(e.target.value) : '')}
+                    className="py-1.5 px-2 text-xs bg-gray-800 text-gray-300 border border-gray-700 rounded focus:outline-none focus:ring-1 focus:ring-red-500">
+                    <option value="">Any Rating</option>
+                    {[9, 8, 7, 6, 5].map(r => <option key={r} value={r}>★ {r}+</option>)}
+                  </select>
+
+                  <select value={postSortBy} onChange={e => setPostSortBy(e.target.value)}
+                    className="py-1.5 px-2 text-xs bg-gray-800 text-gray-300 border border-gray-700 rounded focus:outline-none focus:ring-1 focus:ring-red-500">
+                    <option value="">Sort: Default</option>
+                    <option value="popularity.desc">Popular ↓</option>
+                    <option value="rating.desc">Rating ↓</option>
+                    <option value="rating.asc">Rating ↑</option>
+                    <option value="year.desc">Newest</option>
+                    <option value="year.asc">Oldest</option>
+                    <option value="title.asc">Title A–Z</option>
+                    <option value="title.desc">Title Z–A</option>
+                  </select>
+
+                  {hasPostFilters && (
+                    <button onClick={() => { setPostText(''); setPostMediaType('all'); setPostMinRating(''); setPostSortBy(''); }}
+                      className="px-2 py-1.5 text-xs bg-gray-700 text-gray-400 rounded hover:text-white transition-colors flex items-center gap-1">
+                      <i className="fas fa-times text-xs" />Clear
+                    </button>
+                  )}
+                </div>
               )}
-            </div>
+
+              {/* Results grid */}
+              {displayedResults.length > 0 ? (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                    {displayedResults.map(item => {
+                      const title = getTitle(item);
+                      const year = getYear(item);
+                      const posterUrl = item.poster_path ? getImageUrl(item.poster_path, 'w500') : '/images/placeholder-poster.jpg';
+                      const mediaType: 'movie' | 'tv' =
+                        item.media_type === 'movie' || item.media_type === 'tv'
+                          ? item.media_type : item.title ? 'movie' : 'tv';
+                      return (
+                        <div key={`${mediaType}-${item.id}`} className="group">
+                          <a href={createUrl(`/details?type=${mediaType}&id=${item.id}`)} className="block">
+                            <div className="relative rounded-lg overflow-hidden shadow-md transition-transform duration-200 active:scale-95 group-hover:scale-105 group-hover:shadow-xl bg-gray-800">
+                              <img src={posterUrl} alt={title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
+                              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent pt-10 pb-2 px-2">
+                                <h3 className="text-white text-xs font-semibold line-clamp-2 leading-tight">{title}</h3>
+                                {year && <p className="text-gray-400 text-xs mt-0.5">{year}</p>}
+                              </div>
+                              <div className="absolute top-1.5 left-1.5">
+                                <span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-xs font-bold uppercase leading-none">
+                                  {mediaType === 'tv' ? 'TV' : 'Film'}
+                                </span>
+                              </div>
+                              <div className="absolute top-1.5 right-1.5">
+                                <span className="bg-black/70 text-yellow-400 px-1.5 py-0.5 rounded text-xs font-semibold leading-none">
+                                  ★ {item.vote_average.toFixed(1)}
+                                </span>
+                              </div>
+                              <div className="absolute bottom-2 right-1.5" onClick={e => e.preventDefault()}>
+                                <WatchlistButton movieId={item.id} mediaType={mediaType} title={title || ''} posterPath={item.poster_path} />
+                              </div>
+                            </div>
+                          </a>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Bottom pagination */}
+                  {totalPages > 1 && (
+                    <div className="mt-8">
+                      <PaginationControls currentPage={currentPage} totalPages={totalPages} totalResults={totalResults} onPageChange={handlePageChange} />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-12">
+                  <i className="fas fa-search text-4xl text-gray-700 mb-4" />
+                  <h2 className="text-lg font-bold text-white mb-2">
+                    {allResults.length > 0 ? 'No results match your filters' : 'No results found'}
+                  </h2>
+                  <p className="text-gray-500 text-sm mb-4">
+                    {allResults.length > 0
+                      ? 'Try adjusting or clearing the result filters.'
+                      : 'Try different keywords or adjust the search filters.'}
+                  </p>
+                  {allResults.length > 0 && hasPostFilters && (
+                    <button onClick={() => { setPostText(''); setPostMediaType('all'); setPostMinRating(''); setPostSortBy(''); }}
+                      className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors">
+                      Clear Result Filters
+                    </button>
+                  )}
+                  {hasActiveFilters && allResults.length === 0 && (
+                    <button onClick={clearFilters} className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors">
+                      Clear Search Filters
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
 
-      {/* Initial State */}
+      {/* Initial state */}
       {!hasSearched && !isLoading && (
-        <div className="text-center py-12">
-          <i className="fas fa-film text-6xl text-gray-600 mb-6"></i>
-          <h2 className="text-2xl font-bold text-white mb-4">Discover Movies & TV Shows</h2>
-          <p className="text-gray-400 text-lg mb-4">
-            Search by name or use filters above to discover content that matches your preferences.
+        <div className="text-center py-16">
+          <i className="fas fa-film text-5xl text-gray-700 mb-5" />
+          <h2 className="text-xl font-bold text-white mb-3">Discover Movies & TV Shows</h2>
+          <p className="text-gray-500 text-sm max-w-md mx-auto">
+            Search by name or use the filters above to browse by genre, streaming service, rating, and more.
           </p>
           {hasActiveFilters && (
-            <p className="text-blue-400 text-sm">
-              <i className="fas fa-info-circle mr-2"></i>
-              You have active filters. Click "Discover" to browse content matching your criteria.
+            <p className="text-blue-400 text-xs mt-4">
+              <i className="fas fa-info-circle mr-1" />
+              Filters active — click Discover to browse matching content.
             </p>
           )}
         </div>
