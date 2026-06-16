@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { discoverWithFilters, fetchFromTMDB, getImageUrl } from '../lib/tmdb';
+import { useState, useEffect } from 'react';
+import { discoverWithFilters, fetchFromTMDB, getImageUrl, searchMulti } from '../lib/tmdb';
 import { createUrl } from '../lib/utils';
 import WatchlistButton from './WatchlistButton';
 
@@ -66,8 +66,8 @@ const LENGTHS: LengthOption[] = [
   { label: 'No preference', subtitle: 'Any runtime' },
 ];
 
-// Indices to sample from 20 preliminary results for variety
-const TASTE_SAMPLE_INDICES = [0, 2, 5, 8, 11, 14, 17, 19];
+const INITIAL_VISIBLE = 8;
+const LOAD_MORE_BATCH = 8;
 
 type Step = 'type' | 'mood' | 'era' | 'rating' | 'length' | 'taste' | 'results';
 
@@ -116,17 +116,53 @@ export default function FindForm() {
   const [rating, setRating] = useState<RatingOption | null>(null);
   const [length, setLength] = useState<LengthOption | null>(null);
 
-  // Taste sample state
-  const [tasteSamples, setTasteSamples] = useState<any[]>([]);
+  // Taste pool — full preliminary results
+  const [tastePool, setTastePool] = useState<any[]>([]);
   const [tasteLoading, setTasteLoading] = useState(false);
-  const [selectedTitles, setSelectedTitles] = useState<Set<number>>(new Set());
+  const [tastePage, setTastePage] = useState(1);
+  const [tasteTotalPages, setTasteTotalPages] = useState(1);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  // Results state
+  // Selected IDs (from grid + pinned)
+  const [selectedTitles, setSelectedTitles] = useState<Set<number>>(new Set());
+  // Manually pinned items added via search
+  const [pinnedItems, setPinnedItems] = useState<Map<number, any>>(new Map());
+
+  // Title search on taste step
+  const [titleSearch, setTitleSearch] = useState('');
+  const [titleSearchResults, setTitleSearchResults] = useState<any[]>([]);
+  const [titleSearchLoading, setTitleSearchLoading] = useState(false);
+
+  // Results
   const [results, setResults] = useState<any[]>([]);
   const [totalResults, setTotalResults] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [broadened, setBroadened] = useState(false);
+
+  // Debounced title search
+  useEffect(() => {
+    if (!titleSearch.trim()) {
+      setTitleSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setTitleSearchLoading(true);
+      try {
+        const data = await searchMulti(titleSearch);
+        const filtered = (data.results || [])
+          .filter((r: any) => r.media_type === contentType)
+          .slice(0, 6);
+        setTitleSearchResults(filtered);
+      } catch {
+        setTitleSearchResults([]);
+      } finally {
+        setTitleSearchLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [titleSearch, contentType]);
 
   const MOVIE_STEPS: Step[] = ['type', 'mood', 'era', 'rating', 'length', 'taste'];
   const TV_STEPS: Step[] = ['type', 'mood', 'era', 'rating', 'taste'];
@@ -137,8 +173,15 @@ export default function FindForm() {
 
   const goBack = () => {
     const idx = steps.indexOf(step);
-    if (idx > 0) setStep(steps[idx - 1]);
-    if (step === 'taste') setSelectedTitles(new Set());
+    if (idx > 0) {
+      if (step === 'taste') {
+        setSelectedTitles(new Set());
+        setPinnedItems(new Map());
+        setTitleSearch('');
+        setTitleSearchResults([]);
+      }
+      setStep(steps[idx - 1]);
+    }
   };
 
   const loadTasteSamples = async (
@@ -149,21 +192,72 @@ export default function FindForm() {
     l: LengthOption | null
   ) => {
     setTasteLoading(true);
-    setTasteSamples([]);
+    setTastePool([]);
+    setVisibleCount(INITIAL_VISIBLE);
+    setTastePage(1);
     try {
       const filters = buildFilters(type, m, e, r, l);
       const data = await discoverWithFilters(type, filters, 1);
-      const pool: any[] = data.results || [];
-      const sampled = TASTE_SAMPLE_INDICES
-        .filter(i => i < pool.length)
-        .map(i => pool[i])
-        .filter(Boolean);
-      setTasteSamples(sampled);
+      setTastePool(data.results || []);
+      setTasteTotalPages(data.total_pages || 1);
     } catch {
-      setTasteSamples([]);
+      setTastePool([]);
     } finally {
       setTasteLoading(false);
     }
+  };
+
+  const loadMoreTaste = async () => {
+    if (visibleCount < tastePool.length) {
+      setVisibleCount(v => v + LOAD_MORE_BATCH);
+      return;
+    }
+    if (tastePage >= tasteTotalPages) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = tastePage + 1;
+      const filters = buildFilters(contentType, mood!, era!, rating!, length);
+      const data = await discoverWithFilters(contentType, filters, nextPage);
+      setTastePool(prev => [...prev, ...(data.results || [])]);
+      setTastePage(nextPage);
+      setVisibleCount(v => v + LOAD_MORE_BATCH);
+    } catch {
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const toggleTasteSelection = (id: number) => {
+    setSelectedTitles(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const addPinnedItem = (item: any) => {
+    setPinnedItems(prev => {
+      const next = new Map(prev);
+      next.set(item.id, item);
+      return next;
+    });
+    setSelectedTitles(prev => new Set(prev).add(item.id));
+    setTitleSearch('');
+    setTitleSearchResults([]);
+  };
+
+  const removePinnedItem = (id: number) => {
+    setPinnedItems(prev => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+    setSelectedTitles(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   };
 
   const runSearch = async (
@@ -200,7 +294,6 @@ export default function FindForm() {
       const data = await discoverWithFilters(type, filters, 1);
 
       if ((data.total_results === 0 || !data.results?.length) && companyIds.length > 0) {
-        // Fall back without company filter
         const fallbackFilters = buildFilters(type, m, e, r, l);
         const fallback = await discoverWithFilters(type, fallbackFilters, 1);
         setResults(fallback.results || []);
@@ -217,30 +310,26 @@ export default function FindForm() {
     }
   };
 
-  const toggleTasteSelection = (id: number) => {
-    setSelectedTitles(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   const restart = () => {
     setStep('type');
     setMood(null);
     setEra(null);
     setRating(null);
     setLength(null);
-    setTasteSamples([]);
+    setTastePool([]);
+    setVisibleCount(INITIAL_VISIBLE);
+    setTastePage(1);
+    setTasteTotalPages(1);
     setSelectedTitles(new Set());
+    setPinnedItems(new Map());
+    setTitleSearch('');
+    setTitleSearchResults([]);
     setResults([]);
     setTotalResults(0);
     setError(null);
     setBroadened(false);
   };
 
-  // Shared option card
   const OptionCard = ({
     emoji,
     label,
@@ -268,6 +357,73 @@ export default function FindForm() {
       {subtitle && <p className="text-gray-400 text-base">{subtitle}</p>}
     </div>
   );
+
+  // Reusable poster tile for the taste step
+  const TasteTile = ({
+    item,
+    onToggle,
+    badge,
+    onRemove,
+  }: {
+    item: any;
+    onToggle: () => void;
+    badge?: string;
+    onRemove?: () => void;
+  }) => {
+    const title = item.title || item.name;
+    const isSelected = selectedTitles.has(item.id);
+    return (
+      <div className="relative">
+        <button
+          onClick={onToggle}
+          className={`relative w-full rounded-xl overflow-hidden transition-all duration-200 hover:scale-[1.03] focus:outline-none ${
+            isSelected
+              ? 'ring-4 ring-netflix-red scale-[1.03]'
+              : 'ring-1 ring-gray-700 hover:ring-gray-500'
+          }`}
+        >
+          {item.poster_path ? (
+            <img
+              src={getImageUrl(item.poster_path, 'w342')}
+              alt={title}
+              className="w-full aspect-[2/3] object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center">
+              <i className="fas fa-image text-gray-600 text-3xl" />
+            </div>
+          )}
+          {isSelected && (
+            <div className="absolute inset-0 bg-netflix-red bg-opacity-20 flex items-start justify-end p-2">
+              <div className="bg-netflix-red rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
+                <i className="fas fa-check text-white text-xs" />
+              </div>
+            </div>
+          )}
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-2">
+            <p className="text-white text-xs font-semibold truncate">{title}</p>
+          </div>
+          {badge && (
+            <div className="absolute top-2 left-2">
+              <span className="bg-black bg-opacity-80 text-yellow-400 text-xs px-1.5 py-0.5 rounded font-medium">
+                {badge}
+              </span>
+            </div>
+          )}
+        </button>
+        {onRemove && (
+          <button
+            onClick={e => { e.stopPropagation(); onRemove(); }}
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-600 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors z-10"
+            aria-label="Remove"
+          >
+            <i className="fas fa-times text-white text-xs" />
+          </button>
+        )}
+      </div>
+    );
+  };
 
   // Results view
   if (step === 'results') {
@@ -476,7 +632,6 @@ export default function FindForm() {
                     if (contentType === 'movie') {
                       setStep('length');
                     } else {
-                      // Go to taste step for TV
                       setStep('taste');
                       loadTasteSamples(contentType, mood!, era!, r, null);
                     }
@@ -516,87 +671,156 @@ export default function FindForm() {
           <>
             <StepHeader
               title="Does anything here catch your eye?"
-              subtitle="Select titles that appeal to you — or skip to see everything"
+              subtitle="Select titles that look appealing — or add your own favourites below"
             />
 
+            {/* Title search box */}
+            <div className="w-full max-w-4xl mb-6">
+              <div className="relative">
+                <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm pointer-events-none" />
+                <input
+                  type="text"
+                  value={titleSearch}
+                  onChange={e => setTitleSearch(e.target.value)}
+                  placeholder={`Search for a ${contentType === 'movie' ? 'movie' : 'TV show'} you already know you like…`}
+                  className="w-full bg-gray-900 border border-gray-700 focus:border-netflix-red rounded-lg pl-9 pr-4 py-2.5 text-white text-sm placeholder-gray-500 outline-none transition-colors"
+                />
+                {titleSearchLoading && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="w-4 h-4 border-2 border-gray-600 border-t-netflix-red rounded-full animate-spin" />
+                  </div>
+                )}
+              </div>
+
+              {/* Search results */}
+              {titleSearchResults.length > 0 && (
+                <div className="mt-2 grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  {titleSearchResults.map((item: any) => {
+                    const isAlreadyPinned = pinnedItems.has(item.id);
+                    const title = item.title || item.name;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => isAlreadyPinned ? removePinnedItem(item.id) : addPinnedItem(item)}
+                        title={isAlreadyPinned ? `Remove "${title}"` : `Add "${title}"`}
+                        className={`relative rounded-lg overflow-hidden transition-all hover:scale-[1.03] focus:outline-none ${
+                          isAlreadyPinned
+                            ? 'ring-2 ring-netflix-red opacity-75'
+                            : 'ring-1 ring-gray-700 hover:ring-gray-400'
+                        }`}
+                      >
+                        {item.poster_path ? (
+                          <img
+                            src={getImageUrl(item.poster_path, 'w185')}
+                            alt={title}
+                            className="w-full aspect-[2/3] object-cover"
+                          />
+                        ) : (
+                          <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center">
+                            <i className="fas fa-image text-gray-600 text-2xl" />
+                          </div>
+                        )}
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-1.5">
+                          <p className="text-white text-xs truncate">{title}</p>
+                        </div>
+                        {isAlreadyPinned && (
+                          <div className="absolute top-1 right-1 w-5 h-5 bg-netflix-red rounded-full flex items-center justify-center">
+                            <i className="fas fa-check text-white text-xs" />
+                          </div>
+                        )}
+                        {!isAlreadyPinned && (
+                          <div className="absolute top-1 right-1 w-5 h-5 bg-black bg-opacity-60 rounded-full flex items-center justify-center">
+                            <i className="fas fa-plus text-white text-xs" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Pinned items (added via search) */}
+            {pinnedItems.size > 0 && (
+              <div className="w-full max-w-4xl mb-6">
+                <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Added by you</p>
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+                  {Array.from(pinnedItems.values()).map(item => (
+                    <TasteTile
+                      key={item.id}
+                      item={item}
+                      onToggle={() => toggleTasteSelection(item.id)}
+                      onRemove={() => removePinnedItem(item.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Main tile grid */}
             {tasteLoading ? (
               <div className="flex flex-col items-center gap-4 py-16">
                 <div className="w-10 h-10 border-4 border-gray-700 border-t-netflix-red rounded-full animate-spin" />
                 <p className="text-gray-400 text-sm">Loading suggestions…</p>
               </div>
-            ) : tasteSamples.length === 0 ? (
-              <div className="text-center py-12">
+            ) : tastePool.length === 0 ? (
+              <div className="text-center py-8">
                 <p className="text-gray-400 mb-6">Couldn't load suggestions right now.</p>
-                <button
-                  onClick={() => runSearch(contentType, mood!, era!, rating!, length, [])}
-                  className="bg-netflix-red hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-                >
-                  Continue Anyway →
-                </button>
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-4xl mb-8">
-                  {tasteSamples.map((item: any) => {
-                    const title = item.title || item.name;
-                    const isSelected = selectedTitles.has(item.id);
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => toggleTasteSelection(item.id)}
-                        className={`relative rounded-xl overflow-hidden transition-all duration-200 hover:scale-[1.03] focus:outline-none ${
-                          isSelected
-                            ? 'ring-4 ring-netflix-red scale-[1.03]'
-                            : 'ring-1 ring-gray-700 hover:ring-gray-500'
-                        }`}
-                      >
-                        {item.poster_path ? (
-                          <img
-                            src={getImageUrl(item.poster_path, 'w342')}
-                            alt={title}
-                            className="w-full aspect-[2/3] object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center">
-                            <i className="fas fa-image text-gray-600 text-3xl" />
-                          </div>
-                        )}
-                        {isSelected && (
-                          <div className="absolute inset-0 bg-netflix-red bg-opacity-20 flex items-center justify-center">
-                            <div className="bg-netflix-red rounded-full w-8 h-8 flex items-center justify-center shadow-lg">
-                              <i className="fas fa-check text-white text-sm" />
-                            </div>
-                          </div>
-                        )}
-                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-2">
-                          <p className="text-white text-xs font-semibold truncate">{title}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-4xl mb-4">
+                  {tastePool.slice(0, visibleCount).map((item: any) => (
+                    <TasteTile
+                      key={item.id}
+                      item={item}
+                      onToggle={() => toggleTasteSelection(item.id)}
+                    />
+                  ))}
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-center gap-3">
+                {/* Show more */}
+                {(visibleCount < tastePool.length || tastePage < tasteTotalPages) && (
                   <button
-                    onClick={() => runSearch(contentType, mood!, era!, rating!, length, Array.from(selectedTitles))}
-                    className="bg-netflix-red hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold text-base transition-colors"
+                    onClick={loadMoreTaste}
+                    disabled={loadingMore}
+                    className="mb-6 text-gray-400 hover:text-white text-sm transition-colors flex items-center gap-2 disabled:opacity-50"
                   >
-                    {selectedTitles.size > 0
-                      ? `Find More Like These (${selectedTitles.size} selected) →`
-                      : 'Show Me Everything →'}
+                    {loadingMore ? (
+                      <>
+                        <div className="w-3 h-3 border-2 border-gray-600 border-t-white rounded-full animate-spin" />
+                        Loading…
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-chevron-down text-xs" />
+                        Show more options
+                      </>
+                    )}
                   </button>
-                  {selectedTitles.size > 0 && (
-                    <button
-                      onClick={() => runSearch(contentType, mood!, era!, rating!, length, [])}
-                      className="text-gray-400 hover:text-white text-sm transition-colors"
-                    >
-                      None of these — skip
-                    </button>
-                  )}
-                </div>
+                )}
               </>
             )}
+
+            {/* Action buttons */}
+            <div className="flex flex-col sm:flex-row items-center gap-3 mt-2">
+              <button
+                onClick={() => runSearch(contentType, mood!, era!, rating!, length, Array.from(selectedTitles))}
+                className="bg-netflix-red hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold text-base transition-colors"
+              >
+                {selectedTitles.size > 0
+                  ? `Find More Like These (${selectedTitles.size} selected) →`
+                  : 'Show Me Everything →'}
+              </button>
+              {selectedTitles.size > 0 && (
+                <button
+                  onClick={() => runSearch(contentType, mood!, era!, rating!, length, [])}
+                  className="text-gray-400 hover:text-white text-sm transition-colors"
+                >
+                  Skip — show everything
+                </button>
+              )}
+            </div>
           </>
         )}
       </div>
