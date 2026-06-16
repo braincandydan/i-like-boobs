@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchFromTMDB, tmdbEndpoints, getImageUrl, fetchGenres, sortByOptions, tvSortByOptions, discoverWithFilters, getAllMovieCertifications, searchActors } from '../lib/tmdb';
+import { fetchFromTMDB, tmdbEndpoints, getImageUrl, fetchGenres, sortByOptions, tvSortByOptions, discoverWithFilters, getAllMovieCertifications, searchActors, searchMulti } from '../lib/tmdb';
 import { supabase, isSupabaseConfigured, type TMDBFilters } from '../lib/supabase';
 import WatchlistButton from './WatchlistButton';
 
@@ -40,6 +40,23 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     }
     return '';
   };
+
+  // Read all search params from URL
+  const getParamsFromUrl = () => {
+    if (typeof window === 'undefined') return {};
+    const p = new URLSearchParams(window.location.search);
+    return {
+      q: p.get('q') || '',
+      type: (p.get('type') || 'all') as 'all' | 'movie' | 'tv',
+      genres: p.get('genres') ? p.get('genres')!.split(',').map(Number).filter(Boolean) : [],
+      startYear: p.get('start_year') || '',
+      endYear: p.get('end_year') || '',
+      minRating: p.get('rating') || '',
+      certification: p.get('cert') || '',
+      sortBy: p.get('sort') || 'popularity.desc',
+      page: parseInt(p.get('page') || '1', 10),
+    };
+  };
   
   const [query, setQuery] = useState('');
   const [sectionId, setSectionId] = useState(getSectionIdFromUrl());
@@ -48,6 +65,14 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [searchMode, setSearchMode] = useState<'search' | 'discover'>('search');
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalResults, setTotalResults] = useState(0);
+
+  // Error state
+  const [searchError, setSearchError] = useState<string | null>(null);
   
   // Filter state
   const [filters, setFilters] = useState({
@@ -85,15 +110,15 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
   const [directTorrentResults, setDirectTorrentResults] = useState<any[]>([]);
   const [loadingDirectTorrents, setLoadingDirectTorrents] = useState(false);
 
-  const handleSearch = async (e?: React.FormEvent) => {
+  const handleSearch = async (e?: React.FormEvent, page: number = 1) => {
     if (e) e.preventDefault();
-    
+
     // If streams mode is active, search torrents directly
     if (showStreams && query.trim()) {
       setIsLoading(true);
       setHasSearched(true);
       setSearchMode('search');
-      
+
       try {
         // Determine category based on filters or default to Movies
         const category = filters.mediaType === 'tv' ? 'TV' : 'Movies';
@@ -106,37 +131,38 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       }
       return;
     }
-    
+
     // If no query and no filters, don't search
     if (!query.trim() && !hasActiveFilters) return;
-    
+
     setIsLoading(true);
     setHasSearched(true);
-    
+    setSearchError(null);
+
     try {
       // If there's a text query, use search API
       if (query.trim()) {
         setSearchMode('search');
-        // Always include adult content in search to show all available results
-        // Users can filter results client-side if needed
-        const data = await fetchFromTMDB(tmdbEndpoints.search, {
-          query: query.trim(),
-          include_adult: true
-        });
-        
+        setCurrentPage(page);
+        updateUrl({ page: page > 1 ? String(page) : null });
+        const data = await searchMulti(query.trim(), page);
+
         // Filter out person results and only keep movies and TV shows
         const movieTvResults = data.results.filter(
           (item: SearchResult) => item.media_type === 'movie' || item.media_type === 'tv'
         );
-        
+
         setAllResults(movieTvResults);
+        setTotalPages(data.total_pages);
+        setTotalResults(data.total_results);
       } else {
         // No query but filters are set - use discover API
         setSearchMode('discover');
-        await handleDiscover();
+        await handleDiscover(page);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Search error:', error);
+      setSearchError(error?.message || 'Search failed. Please try again.');
       setAllResults([]);
       setFilteredResults([]);
     } finally {
@@ -144,31 +170,34 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     }
   };
 
-  const handleDiscover = async () => {
+  const handleDiscover = async (page: number = 1) => {
     if (!hasActiveFilters) return;
-    
+
     setIsLoading(true);
     setHasSearched(true);
     setSearchMode('discover');
-    
+    setSearchError(null);
+    setCurrentPage(page);
+    updateUrl({ page: page > 1 ? String(page) : null });
+
     try {
       // Build TMDB filters
       const tmdbFilters: TMDBFilters = {};
-      
+
       // Media type is required for discover
       const mediaType = filters.mediaType === 'all' ? 'movie' : filters.mediaType;
       tmdbFilters.media_type = mediaType;
-      
+
       // Genres
       if (filters.genres.length > 0) {
         tmdbFilters.with_genres = filters.genres;
       }
-      
+
       // Year range
       if (filters.startYear || filters.endYear) {
         const startYear = filters.startYear ? (typeof filters.startYear === 'string' ? parseInt(filters.startYear) : filters.startYear) : undefined;
         const endYear = filters.endYear ? (typeof filters.endYear === 'string' ? parseInt(filters.endYear) : filters.endYear) : undefined;
-        
+
         if (startYear && !isNaN(startYear) && endYear && !isNaN(endYear) && startYear === endYear) {
           // Single year selected
           if (mediaType === 'movie') {
@@ -194,7 +223,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
           }
         }
       }
-      
+
       // Rating
       if (filters.minRating) {
         const minRating = typeof filters.minRating === 'string' ? parseFloat(filters.minRating) : filters.minRating;
@@ -202,18 +231,18 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
           tmdbFilters['vote_average.gte'] = minRating;
         }
       }
-      
+
       // Certification (only for movies)
       if (filters.certification && mediaType === 'movie') {
         tmdbFilters.certification = filters.certification;
         tmdbFilters.certification_country = 'US'; // Default to US certifications
       }
-      
+
       // Actors
       if (filters.actors.length > 0) {
         tmdbFilters.with_cast = filters.actors;
       }
-      
+
       // Sort
       if (filters.sortBy && filters.sortBy !== 'relevance') {
         // Map our sort options to TMDB sort options
@@ -229,17 +258,17 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       } else {
         tmdbFilters.sort_by = 'popularity.desc';
       }
-      
+
       // Discover for the selected media type
-      let results = await discoverWithFilters(mediaType, tmdbFilters, 100);
-      
-      // Ensure all results have media_type set
-      results = results.map(item => ({
+      const { results: rawResults, total_pages, total_results } = await discoverWithFilters(mediaType, tmdbFilters, page);
+      let results = rawResults.map(item => ({
         ...item,
         media_type: item.media_type || mediaType
       }));
-      
-      // If "all" was selected, also get the other type
+      setTotalPages(total_pages);
+      setTotalResults(total_results);
+
+      // If "all" was selected, also get the other type (page 1 only)
       if (filters.mediaType === 'all') {
         const otherType: 'movie' | 'tv' = mediaType === 'movie' ? 'tv' : 'movie';
         const otherFilters: TMDBFilters = { ...tmdbFilters, media_type: otherType };
@@ -256,23 +285,58 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
             }
           }
         }
-        const otherResults = await discoverWithFilters(otherType, otherFilters, 100);
+        const otherResults = await discoverWithFilters(otherType, otherFilters, 1);
         // Ensure other results also have media_type set
-        const typedOtherResults = otherResults.map(item => ({
+        const typedOtherResults = otherResults.results.map(item => ({
           ...item,
           media_type: item.media_type || otherType
         }));
         results = [...results, ...typedOtherResults];
       }
-      
+
       setAllResults(results);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Discover error:', error);
+      setSearchError(error?.message || 'Could not load results. Please try again.');
       setAllResults([]);
       setFilteredResults([]);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const updateUrl = (overrides: Record<string, string | number | null> = {}) => {
+    if (typeof window === 'undefined') return;
+    const p = new URLSearchParams(window.location.search);
+    const updates: Record<string, string | null> = {
+      q: query.trim() || null,
+      type: filters.mediaType !== 'all' ? filters.mediaType : null,
+      genres: filters.genres.length > 0 ? filters.genres.join(',') : null,
+      start_year: filters.startYear ? String(filters.startYear) : null,
+      end_year: filters.endYear ? String(filters.endYear) : null,
+      rating: filters.minRating ? String(filters.minRating) : null,
+      cert: filters.certification || null,
+      sort: filters.sortBy !== 'popularity.desc' ? filters.sortBy : null,
+      page: currentPage > 1 ? String(currentPage) : null,
+      ...Object.fromEntries(
+        Object.entries(overrides).map(([k, v]) => [k, v === null ? null : String(v)])
+      ),
+    };
+    Object.entries(updates).forEach(([key, val]) => {
+      if (val === null || val === '') p.delete(key);
+      else p.set(key, val);
+    });
+    window.history.pushState({}, '', `${window.location.pathname}?${p.toString()}`);
+  };
+
+  const goToPage = (page: number) => {
+    if (page < 1 || page > totalPages) return;
+    if (searchMode === 'discover') {
+      handleDiscover(page);
+    } else {
+      handleSearch(undefined, page);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const getTitle = (item: SearchResult) => {
@@ -668,10 +732,10 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
           setHasSearched(true);
           
           const mediaType = tmdbFilters.media_type || 'movie';
-          const results = await discoverWithFilters(mediaType, tmdbFilters, 100);
-          
+          const { results: rawSectionResults } = await discoverWithFilters(mediaType, tmdbFilters, 1);
+
           // Ensure all results have media_type set
-          const typedResults = results.map(item => ({
+          const typedResults = rawSectionResults.map(item => ({
             ...item,
             media_type: item.media_type || mediaType
           }));
@@ -691,6 +755,32 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     loadSectionFilters();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sectionId]);
+
+  // Hydrate state from URL params on mount
+  useEffect(() => {
+    const params = getParamsFromUrl();
+    if (params.q || (params.genres && params.genres.length > 0) || params.startYear || params.endYear || params.minRating || params.certification) {
+      if (params.q) setQuery(params.q);
+      setFilters(prev => ({
+        ...prev,
+        mediaType: params.type || 'all',
+        genres: params.genres || [],
+        startYear: params.startYear || '',
+        endYear: params.endYear || '',
+        minRating: params.minRating || '',
+        certification: params.certification || '',
+        sortBy: params.sortBy || 'popularity.desc',
+      }));
+      // Trigger search after state settles
+      setTimeout(() => {
+        if (params.q) {
+          handleSearch(undefined, params.page || 1);
+        } else {
+          handleDiscover(params.page || 1);
+        }
+      }, 0);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load genres and certifications on mount
   useEffect(() => {
@@ -1596,6 +1686,12 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       {/* Results */}
       {!isLoading && hasSearched && (
         <div className="max-w-6xl mx-auto">
+          {/* Error display */}
+          {searchError && (
+            <div className="mb-6 p-4 rounded-lg bg-red-900/40 border border-red-700 text-red-300 text-sm">
+              {searchError}
+            </div>
+          )}
           {showStreams ? (
             // Direct torrent search results (independent of TMDB)
             <>
@@ -1738,10 +1834,39 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
           ) : filteredResults.length > 0 ? (
             <>
               <h2 className="text-2xl font-bold text-white mb-6">
-                {searchMode === 'discover' ? 'Discover Results' : 'Search Results'} ({filteredResults.length}
-                {searchMode === 'search' && hasActiveFilters && allResults.length !== filteredResults.length && 
-                  ` of ${allResults.length}`})
+                {searchMode === 'discover' ? 'Discover Results' : 'Search Results'}
               </h2>
+              {/* Results count and pagination */}
+              {hasSearched && !isLoading && (
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-sm text-gray-400">
+                    {totalResults > 0
+                      ? `Showing ${filteredResults.length} of ${totalResults.toLocaleString()} results`
+                      : `${filteredResults.length} result${filteredResults.length !== 1 ? 's' : ''}`}
+                  </p>
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => goToPage(currentPage - 1)}
+                        disabled={currentPage <= 1}
+                        className="px-3 py-1 rounded bg-netflix-gray text-white disabled:opacity-40 hover:bg-gray-600 transition-colors text-sm"
+                      >
+                        ← Prev
+                      </button>
+                      <span className="text-sm text-gray-300">
+                        Page {currentPage} of {totalPages.toLocaleString()}
+                      </span>
+                      <button
+                        onClick={() => goToPage(currentPage + 1)}
+                        disabled={currentPage >= totalPages}
+                        className="px-3 py-1 rounded bg-netflix-gray text-white disabled:opacity-40 hover:bg-gray-600 transition-colors text-sm"
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                   {filteredResults.map((item) => {
                     const title = getTitle(item);
