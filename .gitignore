@@ -52,6 +52,7 @@ Desktop.ini
 # Documentation files (local only, not needed for deployment)
 *.md
 README.md
+!CLAUDE.md
 
 # Cleanup scripts (local only)
 cleanup-git.ps1

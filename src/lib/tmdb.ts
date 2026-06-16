@@ -140,8 +140,8 @@ export async function searchActors(query: string): Promise<{ id: number; name: s
 export async function discoverWithFilters(
   type: 'movie' | 'tv',
   filters: TMDBFilters = {},
-  limit: number = 20
-): Promise<any[]> {
+  page: number = 1
+): Promise<{ results: any[]; total_pages: number; total_results: number }> {
   try {
     // Build query parameters from filters
     const params: Record<string, any> = {
@@ -184,12 +184,37 @@ export async function discoverWithFilters(
     // Remove media_type from params (it's in the endpoint)
     delete params.media_type;
 
+    params.page = page;
+
     const data = await fetchFromTMDB(tmdbEndpoints.discover(type), params);
-    return (data.results || []).slice(0, limit);
+    return {
+      results: data.results || [],
+      total_pages: data.total_pages || 1,
+      total_results: data.total_results || 0,
+    };
   } catch (error) {
     console.error(`Error discovering ${type} with filters:`, error);
-    return [];
+    throw error;
   }
+}
+
+/**
+ * Search movies, TV shows, and people using TMDB multi-search
+ */
+export async function searchMulti(
+  query: string,
+  page: number = 1
+): Promise<{ results: any[]; total_pages: number; total_results: number }> {
+  const data = await fetchFromTMDB(tmdbEndpoints.search, {
+    query: query.trim(),
+    include_adult: true,
+    page,
+  });
+  return {
+    results: data.results || [],
+    total_pages: data.total_pages || 1,
+    total_results: data.total_results || 0,
+  };
 }
 
 /**
