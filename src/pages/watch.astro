@@ -1266,6 +1266,8 @@ import { createUrl } from '../lib/utils';
       fsControls.classList.remove('hidden');
       // Disable iframe pointer events so our controls can receive clicks
       document.getElementById('video-player').style.pointerEvents = 'none';
+      // Step back the trigger zone so it doesn't block clicks on the controls above it
+      fsTrigger.style.pointerEvents = 'none';
       clearTimeout(fsHideTimer);
       fsHideTimer = setTimeout(hideFsNow, 4000);
     }
@@ -1273,6 +1275,7 @@ import { createUrl } from '../lib/utils';
     function hideFsNow() {
       fsControls.classList.add('hidden');
       document.getElementById('video-player').style.pointerEvents = 'auto';
+      fsTrigger.style.pointerEvents = 'auto';
     }
 
     function hideFsControls(delay = 1500) {
