@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { fetchFromTMDB, tmdbEndpoints, getImageUrl, fetchGenres, sortByOptions, tvSortByOptions, discoverWithFilters, getAllMovieCertifications, searchActors, searchMulti } from '../lib/tmdb';
 import { supabase, isSupabaseConfigured, type TMDBFilters } from '../lib/supabase';
 import WatchlistButton from './WatchlistButton';
+import SkeletonCard from './SkeletonCard';
 
 interface SearchFormProps {
   basePath?: string;
@@ -73,7 +74,15 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
 
   // Error state
   const [searchError, setSearchError] = useState<string | null>(null);
-  
+
+  // Recent searches
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [showRecentSearches, setShowRecentSearches] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Track the last successfully searched query to avoid double-searching
+  const lastSearchedQuery = useRef('');
+
   // Filter state
   const [filters, setFilters] = useState({
     mediaType: 'all' as 'all' | 'movie' | 'tv',
@@ -142,6 +151,11 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     try {
       // If there's a text query, use search API
       if (query.trim()) {
+        if (hasActiveFilters) {
+          // Route through discover so filters + text are combined
+          await handleDiscover(page, query.trim());
+          return;
+        }
         setSearchMode('search');
         setCurrentPage(page);
         updateUrl({ page: page > 1 ? String(page) : null });
@@ -155,6 +169,8 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
         setAllResults(movieTvResults);
         setTotalPages(data.total_pages);
         setTotalResults(data.total_results);
+        saveRecentSearch(query.trim());
+        lastSearchedQuery.current = query.trim();
       } else {
         // No query but filters are set - use discover API
         setSearchMode('discover');
@@ -170,8 +186,8 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     }
   };
 
-  const handleDiscover = async (page: number = 1) => {
-    if (!hasActiveFilters) return;
+  const handleDiscover = async (page: number = 1, textQuery: string = '') => {
+    if (!hasActiveFilters && !textQuery.trim()) return;
 
     setIsLoading(true);
     setHasSearched(true);
@@ -259,6 +275,10 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
         tmdbFilters.sort_by = 'popularity.desc';
       }
 
+      if (textQuery.trim()) {
+        (tmdbFilters as any).with_text_query = textQuery.trim();
+      }
+
       // Discover for the selected media type
       const { results: rawResults, total_pages, total_results } = await discoverWithFilters(mediaType, tmdbFilters, page);
       let results = rawResults.map(item => ({
@@ -295,6 +315,10 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       }
 
       setAllResults(results);
+      if (textQuery.trim()) {
+        saveRecentSearch(textQuery.trim());
+        lastSearchedQuery.current = textQuery.trim();
+      }
     } catch (error: any) {
       console.error('Discover error:', error);
       setSearchError(error?.message || 'Could not load results. Please try again.');
@@ -332,7 +356,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
   const goToPage = (page: number) => {
     if (page < 1 || page > totalPages) return;
     if (searchMode === 'discover') {
-      handleDiscover(page);
+      handleDiscover(page, query.trim());
     } else {
       handleSearch(undefined, page);
     }
@@ -961,6 +985,23 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     setFilteredResults(filtered);
   }, [filters, allResults, searchMode]);
 
+  // Load recent searches from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('notflix_recent_searches');
+      if (stored) setRecentSearches(JSON.parse(stored));
+    } catch {}
+  }, []);
+
+  // Debounced auto-search
+  useEffect(() => {
+    if (!query.trim() || query.trim() === lastSearchedQuery.current) return;
+    const timer = setTimeout(() => {
+      handleSearch(undefined, 1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleFilterChange = (key: string, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
     // Close certification dropdown if media type changes to TV (certification only applies to movies)
@@ -1033,11 +1074,20 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     }));
   };
 
-  const hasActiveFilters = filters.mediaType !== 'all' || 
-    filters.genres.length > 0 || 
-    filters.startYear !== '' || 
+  const saveRecentSearch = (q: string) => {
+    if (!q.trim()) return;
+    setRecentSearches(prev => {
+      const updated = [q.trim(), ...prev.filter(s => s !== q.trim())].slice(0, 8);
+      try { localStorage.setItem('notflix_recent_searches', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  };
+
+  const hasActiveFilters = filters.mediaType !== 'all' ||
+    filters.genres.length > 0 ||
+    filters.startYear !== '' ||
     filters.endYear !== '' ||
-    filters.minRating !== '' || 
+    filters.minRating !== '' ||
     filters.certification !== '' ||
     filters.actors.length > 0 ||
     (filters.sortBy !== 'relevance' && filters.sortBy !== 'popularity.desc');
@@ -1049,13 +1099,57 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
         <div className="relative flex gap-2">
           <div className="relative flex-1">
             <input
+              ref={searchInputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => setShowRecentSearches(true)}
+              onBlur={() => setTimeout(() => setShowRecentSearches(false), 150)}
               placeholder="Search for movies, TV shows..."
-              className="w-full px-4 py-3 text-lg bg-gray-800 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600 focus:border-transparent pr-16"
+              className="w-full px-4 py-3 text-lg bg-gray-800 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600 focus:border-transparent pr-20"
             />
-            <button 
+            {showRecentSearches && !query && recentSearches.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                <div className="px-3 py-2 text-xs text-gray-500 uppercase tracking-wide border-b border-gray-700">Recent Searches</div>
+                {recentSearches.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onMouseDown={() => {
+                      setQuery(s);
+                      setShowRecentSearches(false);
+                      setTimeout(() => handleSearch(undefined, 1), 0);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center gap-2"
+                  >
+                    <i className="fas fa-history text-gray-500 text-xs" />
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+            {query && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery('');
+                  setAllResults([]);
+                  setFilteredResults([]);
+                  setHasSearched(false);
+                  setTotalPages(1);
+                  setTotalResults(0);
+                  setCurrentPage(1);
+                  setSearchError(null);
+                  lastSearchedQuery.current = '';
+                  updateUrl({ q: null, page: null });
+                }}
+                className="absolute right-14 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors p-1"
+                aria-label="Clear search"
+              >
+                <i className="fas fa-times" />
+              </button>
+            )}
+            <button
               type="submit"
               disabled={isLoading || (!query.trim() && !hasActiveFilters)}
               className="absolute right-2 top-2 bottom-2 px-6 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1083,10 +1177,11 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
 
       {/* Loading State */}
       {isLoading && (
-        <div className="flex justify-center py-12">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-400">Searching...</p>
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
           </div>
         </div>
       )}
@@ -1908,6 +2003,9 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                     {totalResults > 0
                       ? `Showing ${filteredResults.length} of ${totalResults.toLocaleString()} results`
                       : `${filteredResults.length} result${filteredResults.length !== 1 ? 's' : ''}`}
+                    {filters.mediaType === 'all' && (
+                      <span className="ml-2 text-xs text-gray-500">(movies + TV — select one type for full pagination)</span>
+                    )}
                   </p>
                   <div className="flex items-center gap-2">
                     <button
