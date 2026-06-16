@@ -5,6 +5,7 @@ import HomepageSections from '../components/HomepageSections';
 import MovieCard from '../components/MovieCard.astro';
 import { fetchFromTMDB, tmdbEndpoints } from '../lib/tmdb';
 import { createUrl } from '../lib/utils';
+import rawRecommendations from '../data/recommendations.json';
 
 // Fetch default data at build time for fallback/SEO - always fetch this
 const [trendingData, popularMoviesData, topRatedData, popularTvData, upcomingData] = await Promise.all([
@@ -14,6 +15,22 @@ const [trendingData, popularMoviesData, topRatedData, popularTvData, upcomingDat
   fetchFromTMDB(tmdbEndpoints.popularTv).catch(() => ({ results: [] })),
   fetchFromTMDB(tmdbEndpoints.upcomingMovies).catch(() => ({ results: [] })),
 ]);
+
+// Fetch each recommendation from TMDB at build time
+const recResults = await Promise.all(
+  rawRecommendations.map(async (rec) => {
+    try {
+      const endpoint = rec.type === 'movie' ? `/movie/${rec.tmdb_id}` : `/tv/${rec.tmdb_id}`;
+      const data = await fetchFromTMDB(endpoint);
+      return { ...data, media_type: rec.type };
+    } catch {
+      return null;
+    }
+  })
+);
+const validRecs = recResults.filter(Boolean);
+const recMovies = validRecs.filter((r) => r!.media_type === 'movie');
+const recTV    = validRecs.filter((r) => r!.media_type === 'tv');
 
 const sections = [
   {
@@ -114,7 +131,37 @@ const heroMovie = trendingData.results?.[0];
   <!-- Dynamic Sections (loads from database - includes custom categories and respects admin order) -->
   <!-- This will enhance/replace server-rendered sections when loaded -->
   <HomepageSections client:load />
-  
+
+  <!-- NotFlix Recommendations (static, always visible — edit src/data/recommendations.json to manage) -->
+  {(recMovies.length > 0 || recTV.length > 0) && (
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 space-y-12">
+      {recMovies.length > 0 && (
+        <section>
+          <h2 class="text-2xl md:text-3xl font-bold mb-6 text-white">
+            NotFlix Recommendations — Movies
+          </h2>
+          <div class="content-grid">
+            {recMovies.map((movie) => (
+              <MovieCard movie={movie} mediaType="movie" />
+            ))}
+          </div>
+        </section>
+      )}
+      {recTV.length > 0 && (
+        <section>
+          <h2 class="text-2xl md:text-3xl font-bold mb-6 text-white">
+            NotFlix Recommendations — TV Shows
+          </h2>
+          <div class="content-grid">
+            {recTV.map((show) => (
+              <MovieCard movie={show} mediaType="tv" />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )}
+
   <!-- Footer -->
   <footer class="bg-black mt-20 py-12">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
