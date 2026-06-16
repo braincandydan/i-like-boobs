@@ -31,6 +31,9 @@ ehthumbs.db
 Thumbs.db
 Desktop.ini
 
+# Claude Code agent sandbox
+.claude/
+
 # IDE / Editor files
 .idea/
 .vscode/
