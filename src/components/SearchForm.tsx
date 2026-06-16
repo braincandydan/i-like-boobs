@@ -1836,35 +1836,6 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
               <h2 className="text-2xl font-bold text-white mb-6">
                 {searchMode === 'discover' ? 'Discover Results' : 'Search Results'}
               </h2>
-              {/* Results count and pagination */}
-              {hasSearched && !isLoading && (
-                <div className="flex items-center justify-between mb-4 border-2 border-red-500 p-2 rounded">
-                  <p className="text-sm text-gray-400">
-                    {totalResults > 0
-                      ? `Showing ${filteredResults.length} of ${totalResults.toLocaleString()} results`
-                      : `${filteredResults.length} result${filteredResults.length !== 1 ? 's' : ''}`}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => goToPage(currentPage - 1)}
-                      disabled={currentPage <= 1}
-                      className="px-3 py-1 rounded bg-netflix-gray text-white disabled:opacity-40 hover:bg-gray-600 transition-colors text-sm"
-                    >
-                      ← Prev
-                    </button>
-                    <span className="text-sm text-gray-300">
-                      Page {currentPage} of {totalPages.toLocaleString()}
-                    </span>
-                    <button
-                      onClick={() => goToPage(currentPage + 1)}
-                      disabled={currentPage >= totalPages}
-                      className="px-3 py-1 rounded bg-netflix-gray text-white disabled:opacity-40 hover:bg-gray-600 transition-colors text-sm"
-                    >
-                      Next →
-                    </button>
-                  </div>
-                </div>
-              )}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                   {filteredResults.map((item) => {
                     const title = getTitle(item);
@@ -1930,6 +1901,35 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                     );
                   })}
                 </div>
+              {/* Results count and pagination */}
+              {hasSearched && !isLoading && (
+                <div className="flex items-center justify-between mt-6 border-2 border-red-500 p-2 rounded">
+                  <p className="text-sm text-gray-400">
+                    {totalResults > 0
+                      ? `Showing ${filteredResults.length} of ${totalResults.toLocaleString()} results`
+                      : `${filteredResults.length} result${filteredResults.length !== 1 ? 's' : ''}`}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => goToPage(currentPage - 1)}
+                      disabled={currentPage <= 1}
+                      className="px-3 py-1 rounded bg-netflix-gray text-white disabled:opacity-40 hover:bg-gray-600 transition-colors text-sm"
+                    >
+                      ← Prev
+                    </button>
+                    <span className="text-sm text-gray-300">
+                      Page {currentPage} of {totalPages.toLocaleString()}
+                    </span>
+                    <button
+                      onClick={() => goToPage(currentPage + 1)}
+                      disabled={currentPage >= totalPages}
+                      className="px-3 py-1 rounded bg-netflix-gray text-white disabled:opacity-40 hover:bg-gray-600 transition-colors text-sm"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <div className="text-center py-12">
