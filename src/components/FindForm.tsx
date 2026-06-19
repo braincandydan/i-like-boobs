@@ -203,6 +203,7 @@ export default function FindForm() {
   const [tasteTotalPages, setTasteTotalPages] = useState(1);
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
   const [tasteLoadingMore, setTasteLoadingMore] = useState(false);
+  const [tasteFilters, setTasteFilters] = useState<Record<string, any>>({});
 
   // Selections
   const [selectedTitles, setSelectedTitles] = useState<Set<number>>(new Set());
@@ -255,6 +256,7 @@ export default function FindForm() {
       if (step === 'taste') {
         setSelectedTitles(new Set()); setPinnedItems(new Map());
         setTitleSearch(''); setTitleSearchResults([]);
+        setTasteFilters({});
       }
       setStep(steps[idx - 1]);
     }
@@ -262,16 +264,23 @@ export default function FindForm() {
 
   const loadTasteSamples = async (
     type: 'movie' | 'tv', m: MoodOption, t: ToneOption | null,
-    e: EraOption, r: RatingOption, l: LengthOption | null
+    e: EraOption, r: RatingOption, l: LengthOption | null,
+    extra: Record<string, any> = {}
   ) => {
     setTasteLoading(true);
     setTastePool([]); setVisibleCount(INITIAL_VISIBLE); setTastePage(1);
     try {
-      const data = await discoverWithFilters(type, buildFilters(type, m, t, e, r, l), 1);
+      const merged = { ...buildFilters(type, m, t, e, r, l), ...extra };
+      const data = await discoverWithFilters(type, merged, 1);
       setTastePool(data.results || []);
       setTasteTotalPages(data.total_pages || 1);
     } catch { setTastePool([]); }
     finally { setTasteLoading(false); }
+  };
+
+  const refineTaste = (overrides: Record<string, any>) => {
+    setTasteFilters(overrides);
+    loadTasteSamples(contentType, mood!, tone, era!, rating!, length, overrides);
   };
 
   const loadMoreTasteSamples = async () => {
@@ -280,7 +289,8 @@ export default function FindForm() {
     setTasteLoadingMore(true);
     try {
       const next = tastePage + 1;
-      const data = await discoverWithFilters(contentType, buildFilters(contentType, mood!, tone, era!, rating!, length), next);
+      const merged = { ...buildFilters(contentType, mood!, tone, era!, rating!, length), ...tasteFilters };
+      const data = await discoverWithFilters(contentType, merged, next);
       setTastePool(prev => [...prev, ...(data.results || [])]);
       setTastePage(next); setVisibleCount(v => v + LOAD_MORE_BATCH);
     } catch {} finally { setTasteLoadingMore(false); }
@@ -368,6 +378,7 @@ export default function FindForm() {
   const restart = () => {
     setStep('type'); setMood(null); setTone(null); setEra(null); setRating(null); setLength(null);
     setTastePool([]); setVisibleCount(INITIAL_VISIBLE); setTastePage(1); setTasteTotalPages(1);
+    setTasteFilters({});
     setSelectedTitles(new Set()); setPinnedItems(new Map());
     setTitleSearch(''); setTitleSearchResults([]);
     setResults([]); setTotalResults(0); setError(null); setBroadened(false);
@@ -836,6 +847,123 @@ export default function FindForm() {
                 </div>
               </div>
             )}
+
+            {/* Taste refinement chips */}
+            {(() => {
+              const tf = tasteFilters;
+              const im = contentType === 'movie';
+              const tasteSortBy = tf.sort_by;
+              const tasteDateGteKey = im ? 'primary_release_date.gte' : 'first_air_date.gte';
+              const tasteDateLteKey = im ? 'primary_release_date.lte' : 'first_air_date.lte';
+
+              const TChip = ({ label, icon, active, onClick }: { label: string; icon?: string; active: boolean; onClick: () => void }) => (
+                <button onClick={onClick}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all shrink-0 ${
+                    active ? 'bg-netflix-red border-netflix-red text-white' : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'
+                  }`}
+                >
+                  {icon && <i className={`fas ${icon} text-xs`} />}
+                  {label}
+                </button>
+              );
+
+              const setTasteSort = (sort: string) => {
+                const n = { ...tf };
+                if (n.sort_by === sort) { delete n.sort_by; refineTaste(n); }
+                else refineTaste({ ...n, sort_by: sort });
+              };
+
+              const toggleTasteCert = (lte: string | null, gte: string | null) => {
+                const isActive = lte ? tf['certification.lte'] === lte : tf['certification.gte'] === gte;
+                const n = { ...tf };
+                delete n['certification.lte']; delete n['certification.gte']; delete n.certification_country;
+                if (!isActive) {
+                  if (lte) { n['certification.lte'] = lte; n.certification_country = 'US'; }
+                  if (gte) { n['certification.gte'] = gte; n.certification_country = 'US'; }
+                }
+                refineTaste(n);
+              };
+
+              const toggleTasteDate = (key: string, value: string) => {
+                const n = { ...tf };
+                if (n[key] === value) { delete n[key]; refineTaste(n); }
+                else {
+                  if (key === tasteDateGteKey) delete n[tasteDateLteKey];
+                  if (key === tasteDateLteKey) delete n[tasteDateGteKey];
+                  refineTaste({ ...n, [key]: value });
+                }
+              };
+
+              const toggleTasteRuntime = (key: 'with_runtime.lte' | 'with_runtime.gte', value: number) => {
+                const n = { ...tf };
+                if (n[key] === value) { delete n[key]; refineTaste(n); }
+                else { delete n['with_runtime.lte']; delete n['with_runtime.gte']; refineTaste({ ...n, [key]: value }); }
+              };
+
+              return (
+                <div className="w-full max-w-4xl mb-5">
+                  <div className="overflow-x-auto pb-2">
+                    <div className="flex gap-2 min-w-max">
+                      <span className="text-gray-500 text-xs self-center mr-1 shrink-0">Filter pool:</span>
+
+                      <TChip label="Most popular" icon="fa-fire" active={tasteSortBy === 'popularity.desc'} onClick={() => setTasteSort('popularity.desc')} />
+                      <TChip label="Highest rated" icon="fa-star" active={tasteSortBy === 'vote_average.desc'} onClick={() => setTasteSort('vote_average.desc')} />
+                      <TChip label="Newest first" icon="fa-sort-amount-down" active={tasteSortBy === (im ? 'primary_release_date.desc' : 'first_air_date.desc')}
+                        onClick={() => setTasteSort(im ? 'primary_release_date.desc' : 'first_air_date.desc')} />
+                      <TChip label="Oldest first" icon="fa-sort-amount-up" active={tasteSortBy === (im ? 'primary_release_date.asc' : 'first_air_date.asc')}
+                        onClick={() => setTasteSort(im ? 'primary_release_date.asc' : 'first_air_date.asc')} />
+
+                      <span className="text-gray-700 self-center">|</span>
+
+                      <TChip label="Show newer" icon="fa-calendar-plus" active={tf[tasteDateGteKey] === '2020-01-01'}
+                        onClick={() => toggleTasteDate(tasteDateGteKey, '2020-01-01')} />
+                      <TChip label="Show older" icon="fa-calendar-minus" active={tf[tasteDateLteKey] === '2010-12-31'}
+                        onClick={() => toggleTasteDate(tasteDateLteKey, '2010-12-31')} />
+
+                      <span className="text-gray-700 self-center">|</span>
+
+                      {im ? <>
+                        <TChip label="G / PG" icon="fa-child" active={tf['certification.lte'] === 'PG'} onClick={() => toggleTasteCert('PG', null)} />
+                        <TChip label="Up to PG-13" icon="fa-user" active={tf['certification.lte'] === 'PG-13'} onClick={() => toggleTasteCert('PG-13', null)} />
+                        <TChip label="R-rated" icon="fa-exclamation-circle" active={tf['certification.gte'] === 'R'} onClick={() => toggleTasteCert(null, 'R')} />
+                      </> : <>
+                        <TChip label="G / PG (TV)" icon="fa-child" active={tf['certification.lte'] === 'TV-PG'} onClick={() => toggleTasteCert('TV-PG', null)} />
+                        <TChip label="Teen (TV-14)" icon="fa-user" active={tf['certification.lte'] === 'TV-14'} onClick={() => toggleTasteCert('TV-14', null)} />
+                        <TChip label="Mature (TV-MA)" icon="fa-exclamation-circle" active={tf['certification.gte'] === 'TV-MA'} onClick={() => toggleTasteCert(null, 'TV-MA')} />
+                      </>}
+
+                      <span className="text-gray-700 self-center">|</span>
+
+                      {im ? <>
+                        <TChip label="Under 90 min" icon="fa-bolt" active={tf['with_runtime.lte'] === 90} onClick={() => toggleTasteRuntime('with_runtime.lte', 90)} />
+                        <TChip label="Under 2 hrs" icon="fa-clock" active={tf['with_runtime.lte'] === 120} onClick={() => toggleTasteRuntime('with_runtime.lte', 120)} />
+                        <TChip label="Over 2 hrs" icon="fa-hourglass-half" active={tf['with_runtime.gte'] === 120} onClick={() => toggleTasteRuntime('with_runtime.gte', 120)} />
+                      </> : <>
+                        <TChip label="Short episodes" icon="fa-bolt" active={tf['with_runtime.lte'] === 30} onClick={() => toggleTasteRuntime('with_runtime.lte', 30)} />
+                        <TChip label="Long episodes" icon="fa-hourglass-half" active={tf['with_runtime.gte'] === 45} onClick={() => toggleTasteRuntime('with_runtime.gte', 45)} />
+                      </>}
+
+                      <span className="text-gray-700 self-center">|</span>
+
+                      <TChip label="English" icon="fa-language" active={tf.with_original_language === 'en'}
+                        onClick={() => {
+                          const n = { ...tf };
+                          if (n.with_original_language === 'en') { delete n.with_original_language; refineTaste(n); }
+                          else refineTaste({ ...n, with_original_language: 'en' });
+                        }}
+                      />
+                      <TChip label="Non-English" icon="fa-globe" active={!!tf.without_original_language}
+                        onClick={() => {
+                          const n = { ...tf };
+                          if (n.without_original_language) { delete n.without_original_language; refineTaste(n); }
+                          else { delete n.with_original_language; refineTaste({ ...n, without_original_language: 'en' }); }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Suggestion grid */}
             {tasteLoading ? (
