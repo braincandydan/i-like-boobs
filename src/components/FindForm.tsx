@@ -204,6 +204,7 @@ export default function FindForm() {
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
   const [tasteLoadingMore, setTasteLoadingMore] = useState(false);
   const [tasteFilters, setTasteFilters] = useState<Record<string, any>>({});
+  const [tasteClientSort, setTasteClientSort] = useState<'default' | 'popular' | 'rated' | 'mainstream' | 'obscure' | 'recent'>('default');
 
   // Selections
   const [selectedTitles, setSelectedTitles] = useState<Set<number>>(new Set());
@@ -260,7 +261,7 @@ export default function FindForm() {
       if (step === 'taste') {
         setSelectedTitles(new Set()); setPinnedItems(new Map());
         setTitleSearch(''); setTitleSearchResults([]);
-        setTasteFilters({});
+        setTasteFilters({}); setTasteClientSort('default');
       }
       setStep(steps[idx - 1]);
     }
@@ -395,7 +396,7 @@ export default function FindForm() {
   const restart = () => {
     setStep('type'); setMood(null); setTone(null); setEra(null); setRating(null); setLength(null);
     setTastePool([]); setVisibleCount(INITIAL_VISIBLE); setTastePage(1); setTasteTotalPages(1);
-    setTasteFilters({});
+    setTasteFilters({}); setTasteClientSort('default');
     setSelectedTitles(new Set()); setPinnedItems(new Map());
     setTitleSearch(''); setTitleSearchResults([]);
     setResults([]); setTotalResults(0); setError(null); setBroadened(false);
@@ -987,33 +988,28 @@ export default function FindForm() {
                 <p className="text-gray-400 mb-6">Couldn't load suggestions right now.</p>
               </div>
             ) : (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-4xl mb-4">
-                  {tastePool.slice(0, visibleCount).map((item: any) => (
-                    <TasteTile key={item.id} item={item} onToggle={() => toggleTasteSelection(item.id)} />
-                  ))}
-                </div>
-                {(() => {
-                  const tf = tasteFilters;
-                  const dateGteKey = contentType === 'movie' ? 'primary_release_date.gte' : 'first_air_date.gte';
-                  const certGte = contentType === 'movie' ? 'R' : 'TV-MA';
-                  const certLte = contentType === 'movie' ? 'PG' : 'TV-PG';
+              <>{(() => {
+                  // Sort the loaded pool client-side — no API call, instant reorder
+                  const sortedPool = [...tastePool].sort((a, b) => {
+                    const aDate = new Date(a.release_date || a.first_air_date || '2000-01-01').getTime();
+                    const bDate = new Date(b.release_date || b.first_air_date || '2000-01-01').getTime();
+                    switch (tasteClientSort) {
+                      case 'popular':     return b.popularity - a.popularity;
+                      case 'rated':       return b.vote_average - a.vote_average;
+                      case 'mainstream':  return b.vote_count - a.vote_count;
+                      case 'obscure':     return a.vote_count - b.vote_count;
+                      case 'recent':      return bDate - aDate;
+                      default:            return 0;
+                    }
+                  });
 
-                  // Toggle a preset on/off. Clears conflicting keys before applying.
-                  const togglePreset = (add: Record<string, any>, clearKeys: string[] = []) => {
-                    const isActive = Object.entries(add).every(([k, v]) => tf[k] === v);
-                    const n = { ...tf };
-                    [...Object.keys(add), ...clearKeys].forEach(k => delete n[k]);
-                    if (!isActive) Object.assign(n, add);
-                    refineTaste(n);
-                  };
-
-                  const AdjustBtn = ({ label, icon, active, onClick }: { label: string; icon: string; active: boolean; onClick: () => void }) => (
-                    <button onClick={onClick}
+                  const SortBtn = ({ id, label, icon }: { id: typeof tasteClientSort; label: string; icon: string }) => (
+                    <button
+                      onClick={() => setTasteClientSort(v => v === id ? 'default' : id)}
                       className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold border transition-all ${
-                        active
+                        tasteClientSort === id
                           ? 'bg-netflix-red border-netflix-red text-white'
-                          : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-netflix-red hover:border-netflix-red hover:text-white'
+                          : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'
                       }`}
                     >
                       <i className={`fas ${icon} text-xs`} /> {label}
@@ -1021,53 +1017,34 @@ export default function FindForm() {
                   );
 
                   return (
-                    <div className="w-full max-w-4xl flex flex-wrap items-center gap-2 mb-6">
-                      {(visibleCount < tastePool.length || tastePage < tasteTotalPages) && (
-                        <button onClick={loadMoreTasteSamples} disabled={tasteLoadingMore}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-600 text-white text-sm font-semibold hover:border-gray-400 transition-all disabled:opacity-50"
-                        >
-                          {tasteLoadingMore
-                            ? <><div className="w-3 h-3 border-2 border-gray-600 border-t-white rounded-full animate-spin" /> Loading…</>
-                            : <><i className="fas fa-chevron-down text-xs" /> Show more</>
-                          }
-                        </button>
-                      )}
-                      <span className="text-gray-600 text-xs self-center">adjust:</span>
-                      <AdjustBtn label="Too PG → R-rated" icon="fa-exclamation-circle"
-                        active={tf['certification.gte'] === certGte}
-                        onClick={() => togglePreset({ 'certification.gte': certGte, certification_country: 'US' }, ['certification.lte'])}
-                      />
-                      <AdjustBtn label="Too mature → Keep PG" icon="fa-child"
-                        active={tf['certification.lte'] === certLte}
-                        onClick={() => togglePreset({ 'certification.lte': certLte, certification_country: 'US' }, ['certification.gte'])}
-                      />
-                      <AdjustBtn label="More mainstream" icon="fa-fire"
-                        active={tf['vote_count.gte'] === 1000}
-                        onClick={() => togglePreset({ 'vote_count.gte': 1000, sort_by: 'popularity.desc' }, ['vote_count.lte'])}
-                      />
-                      <AdjustBtn label="More obscure" icon="fa-gem"
-                        active={!!tf['vote_count.lte']}
-                        onClick={() => togglePreset({ 'vote_count.lte': 400, sort_by: 'vote_average.desc' }, ['vote_count.gte'])}
-                      />
-                      <AdjustBtn label="Recent only" icon="fa-calendar-alt"
-                        active={tf[dateGteKey] === '2021-01-01'}
-                        onClick={() => togglePreset({ [dateGteKey]: '2021-01-01' })}
-                      />
-                      <AdjustBtn label="Highest rated" icon="fa-star"
-                        active={tf.sort_by === 'vote_average.desc' && !tf['vote_count.lte']}
-                        onClick={() => togglePreset({ sort_by: 'vote_average.desc', 'vote_count.gte': 200 }, ['vote_count.lte'])}
-                      />
-                      {Object.keys(tf).length > 0 && (
-                        <button onClick={() => refineTaste({})}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-900 border border-gray-700 text-gray-500 text-sm hover:text-white transition-all"
-                        >
-                          <i className="fas fa-times text-xs" /> Reset all
-                        </button>
-                      )}
-                    </div>
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-4xl mb-4">
+                        {sortedPool.slice(0, visibleCount).map((item: any) => (
+                          <TasteTile key={item.id} item={item} onToggle={() => toggleTasteSelection(item.id)} />
+                        ))}
+                      </div>
+
+                      <div className="w-full max-w-4xl flex flex-wrap items-center gap-2 mb-6">
+                        {(visibleCount < tastePool.length || tastePage < tasteTotalPages) && (
+                          <button onClick={loadMoreTasteSamples} disabled={tasteLoadingMore}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-600 text-white text-sm font-semibold hover:border-gray-400 transition-all disabled:opacity-50"
+                          >
+                            {tasteLoadingMore
+                              ? <><div className="w-3 h-3 border-2 border-gray-600 border-t-white rounded-full animate-spin" /> Loading…</>
+                              : <><i className="fas fa-chevron-down text-xs" /> Show more</>
+                            }
+                          </button>
+                        )}
+                        <span className="text-gray-600 text-xs self-center">sort by:</span>
+                        <SortBtn id="popular"    label="Most popular"    icon="fa-fire" />
+                        <SortBtn id="rated"      label="Highest rated"   icon="fa-star" />
+                        <SortBtn id="recent"     label="Most recent"     icon="fa-calendar-alt" />
+                        <SortBtn id="mainstream" label="Mainstream"      icon="fa-crown" />
+                        <SortBtn id="obscure"    label="Hidden gems"     icon="fa-gem" />
+                      </div>
+                    </>
                   );
-                })()}
-              </>
+                })()}</>
             )}
 
             <div className="flex flex-col sm:flex-row items-center gap-3 mt-2">
