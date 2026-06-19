@@ -993,16 +993,54 @@ export default function FindForm() {
                     <TasteTile key={item.id} item={item} onToggle={() => toggleTasteSelection(item.id)} />
                   ))}
                 </div>
-                {(visibleCount < tastePool.length || tastePage < tasteTotalPages) && (
-                  <button onClick={loadMoreTasteSamples} disabled={tasteLoadingMore}
-                    className="mb-6 text-gray-400 hover:text-white text-sm transition-colors flex items-center gap-2 disabled:opacity-50"
+                <div className="w-full max-w-4xl flex flex-wrap items-center gap-2 mb-6">
+                  {(visibleCount < tastePool.length || tastePage < tasteTotalPages) && (
+                    <button onClick={loadMoreTasteSamples} disabled={tasteLoadingMore}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-600 text-white text-sm font-semibold hover:border-gray-400 transition-all disabled:opacity-50"
+                    >
+                      {tasteLoadingMore
+                        ? <><div className="w-3 h-3 border-2 border-gray-600 border-t-white rounded-full animate-spin" /> Loading…</>
+                        : <><i className="fas fa-chevron-down text-xs" /> Show more</>
+                      }
+                    </button>
+                  )}
+                  <span className="text-gray-600 text-xs self-center">or adjust:</span>
+                  <button
+                    onClick={() => refineTaste({ 'vote_count.gte': 1000, sort_by: 'popularity.desc' })}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-300 text-sm font-semibold hover:bg-netflix-red hover:border-netflix-red hover:text-white transition-all"
                   >
-                    {tasteLoadingMore
-                      ? <><div className="w-3 h-3 border-2 border-gray-600 border-t-white rounded-full animate-spin" /> Loading…</>
-                      : <><i className="fas fa-chevron-down text-xs" /> Show more options</>
-                    }
+                    <i className="fas fa-fire text-xs" /> More mainstream
                   </button>
-                )}
+                  <button
+                    onClick={() => refineTaste({ 'vote_count.lte': 400, sort_by: 'vote_average.desc' })}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-300 text-sm font-semibold hover:bg-netflix-red hover:border-netflix-red hover:text-white transition-all"
+                  >
+                    <i className="fas fa-gem text-xs" /> More obscure
+                  </button>
+                  <button
+                    onClick={() => {
+                      const key = contentType === 'movie' ? 'primary_release_date.gte' : 'first_air_date.gte';
+                      refineTaste({ [key]: '2021-01-01', sort_by: 'popularity.desc' });
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-300 text-sm font-semibold hover:bg-netflix-red hover:border-netflix-red hover:text-white transition-all"
+                  >
+                    <i className="fas fa-calendar-alt text-xs" /> Recent only
+                  </button>
+                  <button
+                    onClick={() => refineTaste({ sort_by: 'vote_average.desc', 'vote_count.gte': 200 })}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-300 text-sm font-semibold hover:bg-netflix-red hover:border-netflix-red hover:text-white transition-all"
+                  >
+                    <i className="fas fa-star text-xs" /> Highest rated
+                  </button>
+                  {Object.keys(tasteFilters).length > 0 && (
+                    <button
+                      onClick={() => refineTaste({})}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-900 border border-gray-700 text-gray-500 text-sm hover:text-white transition-all"
+                    >
+                      <i className="fas fa-times text-xs" /> Reset
+                    </button>
+                  )}
+                </div>
               </>
             )}
 
