@@ -10,6 +10,18 @@ interface MoodOption {
   tvGenres: number[];
 }
 
+interface ToneOption {
+  label: string;
+  subtitle: string;
+  overrideMovieGenres?: number[];
+  overrideTvGenres?: number[];
+  addMovieGenres?: number[];
+  addTvGenres?: number[];
+  addGenres?: number[];
+  certLte?: string;
+  keywords?: number[];
+}
+
 interface EraOption {
   label: string;
   subtitle: string;
@@ -45,6 +57,57 @@ const MOODS: MoodOption[] = [
   { label: 'Documentary', emoji: '🎬', movieGenres: [99], tvGenres: [99] },
 ];
 
+const TONE_MAP: Record<string, ToneOption[]> = {
+  'Action & Adventure': [
+    { label: 'Superhero', subtitle: 'Capes, powers, and blockbusters', keywords: [9715] },
+    { label: 'Spy & Espionage', subtitle: 'Slick agents and globe-trotting intrigue', addMovieGenres: [53], addTvGenres: [53] },
+    { label: 'War & Combat', subtitle: 'Gritty military stories', addMovieGenres: [10752], addTvGenres: [10768] },
+    { label: 'Any style', subtitle: 'All action & adventure' },
+  ],
+  'Comedy': [
+    { label: 'Family-friendly', subtitle: 'Light-hearted, safe for all ages', certLte: 'PG' },
+    { label: 'Romantic Comedy', subtitle: 'Love, laughter, happy endings', addGenres: [10749] },
+    { label: 'Satirical & Witty', subtitle: 'Sharp, clever, and irreverent' },
+    { label: 'Any style', subtitle: 'All comedy' },
+  ],
+  'Drama': [
+    { label: 'Romantic', subtitle: 'Love stories with emotional depth', addGenres: [10749] },
+    { label: 'Historical', subtitle: 'Period pieces and true stories', addGenres: [36] },
+    { label: 'Crime Drama', subtitle: 'Dark, morally complex stories', addGenres: [80] },
+    { label: 'Any style', subtitle: 'All drama' },
+  ],
+  'Horror & Thriller': [
+    { label: 'Psychological', subtitle: 'Mind games over jump scares', overrideMovieGenres: [53, 9648], overrideTvGenres: [9648] },
+    { label: 'Supernatural', subtitle: 'Ghosts, demons, the paranormal', overrideMovieGenres: [27], overrideTvGenres: [27] },
+    { label: 'Mystery & Suspense', subtitle: 'Secrets, twists, whodunits', overrideMovieGenres: [9648, 53], overrideTvGenres: [9648] },
+    { label: 'Any style', subtitle: 'All horror & thriller' },
+  ],
+  'Sci-Fi & Fantasy': [
+    { label: 'Space & Sci-Fi', subtitle: 'Futuristic tech and alien worlds', overrideMovieGenres: [878], overrideTvGenres: [10765] },
+    { label: 'Fantasy & Magic', subtitle: 'Swords, spells, and other worlds', overrideMovieGenres: [14], overrideTvGenres: [10765] },
+    { label: 'Superhero', subtitle: 'Powers, capes, and epic battles', keywords: [9715] },
+    { label: 'Any style', subtitle: 'All sci-fi & fantasy' },
+  ],
+  'Romance': [
+    { label: 'Romantic Comedy', subtitle: 'Funny and heartwarming', addGenres: [35] },
+    { label: 'Dramatic Romance', subtitle: 'Emotional, intense love stories', addGenres: [18] },
+    { label: 'Historical Romance', subtitle: 'Passion set in another era', addGenres: [36] },
+    { label: 'Any style', subtitle: 'All romance' },
+  ],
+  'Crime & Mystery': [
+    { label: 'Whodunit & Detective', subtitle: 'Puzzles, clues, investigations', overrideMovieGenres: [9648], overrideTvGenres: [9648, 80] },
+    { label: 'Heist & Caper', subtitle: 'Elaborate plans and big scores', addMovieGenres: [53], addTvGenres: [53] },
+    { label: 'Legal Thriller', subtitle: 'Courtrooms, lawyers, and justice', addGenres: [53] },
+    { label: 'Any style', subtitle: 'All crime & mystery' },
+  ],
+  'Documentary': [
+    { label: 'History & Culture', subtitle: 'The past, people, and civilisations', addGenres: [36] },
+    { label: 'Science & Nature', subtitle: 'The natural world and discoveries' },
+    { label: 'True Crime', subtitle: 'Real investigations and cases' },
+    { label: 'Any style', subtitle: 'All documentaries' },
+  ],
+};
+
 const ERAS: EraOption[] = [
   { label: 'Brand New', subtitle: '2024 or newer', movieGte: '2024-01-01', tvGte: '2024-01-01' },
   { label: 'Recent', subtitle: '2015 – 2023', movieGte: '2015-01-01', movieLte: '2023-12-31', tvGte: '2015-01-01', tvLte: '2023-12-31' },
@@ -69,11 +132,12 @@ const LENGTHS: LengthOption[] = [
 const INITIAL_VISIBLE = 8;
 const LOAD_MORE_BATCH = 8;
 
-type Step = 'type' | 'mood' | 'era' | 'rating' | 'length' | 'taste' | 'results';
+type Step = 'type' | 'mood' | 'tone' | 'era' | 'rating' | 'length' | 'taste' | 'results';
 
 function buildFilters(
   contentType: 'movie' | 'tv',
   mood: MoodOption,
+  tone: ToneOption | null,
   era: EraOption,
   rating: RatingOption,
   length: LengthOption | null,
@@ -81,7 +145,18 @@ function buildFilters(
 ): Record<string, any> {
   const filters: Record<string, any> = {};
 
-  const genres = contentType === 'movie' ? mood.movieGenres : mood.tvGenres;
+  let genres = contentType === 'movie' ? [...mood.movieGenres] : [...mood.tvGenres];
+
+  if (tone) {
+    if (contentType === 'movie' && tone.overrideMovieGenres) genres = tone.overrideMovieGenres;
+    else if (contentType === 'tv' && tone.overrideTvGenres) genres = tone.overrideTvGenres;
+
+    if (contentType === 'movie' && tone.addMovieGenres) genres = [...genres, ...tone.addMovieGenres];
+    else if (contentType === 'tv' && tone.addTvGenres) genres = [...genres, ...tone.addTvGenres];
+
+    if (tone.addGenres) genres = [...genres, ...tone.addGenres];
+  }
+
   if (genres.length > 0) filters.with_genres = genres;
 
   if (contentType === 'movie') {
@@ -101,9 +176,13 @@ function buildFilters(
     if (length.runtimeGte !== undefined) filters['with_runtime.gte'] = length.runtimeGte;
   }
 
-  if (companyIds && companyIds.length > 0) {
-    filters.with_companies = companyIds.join('|');
+  if (tone && contentType === 'movie' && tone.certLte) {
+    filters.certification_country = 'US';
+    filters['certification.lte'] = tone.certLte;
   }
+
+  if (tone?.keywords?.length) filters.with_keywords = tone.keywords.join(',');
+  if (companyIds?.length) filters.with_companies = companyIds.join('|');
 
   return filters;
 }
@@ -112,24 +191,24 @@ export default function FindForm() {
   const [step, setStep] = useState<Step>('type');
   const [contentType, setContentType] = useState<'movie' | 'tv'>('movie');
   const [mood, setMood] = useState<MoodOption | null>(null);
+  const [tone, setTone] = useState<ToneOption | null>(null);
   const [era, setEra] = useState<EraOption | null>(null);
   const [rating, setRating] = useState<RatingOption | null>(null);
   const [length, setLength] = useState<LengthOption | null>(null);
 
-  // Taste pool — full preliminary results
+  // Taste pool
   const [tastePool, setTastePool] = useState<any[]>([]);
   const [tasteLoading, setTasteLoading] = useState(false);
   const [tastePage, setTastePage] = useState(1);
   const [tasteTotalPages, setTasteTotalPages] = useState(1);
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [tasteLoadingMore, setTasteLoadingMore] = useState(false);
 
-  // Selected IDs (from grid + pinned)
+  // Selections
   const [selectedTitles, setSelectedTitles] = useState<Set<number>>(new Set());
-  // Manually pinned items added via search
   const [pinnedItems, setPinnedItems] = useState<Map<number, any>>(new Map());
 
-  // Title search on taste step
+  // Title search
   const [titleSearch, setTitleSearch] = useState('');
   const [titleSearchResults, setTitleSearchResults] = useState<any[]>([]);
   const [titleSearchLoading, setTitleSearchLoading] = useState(false);
@@ -141,32 +220,31 @@ export default function FindForm() {
   const [error, setError] = useState<string | null>(null);
   const [broadened, setBroadened] = useState(false);
 
-  // Debounced title search
+  // Results refinement
+  const [baseFilters, setBaseFilters] = useState<Record<string, any>>({});
+  const [resultFilters, setResultFilters] = useState<Record<string, any>>({});
+  const [resultPage, setResultPage] = useState(1);
+  const [resultTotalPages, setResultTotalPages] = useState(1);
+  const [refineLoading, setRefineLoading] = useState(false);
+  const [loadMoreLoading, setLoadMoreLoading] = useState(false);
+
   useEffect(() => {
-    if (!titleSearch.trim()) {
-      setTitleSearchResults([]);
-      return;
-    }
+    if (!titleSearch.trim()) { setTitleSearchResults([]); return; }
     const timer = setTimeout(async () => {
       setTitleSearchLoading(true);
       try {
         const data = await searchMulti(titleSearch);
-        const filtered = (data.results || [])
-          .filter((r: any) => r.media_type === contentType)
-          .slice(0, 6);
-        setTitleSearchResults(filtered);
-      } catch {
-        setTitleSearchResults([]);
-      } finally {
-        setTitleSearchLoading(false);
-      }
+        setTitleSearchResults(
+          (data.results || []).filter((r: any) => r.media_type === contentType).slice(0, 6)
+        );
+      } catch { setTitleSearchResults([]); }
+      finally { setTitleSearchLoading(false); }
     }, 400);
     return () => clearTimeout(timer);
   }, [titleSearch, contentType]);
 
-  const MOVIE_STEPS: Step[] = ['type', 'mood', 'era', 'rating', 'length', 'taste'];
-  const TV_STEPS: Step[] = ['type', 'mood', 'era', 'rating', 'taste'];
-
+  const MOVIE_STEPS: Step[] = ['type', 'mood', 'tone', 'era', 'rating', 'length', 'taste'];
+  const TV_STEPS: Step[] = ['type', 'mood', 'tone', 'era', 'rating', 'taste'];
   const steps = contentType === 'movie' ? MOVIE_STEPS : TV_STEPS;
   const currentIdx = steps.indexOf(step);
   const progressPercent = step === 'results' ? 100 : ((currentIdx + 1) / (steps.length + 1)) * 100;
@@ -175,174 +253,131 @@ export default function FindForm() {
     const idx = steps.indexOf(step);
     if (idx > 0) {
       if (step === 'taste') {
-        setSelectedTitles(new Set());
-        setPinnedItems(new Map());
-        setTitleSearch('');
-        setTitleSearchResults([]);
+        setSelectedTitles(new Set()); setPinnedItems(new Map());
+        setTitleSearch(''); setTitleSearchResults([]);
       }
       setStep(steps[idx - 1]);
     }
   };
 
   const loadTasteSamples = async (
-    type: 'movie' | 'tv',
-    m: MoodOption,
-    e: EraOption,
-    r: RatingOption,
-    l: LengthOption | null
+    type: 'movie' | 'tv', m: MoodOption, t: ToneOption | null,
+    e: EraOption, r: RatingOption, l: LengthOption | null
   ) => {
     setTasteLoading(true);
-    setTastePool([]);
-    setVisibleCount(INITIAL_VISIBLE);
-    setTastePage(1);
+    setTastePool([]); setVisibleCount(INITIAL_VISIBLE); setTastePage(1);
     try {
-      const filters = buildFilters(type, m, e, r, l);
-      const data = await discoverWithFilters(type, filters, 1);
+      const data = await discoverWithFilters(type, buildFilters(type, m, t, e, r, l), 1);
       setTastePool(data.results || []);
       setTasteTotalPages(data.total_pages || 1);
-    } catch {
-      setTastePool([]);
-    } finally {
-      setTasteLoading(false);
-    }
+    } catch { setTastePool([]); }
+    finally { setTasteLoading(false); }
   };
 
-  const loadMoreTaste = async () => {
-    if (visibleCount < tastePool.length) {
-      setVisibleCount(v => v + LOAD_MORE_BATCH);
-      return;
-    }
+  const loadMoreTasteSamples = async () => {
+    if (visibleCount < tastePool.length) { setVisibleCount(v => v + LOAD_MORE_BATCH); return; }
     if (tastePage >= tasteTotalPages) return;
-    setLoadingMore(true);
+    setTasteLoadingMore(true);
     try {
-      const nextPage = tastePage + 1;
-      const filters = buildFilters(contentType, mood!, era!, rating!, length);
-      const data = await discoverWithFilters(contentType, filters, nextPage);
+      const next = tastePage + 1;
+      const data = await discoverWithFilters(contentType, buildFilters(contentType, mood!, tone, era!, rating!, length), next);
       setTastePool(prev => [...prev, ...(data.results || [])]);
-      setTastePage(nextPage);
-      setVisibleCount(v => v + LOAD_MORE_BATCH);
-    } catch {
-    } finally {
-      setLoadingMore(false);
-    }
+      setTastePage(next); setVisibleCount(v => v + LOAD_MORE_BATCH);
+    } catch {} finally { setTasteLoadingMore(false); }
   };
 
   const toggleTasteSelection = (id: number) => {
-    setSelectedTitles(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setSelectedTitles(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
 
   const addPinnedItem = (item: any) => {
-    setPinnedItems(prev => {
-      const next = new Map(prev);
-      next.set(item.id, item);
-      return next;
-    });
+    setPinnedItems(prev => { const n = new Map(prev); n.set(item.id, item); return n; });
     setSelectedTitles(prev => new Set(prev).add(item.id));
-    setTitleSearch('');
-    setTitleSearchResults([]);
+    setTitleSearch(''); setTitleSearchResults([]);
   };
 
   const removePinnedItem = (id: number) => {
-    setPinnedItems(prev => {
-      const next = new Map(prev);
-      next.delete(id);
-      return next;
-    });
-    setSelectedTitles(prev => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
+    setPinnedItems(prev => { const n = new Map(prev); n.delete(id); return n; });
+    setSelectedTitles(prev => { const n = new Set(prev); n.delete(id); return n; });
   };
 
   const runSearch = async (
-    type: 'movie' | 'tv',
-    m: MoodOption,
-    e: EraOption,
-    r: RatingOption,
-    l: LengthOption | null,
-    pickedIds: number[]
+    type: 'movie' | 'tv', m: MoodOption, t: ToneOption | null,
+    e: EraOption, r: RatingOption, l: LengthOption | null, pickedIds: number[]
   ) => {
-    setLoading(true);
-    setError(null);
-    setBroadened(false);
-    setStep('results');
-
+    setLoading(true); setError(null); setBroadened(false); setStep('results');
     try {
       let companyIds: number[] = [];
-
       if (pickedIds.length > 0) {
-        const detailFetches = pickedIds.map(id =>
-          fetchFromTMDB(`/${type}/${id}`).catch(() => null)
-        );
-        const details = await Promise.all(detailFetches);
-        details.forEach(d => {
-          if (d?.production_companies) {
-            d.production_companies.forEach((c: any) => {
-              if (!companyIds.includes(c.id)) companyIds.push(c.id);
-            });
-          }
-        });
+        const details = await Promise.all(pickedIds.map(id => fetchFromTMDB(`/${type}/${id}`).catch(() => null)));
+        details.forEach(d => d?.production_companies?.forEach((c: any) => {
+          if (!companyIds.includes(c.id)) companyIds.push(c.id);
+        }));
       }
 
-      const filters = buildFilters(type, m, e, r, l, companyIds);
-      const data = await discoverWithFilters(type, filters, 1);
+      const base = buildFilters(type, m, t, e, r, l, companyIds);
+      const data = await discoverWithFilters(type, base, 1);
 
       if ((data.total_results === 0 || !data.results?.length) && companyIds.length > 0) {
-        const fallbackFilters = buildFilters(type, m, e, r, l);
-        const fallback = await discoverWithFilters(type, fallbackFilters, 1);
+        const fallbackBase = buildFilters(type, m, t, e, r, l);
+        const fallback = await discoverWithFilters(type, fallbackBase, 1);
         setResults(fallback.results || []);
         setTotalResults(fallback.total_results || 0);
+        setResultTotalPages(fallback.total_pages || 1);
+        setBaseFilters(fallbackBase);
         setBroadened(true);
       } else {
         setResults(data.results || []);
         setTotalResults(data.total_results || 0);
+        setResultTotalPages(data.total_pages || 1);
+        setBaseFilters(base);
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load results');
-    } finally {
-      setLoading(false);
-    }
+      setResultFilters({});
+      setResultPage(1);
+    } catch (err: any) { setError(err.message || 'Failed to load results'); }
+    finally { setLoading(false); }
+  };
+
+  const applyRefinement = async (overrides: Record<string, any>) => {
+    setRefineLoading(true);
+    const merged = { ...baseFilters, ...overrides };
+    try {
+      const data = await discoverWithFilters(contentType, merged, 1);
+      setResults(data.results || []);
+      setTotalResults(data.total_results || 0);
+      setResultTotalPages(data.total_pages || 1);
+      setResultFilters(overrides);
+      setResultPage(1);
+    } catch {}
+    finally { setRefineLoading(false); }
+  };
+
+  const loadMoreResults = async () => {
+    if (resultPage >= resultTotalPages) return;
+    setLoadMoreLoading(true);
+    try {
+      const next = resultPage + 1;
+      const merged = { ...baseFilters, ...resultFilters };
+      const data = await discoverWithFilters(contentType, merged, next);
+      setResults(prev => [...prev, ...(data.results || [])]);
+      setResultPage(next);
+    } catch {}
+    finally { setLoadMoreLoading(false); }
   };
 
   const restart = () => {
-    setStep('type');
-    setMood(null);
-    setEra(null);
-    setRating(null);
-    setLength(null);
-    setTastePool([]);
-    setVisibleCount(INITIAL_VISIBLE);
-    setTastePage(1);
-    setTasteTotalPages(1);
-    setSelectedTitles(new Set());
-    setPinnedItems(new Map());
-    setTitleSearch('');
-    setTitleSearchResults([]);
-    setResults([]);
-    setTotalResults(0);
-    setError(null);
-    setBroadened(false);
+    setStep('type'); setMood(null); setTone(null); setEra(null); setRating(null); setLength(null);
+    setTastePool([]); setVisibleCount(INITIAL_VISIBLE); setTastePage(1); setTasteTotalPages(1);
+    setSelectedTitles(new Set()); setPinnedItems(new Map());
+    setTitleSearch(''); setTitleSearchResults([]);
+    setResults([]); setTotalResults(0); setError(null); setBroadened(false);
+    setBaseFilters({}); setResultFilters({}); setResultPage(1); setResultTotalPages(1);
   };
 
-  const OptionCard = ({
-    emoji,
-    label,
-    subtitle,
-    onClick,
-  }: {
-    emoji?: string;
-    label: string;
-    subtitle?: string;
-    onClick: () => void;
+  const OptionCard = ({ emoji, label, subtitle, onClick }: {
+    emoji?: string; label: string; subtitle?: string; onClick: () => void;
   }) => (
-    <button
-      onClick={onClick}
+    <button onClick={onClick}
       className="group bg-gray-900 hover:bg-netflix-red border border-gray-700 hover:border-netflix-red rounded-xl p-5 text-left transition-all duration-200 hover:scale-[1.03] hover:shadow-2xl focus:outline-none focus:ring-2 focus:ring-netflix-red"
     >
       {emoji && <div className="text-3xl mb-2">{emoji}</div>}
@@ -358,42 +393,20 @@ export default function FindForm() {
     </div>
   );
 
-  // Reusable poster tile for the taste step
-  const TasteTile = ({
-    item,
-    onToggle,
-    badge,
-    onRemove,
-  }: {
-    item: any;
-    onToggle: () => void;
-    badge?: string;
-    onRemove?: () => void;
-  }) => {
+  const TasteTile = ({ item, onToggle, onRemove }: { item: any; onToggle: () => void; onRemove?: () => void }) => {
     const title = item.title || item.name;
     const isSelected = selectedTitles.has(item.id);
     return (
       <div className="relative">
-        <button
-          onClick={onToggle}
+        <button onClick={onToggle}
           className={`relative w-full rounded-xl overflow-hidden transition-all duration-200 hover:scale-[1.03] focus:outline-none ${
-            isSelected
-              ? 'ring-4 ring-netflix-red scale-[1.03]'
-              : 'ring-1 ring-gray-700 hover:ring-gray-500'
+            isSelected ? 'ring-4 ring-netflix-red scale-[1.03]' : 'ring-1 ring-gray-700 hover:ring-gray-500'
           }`}
         >
-          {item.poster_path ? (
-            <img
-              src={getImageUrl(item.poster_path, 'w342')}
-              alt={title}
-              className="w-full aspect-[2/3] object-cover"
-              loading="lazy"
-            />
-          ) : (
-            <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center">
-              <i className="fas fa-image text-gray-600 text-3xl" />
-            </div>
-          )}
+          {item.poster_path
+            ? <img src={getImageUrl(item.poster_path, 'w342')} alt={title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
+            : <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center"><i className="fas fa-image text-gray-600 text-3xl" /></div>
+          }
           {isSelected && (
             <div className="absolute inset-0 bg-netflix-red bg-opacity-20 flex items-start justify-end p-2">
               <div className="bg-netflix-red rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
@@ -404,17 +417,9 @@ export default function FindForm() {
           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-2">
             <p className="text-white text-xs font-semibold truncate">{title}</p>
           </div>
-          {badge && (
-            <div className="absolute top-2 left-2">
-              <span className="bg-black bg-opacity-80 text-yellow-400 text-xs px-1.5 py-0.5 rounded font-medium">
-                {badge}
-              </span>
-            </div>
-          )}
         </button>
         {onRemove && (
-          <button
-            onClick={e => { e.stopPropagation(); onRemove(); }}
+          <button onClick={e => { e.stopPropagation(); onRemove(); }}
             className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-600 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors z-10"
             aria-label="Remove"
           >
@@ -425,8 +430,57 @@ export default function FindForm() {
     );
   };
 
-  // Results view
+  // ─── Results view ───────────────────────────────────────────────────────────
   if (step === 'results') {
+    const rf = resultFilters;
+    const isMovie = contentType === 'movie';
+    const sortBy = rf.sort_by || baseFilters.sort_by;
+
+    // Refinement chip helper
+    const Chip = ({ label, icon, active, onClick }: {
+      label: string; icon?: string; active: boolean; onClick: () => void;
+    }) => (
+      <button onClick={onClick}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all shrink-0 ${
+          active
+            ? 'bg-netflix-red border-netflix-red text-white'
+            : 'bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'
+        }`}
+      >
+        {icon && <i className={`fas ${icon} text-xs`} />}
+        {label}
+      </button>
+    );
+
+    const setSort = (sort: string) => {
+      const already = sortBy === sort;
+      applyRefinement(already ? {} : { sort_by: sort });
+    };
+
+    const toggleCert = (certKey: 'certification.lte' | 'certification.gte', value: string) => {
+      const current = rf[certKey];
+      if (current === value) {
+        const n = { ...rf };
+        delete n[certKey]; delete n.certification_country;
+        applyRefinement(n);
+      } else {
+        const n = { ...rf };
+        delete n['certification.lte']; delete n['certification.gte'];
+        applyRefinement({ ...n, [certKey]: value, certification_country: 'US' });
+      }
+    };
+
+    const toggleRuntime = (key: 'with_runtime.lte' | 'with_runtime.gte', value: number) => {
+      const current = rf[key];
+      if (current === value) {
+        const n = { ...rf }; delete n[key]; applyRefinement(n);
+      } else {
+        const n = { ...rf };
+        delete n['with_runtime.lte']; delete n['with_runtime.gte'];
+        applyRefinement({ ...n, [key]: value });
+      }
+    };
+
     return (
       <div className="py-8">
         {loading ? (
@@ -437,97 +491,126 @@ export default function FindForm() {
         ) : error ? (
           <div className="text-center py-32">
             <p className="text-red-400 text-lg mb-6">{error}</p>
-            <button
-              onClick={restart}
-              className="bg-netflix-red hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-            >
-              Try Again
-            </button>
+            <button onClick={restart} className="bg-netflix-red hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors">Try Again</button>
           </div>
         ) : (
           <>
-            <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
+            {/* Header */}
+            <div className="flex items-start justify-between mb-4 flex-wrap gap-4">
               <div>
                 <h2 className="text-2xl md:text-3xl font-bold text-white">
-                  {totalResults.toLocaleString()} {contentType === 'movie' ? 'movies' : 'TV shows'} found
+                  {refineLoading ? 'Updating…' : `${totalResults.toLocaleString()} ${isMovie ? 'movies' : 'TV shows'} found`}
                 </h2>
                 <p className="text-gray-400 text-sm mt-1">
-                  {mood?.label} · {era?.label} · {rating?.label}
-                  {length && contentType === 'movie' ? ` · ${length.label}` : ''}
+                  {mood?.label}{tone && tone.label !== 'Any style' ? ` · ${tone.label}` : ''}{' · '}{era?.label}{' · '}{rating?.label}
+                  {length && isMovie ? ` · ${length.label}` : ''}
                 </p>
-                {broadened && (
-                  <p className="text-yellow-400 text-xs mt-1">
-                    No exact matches for your taste picks — showing broader results
-                  </p>
-                )}
+                {broadened && <p className="text-yellow-400 text-xs mt-1">No exact matches for your taste picks — showing broader results</p>}
               </div>
-              <button
-                onClick={restart}
-                className="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 rounded-lg font-semibold transition-colors flex items-center gap-2 shrink-0"
-              >
+              <button onClick={restart} className="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 rounded-lg font-semibold transition-colors flex items-center gap-2 shrink-0">
                 <span>↺</span> Start Over
               </button>
             </div>
 
-            {results.length === 0 ? (
+            {/* Refinement chips */}
+            <div className="flex flex-wrap gap-2 mb-6 pb-4 border-b border-gray-800">
+              <span className="text-gray-500 text-xs self-center mr-1 shrink-0">Refine:</span>
+
+              {/* Sort */}
+              <Chip label="Most popular" icon="fa-fire" active={sortBy === 'popularity.desc'} onClick={() => setSort('popularity.desc')} />
+              <Chip label="Highest rated" icon="fa-star" active={sortBy === 'vote_average.desc'} onClick={() => setSort('vote_average.desc')} />
+              <Chip label="Newest first" icon="fa-calendar-plus" active={sortBy === (isMovie ? 'primary_release_date.desc' : 'first_air_date.desc')}
+                onClick={() => setSort(isMovie ? 'primary_release_date.desc' : 'first_air_date.desc')} />
+              <Chip label="Oldest first" icon="fa-calendar-minus" active={sortBy === (isMovie ? 'primary_release_date.asc' : 'first_air_date.asc')}
+                onClick={() => setSort(isMovie ? 'primary_release_date.asc' : 'first_air_date.asc')} />
+
+              {/* Cert (movies only) */}
+              {isMovie && <>
+                <Chip label="Family-friendly" icon="fa-child" active={rf['certification.lte'] === 'PG'} onClick={() => toggleCert('certification.lte', 'PG')} />
+                <Chip label="Teen & up (PG-13+)" icon="fa-user" active={rf['certification.gte'] === 'PG-13'} onClick={() => toggleCert('certification.gte', 'PG-13')} />
+              </>}
+
+              {/* Runtime (movies only) */}
+              {isMovie && <>
+                <Chip label="Under 2 hrs" icon="fa-clock" active={rf['with_runtime.lte'] === 120} onClick={() => toggleRuntime('with_runtime.lte', 120)} />
+                <Chip label="Over 2 hrs" icon="fa-hourglass-half" active={rf['with_runtime.gte'] === 120} onClick={() => toggleRuntime('with_runtime.gte', 120)} />
+              </>}
+
+              {/* Hidden gems vs blockbusters */}
+              <Chip label="Hidden gems" icon="fa-gem" active={rf['vote_count.lte'] === 500}
+                onClick={() => {
+                  const already = rf['vote_count.lte'] === 500;
+                  if (already) { const n = {...rf}; delete n['vote_count.lte']; applyRefinement(n); }
+                  else applyRefinement({ ...rf, 'vote_count.lte': 500 });
+                }}
+              />
+              <Chip label="Well-known" icon="fa-crown" active={rf['vote_count.gte'] === 1000}
+                onClick={() => {
+                  const already = rf['vote_count.gte'] === 1000;
+                  if (already) { const n = {...rf}; delete n['vote_count.gte']; applyRefinement(n); }
+                  else applyRefinement({ ...rf, 'vote_count.gte': 1000 });
+                }}
+              />
+            </div>
+
+            {refineLoading ? (
+              <div className="flex justify-center py-24">
+                <div className="w-10 h-10 border-4 border-gray-700 border-t-netflix-red rounded-full animate-spin" />
+              </div>
+            ) : results.length === 0 ? (
               <div className="text-center py-24">
-                <p className="text-gray-400 text-lg mb-6">Nothing matched those filters. Try different options.</p>
-                <button
-                  onClick={restart}
-                  className="bg-netflix-red hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-                >
-                  Start Over
-                </button>
+                <p className="text-gray-400 text-lg mb-3">Nothing matched those filters.</p>
+                <p className="text-gray-500 text-sm mb-6">Try adjusting the refinements above or starting over.</p>
+                <button onClick={restart} className="bg-netflix-red hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors">Start Over</button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {results.map((item: any) => {
-                  const title = item.title || item.name;
-                  const year = (item.release_date || item.first_air_date || '').slice(0, 4);
-                  const ratingVal = item.vote_average ? item.vote_average.toFixed(1) : null;
-                  return (
-                    <div key={item.id} className="group relative">
-                      <a
-                        href={createUrl(`/details?type=${contentType}&id=${item.id}`)}
-                        className="block"
-                      >
-                        {item.poster_path ? (
-                          <div className="relative">
-                            <img
-                              src={getImageUrl(item.poster_path, 'w500')}
-                              alt={title}
-                              className="w-full aspect-[2/3] object-cover rounded-lg mb-2 group-hover:scale-105 transition-transform"
-                              loading="lazy"
-                            />
-                            <div
-                              className="absolute top-2 right-2 z-10"
-                              onClick={e => e.preventDefault()}
-                            >
-                              <WatchlistButton
-                                movieId={item.id}
-                                mediaType={contentType}
-                                title={title}
-                                posterPath={item.poster_path}
-                              />
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  {results.map((item: any) => {
+                    const title = item.title || item.name;
+                    const year = (item.release_date || item.first_air_date || '').slice(0, 4);
+                    const ratingVal = item.vote_average ? item.vote_average.toFixed(1) : null;
+                    return (
+                      <div key={item.id} className="group relative">
+                        <a href={createUrl(`/details?type=${contentType}&id=${item.id}`)} className="block">
+                          {item.poster_path ? (
+                            <div className="relative">
+                              <img src={getImageUrl(item.poster_path, 'w500')} alt={title}
+                                className="w-full aspect-[2/3] object-cover rounded-lg mb-2 group-hover:scale-105 transition-transform" loading="lazy" />
+                              <div className="absolute top-2 right-2 z-10" onClick={e => e.preventDefault()}>
+                                <WatchlistButton movieId={item.id} mediaType={contentType} title={title} posterPath={item.poster_path} />
+                              </div>
                             </div>
+                          ) : (
+                            <div className="w-full aspect-[2/3] bg-gray-800 rounded-lg mb-2 flex items-center justify-center">
+                              <i className="fas fa-image text-gray-600 text-4xl" />
+                            </div>
+                          )}
+                          <h3 className="text-white font-semibold text-sm truncate group-hover:text-netflix-red transition-colors">{title}</h3>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {year && <span className="text-gray-400 text-xs">{year}</span>}
+                            {ratingVal && <span className="text-yellow-400 text-xs">★ {ratingVal}</span>}
                           </div>
-                        ) : (
-                          <div className="w-full aspect-[2/3] bg-gray-800 rounded-lg mb-2 flex items-center justify-center">
-                            <i className="fas fa-image text-gray-600 text-4xl" />
-                          </div>
-                        )}
-                        <h3 className="text-white font-semibold text-sm truncate group-hover:text-netflix-red transition-colors">
-                          {title}
-                        </h3>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {year && <span className="text-gray-400 text-xs">{year}</span>}
-                          {ratingVal && <span className="text-yellow-400 text-xs">★ {ratingVal}</span>}
-                        </div>
-                      </a>
-                    </div>
-                  );
-                })}
-              </div>
+                        </a>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Load more */}
+                {resultPage < resultTotalPages && (
+                  <div className="flex justify-center mt-10">
+                    <button onClick={loadMoreResults} disabled={loadMoreLoading}
+                      className="bg-gray-800 hover:bg-gray-700 text-white px-8 py-3 rounded-lg font-semibold transition-colors flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {loadMoreLoading
+                        ? <><div className="w-4 h-4 border-2 border-gray-600 border-t-white rounded-full animate-spin" /> Loading…</>
+                        : <><i className="fas fa-chevron-down text-xs" /> Show more</>
+                      }
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -535,106 +618,77 @@ export default function FindForm() {
     );
   }
 
-  // Questionnaire wizard
+  // ─── Questionnaire wizard ───────────────────────────────────────────────────
   return (
     <div className="min-h-[80vh] flex flex-col">
-      {/* Progress bar */}
       <div className="w-full h-1 bg-gray-800 mb-8 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-netflix-red transition-all duration-500 ease-out"
-          style={{ width: `${progressPercent}%` }}
-        />
+        <div className="h-full bg-netflix-red transition-all duration-500 ease-out" style={{ width: `${progressPercent}%` }} />
       </div>
 
       <div className="flex-1 flex flex-col items-center px-4 py-4">
         {step !== 'type' && (
-          <button
-            onClick={goBack}
-            className="self-start mb-6 text-gray-400 hover:text-white transition-colors flex items-center gap-1 text-sm"
-          >
+          <button onClick={goBack} className="self-start mb-6 text-gray-400 hover:text-white transition-colors flex items-center gap-1 text-sm">
             ← Back
           </button>
         )}
 
-        {/* Step: type */}
         {step === 'type' && (
           <>
-            <StepHeader
-              title="What are you in the mood for?"
-              subtitle="Let's find you something great to watch"
-            />
+            <StepHeader title="What are you in the mood for?" subtitle="Let's find you something great to watch" />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md">
-              <OptionCard
-                emoji="🎬"
-                label="Movie"
-                subtitle="A single film to enjoy"
-                onClick={() => { setContentType('movie'); setStep('mood'); }}
-              />
-              <OptionCard
-                emoji="📺"
-                label="TV Show"
-                subtitle="A series to follow or binge"
-                onClick={() => { setContentType('tv'); setStep('mood'); }}
-              />
+              <OptionCard emoji="🎬" label="Movie" subtitle="A single film to enjoy" onClick={() => { setContentType('movie'); setStep('mood'); }} />
+              <OptionCard emoji="📺" label="TV Show" subtitle="A series to follow or binge" onClick={() => { setContentType('tv'); setStep('mood'); }} />
             </div>
           </>
         )}
 
-        {/* Step: mood */}
         {step === 'mood' && (
           <>
             <StepHeader title="What's your mood?" subtitle="Pick the vibe you're going for" />
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-3xl">
               {MOODS.map(m => (
-                <OptionCard
-                  key={m.label}
-                  emoji={m.emoji}
-                  label={m.label}
-                  onClick={() => { setMood(m); setStep('era'); }}
-                />
+                <OptionCard key={m.label} emoji={m.emoji} label={m.label} onClick={() => { setMood(m); setStep('tone'); }} />
               ))}
             </div>
           </>
         )}
 
-        {/* Step: era */}
+        {step === 'tone' && mood && (
+          <>
+            <StepHeader
+              title={`What kind of ${mood.label.toLowerCase()}?`}
+              subtitle="Pick the style that fits what you're after"
+            />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-3xl">
+              {(TONE_MAP[mood.label] || []).map(t => (
+                <OptionCard key={t.label} label={t.label} subtitle={t.subtitle}
+                  onClick={() => { setTone(t); setStep('era'); }} />
+              ))}
+            </div>
+          </>
+        )}
+
         {step === 'era' && (
           <>
             <StepHeader title="How new should it be?" subtitle="Pick an era that sounds right" />
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 w-full max-w-3xl">
               {ERAS.map(e => (
-                <OptionCard
-                  key={e.label}
-                  label={e.label}
-                  subtitle={e.subtitle}
-                  onClick={() => { setEra(e); setStep('rating'); }}
-                />
+                <OptionCard key={e.label} label={e.label} subtitle={e.subtitle} onClick={() => { setEra(e); setStep('rating'); }} />
               ))}
             </div>
           </>
         )}
 
-        {/* Step: rating */}
         {step === 'rating' && (
           <>
-            <StepHeader
-              title="How well-reviewed should it be?"
-              subtitle="Set the bar for what you'll watch"
-            />
+            <StepHeader title="How well-reviewed should it be?" subtitle="Set the bar for what you'll watch" />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl">
               {RATING_OPTIONS.map(r => (
-                <OptionCard
-                  key={r.label}
-                  label={r.label}
-                  subtitle={r.subtitle}
+                <OptionCard key={r.label} label={r.label} subtitle={r.subtitle}
                   onClick={() => {
                     setRating(r);
-                    if (contentType === 'movie') {
-                      setStep('length');
-                    } else {
-                      setStep('taste');
-                      loadTasteSamples(contentType, mood!, era!, r, null);
-                    }
+                    if (contentType === 'movie') { setStep('length'); }
+                    else { setStep('taste'); loadTasteSamples(contentType, mood!, tone, era!, r, null); }
                   }}
                 />
               ))}
@@ -642,46 +696,28 @@ export default function FindForm() {
           </>
         )}
 
-        {/* Step: length (movies only) */}
         {step === 'length' && (
           <>
-            <StepHeader
-              title="How long do you want to watch?"
-              subtitle="We'll match movies to your schedule"
-            />
+            <StepHeader title="How long do you want to watch?" subtitle="We'll match movies to your schedule" />
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-2xl">
               {LENGTHS.map(l => (
-                <OptionCard
-                  key={l.label}
-                  label={l.label}
-                  subtitle={l.subtitle}
-                  onClick={() => {
-                    setLength(l);
-                    setStep('taste');
-                    loadTasteSamples(contentType, mood!, era!, rating!, l);
-                  }}
+                <OptionCard key={l.label} label={l.label} subtitle={l.subtitle}
+                  onClick={() => { setLength(l); setStep('taste'); loadTasteSamples(contentType, mood!, tone, era!, rating!, l); }}
                 />
               ))}
             </div>
           </>
         )}
 
-        {/* Step: taste */}
         {step === 'taste' && (
           <>
-            <StepHeader
-              title="Does anything here catch your eye?"
-              subtitle="Select titles that look appealing — or add your own favourites below"
-            />
+            <StepHeader title="Does anything here catch your eye?" subtitle="Select titles that look appealing — or add your own favourites below" />
 
-            {/* Title search box */}
+            {/* Search box */}
             <div className="w-full max-w-4xl mb-6">
               <div className="relative">
                 <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm pointer-events-none" />
-                <input
-                  type="text"
-                  value={titleSearch}
-                  onChange={e => setTitleSearch(e.target.value)}
+                <input type="text" value={titleSearch} onChange={e => setTitleSearch(e.target.value)}
                   placeholder={`Search for a ${contentType === 'movie' ? 'movie' : 'TV show'} you already know you like…`}
                   className="w-full bg-gray-900 border border-gray-700 focus:border-netflix-red rounded-lg pl-9 pr-4 py-2.5 text-white text-sm placeholder-gray-500 outline-none transition-colors"
                 />
@@ -692,47 +728,28 @@ export default function FindForm() {
                 )}
               </div>
 
-              {/* Search results */}
               {titleSearchResults.length > 0 && (
                 <div className="mt-2 grid grid-cols-3 sm:grid-cols-6 gap-2">
                   {titleSearchResults.map((item: any) => {
-                    const isAlreadyPinned = pinnedItems.has(item.id);
+                    const isPinned = pinnedItems.has(item.id);
                     const title = item.title || item.name;
                     return (
-                      <button
-                        key={item.id}
-                        onClick={() => isAlreadyPinned ? removePinnedItem(item.id) : addPinnedItem(item)}
-                        title={isAlreadyPinned ? `Remove "${title}"` : `Add "${title}"`}
+                      <button key={item.id} onClick={() => isPinned ? removePinnedItem(item.id) : addPinnedItem(item)}
+                        title={isPinned ? `Remove "${title}"` : `Add "${title}"`}
                         className={`relative rounded-lg overflow-hidden transition-all hover:scale-[1.03] focus:outline-none ${
-                          isAlreadyPinned
-                            ? 'ring-2 ring-netflix-red opacity-75'
-                            : 'ring-1 ring-gray-700 hover:ring-gray-400'
+                          isPinned ? 'ring-2 ring-netflix-red opacity-75' : 'ring-1 ring-gray-700 hover:ring-gray-400'
                         }`}
                       >
-                        {item.poster_path ? (
-                          <img
-                            src={getImageUrl(item.poster_path, 'w185')}
-                            alt={title}
-                            className="w-full aspect-[2/3] object-cover"
-                          />
-                        ) : (
-                          <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center">
-                            <i className="fas fa-image text-gray-600 text-2xl" />
-                          </div>
-                        )}
+                        {item.poster_path
+                          ? <img src={getImageUrl(item.poster_path, 'w185')} alt={title} className="w-full aspect-[2/3] object-cover" />
+                          : <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center"><i className="fas fa-image text-gray-600 text-2xl" /></div>
+                        }
                         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-1.5">
                           <p className="text-white text-xs truncate">{title}</p>
                         </div>
-                        {isAlreadyPinned && (
-                          <div className="absolute top-1 right-1 w-5 h-5 bg-netflix-red rounded-full flex items-center justify-center">
-                            <i className="fas fa-check text-white text-xs" />
-                          </div>
-                        )}
-                        {!isAlreadyPinned && (
-                          <div className="absolute top-1 right-1 w-5 h-5 bg-black bg-opacity-60 rounded-full flex items-center justify-center">
-                            <i className="fas fa-plus text-white text-xs" />
-                          </div>
-                        )}
+                        <div className={`absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center ${isPinned ? 'bg-netflix-red' : 'bg-black bg-opacity-60'}`}>
+                          <i className={`fas ${isPinned ? 'fa-check' : 'fa-plus'} text-white text-xs`} />
+                        </div>
                       </button>
                     );
                   })}
@@ -740,24 +757,19 @@ export default function FindForm() {
               )}
             </div>
 
-            {/* Pinned items (added via search) */}
+            {/* Pinned items */}
             {pinnedItems.size > 0 && (
               <div className="w-full max-w-4xl mb-6">
                 <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Added by you</p>
                 <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
                   {Array.from(pinnedItems.values()).map(item => (
-                    <TasteTile
-                      key={item.id}
-                      item={item}
-                      onToggle={() => toggleTasteSelection(item.id)}
-                      onRemove={() => removePinnedItem(item.id)}
-                    />
+                    <TasteTile key={item.id} item={item} onToggle={() => toggleTasteSelection(item.id)} onRemove={() => removePinnedItem(item.id)} />
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Main tile grid */}
+            {/* Suggestion grid */}
             {tasteLoading ? (
               <div className="flex flex-col items-center gap-4 py-16">
                 <div className="w-10 h-10 border-4 border-gray-700 border-t-netflix-red rounded-full animate-spin" />
@@ -771,50 +783,30 @@ export default function FindForm() {
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-4xl mb-4">
                   {tastePool.slice(0, visibleCount).map((item: any) => (
-                    <TasteTile
-                      key={item.id}
-                      item={item}
-                      onToggle={() => toggleTasteSelection(item.id)}
-                    />
+                    <TasteTile key={item.id} item={item} onToggle={() => toggleTasteSelection(item.id)} />
                   ))}
                 </div>
-
-                {/* Show more */}
                 {(visibleCount < tastePool.length || tastePage < tasteTotalPages) && (
-                  <button
-                    onClick={loadMoreTaste}
-                    disabled={loadingMore}
+                  <button onClick={loadMoreTasteSamples} disabled={tasteLoadingMore}
                     className="mb-6 text-gray-400 hover:text-white text-sm transition-colors flex items-center gap-2 disabled:opacity-50"
                   >
-                    {loadingMore ? (
-                      <>
-                        <div className="w-3 h-3 border-2 border-gray-600 border-t-white rounded-full animate-spin" />
-                        Loading…
-                      </>
-                    ) : (
-                      <>
-                        <i className="fas fa-chevron-down text-xs" />
-                        Show more options
-                      </>
-                    )}
+                    {tasteLoadingMore
+                      ? <><div className="w-3 h-3 border-2 border-gray-600 border-t-white rounded-full animate-spin" /> Loading…</>
+                      : <><i className="fas fa-chevron-down text-xs" /> Show more options</>
+                    }
                   </button>
                 )}
               </>
             )}
 
-            {/* Action buttons */}
             <div className="flex flex-col sm:flex-row items-center gap-3 mt-2">
-              <button
-                onClick={() => runSearch(contentType, mood!, era!, rating!, length, Array.from(selectedTitles))}
+              <button onClick={() => runSearch(contentType, mood!, tone, era!, rating!, length, Array.from(selectedTitles))}
                 className="bg-netflix-red hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold text-base transition-colors"
               >
-                {selectedTitles.size > 0
-                  ? `Find More Like These (${selectedTitles.size} selected) →`
-                  : 'Show Me Everything →'}
+                {selectedTitles.size > 0 ? `Find More Like These (${selectedTitles.size} selected) →` : 'Show Me Everything →'}
               </button>
               {selectedTitles.size > 0 && (
-                <button
-                  onClick={() => runSearch(contentType, mood!, era!, rating!, length, [])}
+                <button onClick={() => runSearch(contentType, mood!, tone, era!, rating!, length, [])}
                   className="text-gray-400 hover:text-white text-sm transition-colors"
                 >
                   Skip — show everything
