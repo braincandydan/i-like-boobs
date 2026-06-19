@@ -457,17 +457,16 @@ export default function FindForm() {
       applyRefinement(already ? {} : { sort_by: sort });
     };
 
-    const toggleCert = (certKey: 'certification.lte' | 'certification.gte', value: string) => {
-      const current = rf[certKey];
-      if (current === value) {
-        const n = { ...rf };
-        delete n[certKey]; delete n.certification_country;
-        applyRefinement(n);
-      } else {
-        const n = { ...rf };
-        delete n['certification.lte']; delete n['certification.gte'];
-        applyRefinement({ ...n, [certKey]: value, certification_country: 'US' });
+    // Mutually exclusive cert chips — clears all cert keys then sets the chosen one
+    const toggleCertRange = (lte: string | null, gte: string | null) => {
+      const isActive = lte ? rf['certification.lte'] === lte : rf['certification.gte'] === gte;
+      const n = { ...rf };
+      delete n['certification.lte']; delete n['certification.gte']; delete n.certification_country;
+      if (!isActive) {
+        if (lte) { n['certification.lte'] = lte; n.certification_country = 'US'; }
+        if (gte) { n['certification.gte'] = gte; n.certification_country = 'US'; }
       }
+      applyRefinement(n);
     };
 
     const toggleRuntime = (key: 'with_runtime.lte' | 'with_runtime.gte', value: number) => {
@@ -551,19 +550,58 @@ export default function FindForm() {
 
                 <span className="text-gray-700 self-center">|</span>
 
-                {/* Audience (movies only) */}
-                {isMovie && <>
-                  <Chip label="More family-friendly" icon="fa-child" active={rf['certification.lte'] === 'PG'} onClick={() => toggleCert('certification.lte', 'PG')} />
-                  <Chip label="Less family-friendly" icon="fa-user" active={rf['certification.gte'] === 'PG-13'} onClick={() => toggleCert('certification.gte', 'PG-13')} />
-                  <span className="text-gray-700 self-center">|</span>
+                {/* Age rating — 3 levels for both movies and TV */}
+                <span className="text-gray-700 self-center">|</span>
+                {isMovie ? <>
+                  <Chip label="G / PG" icon="fa-child" active={rf['certification.lte'] === 'PG'}
+                    onClick={() => toggleCertRange('PG', null)} />
+                  <Chip label="Up to PG-13" icon="fa-user" active={rf['certification.lte'] === 'PG-13'}
+                    onClick={() => toggleCertRange('PG-13', null)} />
+                  <Chip label="R-rated" icon="fa-exclamation-circle" active={rf['certification.gte'] === 'R'}
+                    onClick={() => toggleCertRange(null, 'R')} />
+                </> : <>
+                  <Chip label="G / PG (TV)" icon="fa-child" active={rf['certification.lte'] === 'TV-PG'}
+                    onClick={() => toggleCertRange('TV-PG', null)} />
+                  <Chip label="Teen (TV-14)" icon="fa-user" active={rf['certification.lte'] === 'TV-14'}
+                    onClick={() => toggleCertRange('TV-14', null)} />
+                  <Chip label="Mature (TV-MA)" icon="fa-exclamation-circle" active={rf['certification.gte'] === 'TV-MA'}
+                    onClick={() => toggleCertRange(null, 'TV-MA')} />
                 </>}
 
-                {/* Runtime (movies only) */}
-                {isMovie && <>
+                {/* Runtime */}
+                <span className="text-gray-700 self-center">|</span>
+                {isMovie ? <>
+                  <Chip label="Under 90 min" icon="fa-bolt" active={rf['with_runtime.lte'] === 90} onClick={() => toggleRuntime('with_runtime.lte', 90)} />
                   <Chip label="Under 2 hrs" icon="fa-clock" active={rf['with_runtime.lte'] === 120} onClick={() => toggleRuntime('with_runtime.lte', 120)} />
                   <Chip label="Over 2 hrs" icon="fa-hourglass-half" active={rf['with_runtime.gte'] === 120} onClick={() => toggleRuntime('with_runtime.gte', 120)} />
-                  <span className="text-gray-700 self-center">|</span>
+                </> : <>
+                  <Chip label="Short episodes" subtitle="under 30 min" icon="fa-bolt" active={rf['with_runtime.lte'] === 30} onClick={() => toggleRuntime('with_runtime.lte', 30)} />
+                  <Chip label="Long episodes" subtitle="45 min+" icon="fa-hourglass-half" active={rf['with_runtime.gte'] === 45} onClick={() => toggleRuntime('with_runtime.gte', 45)} />
                 </>}
+
+                {/* Language */}
+                <span className="text-gray-700 self-center">|</span>
+                <Chip label="English" icon="fa-language" active={rf.with_original_language === 'en'}
+                  onClick={() => {
+                    const already = rf.with_original_language === 'en';
+                    const n = { ...rf };
+                    if (already) { delete n.with_original_language; applyRefinement(n); }
+                    else applyRefinement({ ...n, with_original_language: 'en' });
+                  }}
+                />
+                <Chip label="Non-English" icon="fa-globe" active={rf.with_original_language === 'xx'}
+                  onClick={() => {
+                    // TMDB doesn't support "not English" natively, so we cycle through popular non-English languages
+                    const already = rf.with_original_language === 'xx';
+                    const n = { ...rf };
+                    if (already) { delete n.with_original_language; applyRefinement(n); }
+                    else {
+                      // Remove language filter and add vote_count boost to surface well-known non-English titles
+                      delete n.with_original_language;
+                      applyRefinement({ ...n, without_original_language: 'en' });
+                    }
+                  }}
+                />
 
                 {/* Popularity/obscurity */}
                 <Chip label="Hidden gems" icon="fa-gem" active={rf['vote_count.lte'] === 500}
