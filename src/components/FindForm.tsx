@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { discoverWithFilters, fetchFromTMDB, getImageUrl, searchMulti } from '../lib/tmdb';
 import { createUrl } from '../lib/utils';
 import WatchlistButton from './WatchlistButton';
@@ -229,6 +229,10 @@ export default function FindForm() {
   const [refineLoading, setRefineLoading] = useState(false);
   const [loadMoreLoading, setLoadMoreLoading] = useState(false);
 
+  // Infinite scroll
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     if (!titleSearch.trim()) { setTitleSearchResults([]); return; }
     const timer = setTimeout(async () => {
@@ -374,6 +378,19 @@ export default function FindForm() {
     } catch {}
     finally { setLoadMoreLoading(false); }
   };
+
+  useEffect(() => { loadMoreRef.current = loadMoreResults; });
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadMoreRef.current(); },
+      { rootMargin: '400px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const restart = () => {
     setStep('type'); setMood(null); setTone(null); setEra(null); setRating(null); setLength(null);
@@ -676,17 +693,11 @@ export default function FindForm() {
                   })}
                 </div>
 
-                {/* Load more */}
-                {resultPage < resultTotalPages && (
-                  <div className="flex justify-center mt-10">
-                    <button onClick={loadMoreResults} disabled={loadMoreLoading}
-                      className="bg-gray-800 hover:bg-gray-700 text-white px-8 py-3 rounded-lg font-semibold transition-colors flex items-center gap-2 disabled:opacity-50"
-                    >
-                      {loadMoreLoading
-                        ? <><div className="w-4 h-4 border-2 border-gray-600 border-t-white rounded-full animate-spin" /> Loading…</>
-                        : <><i className="fas fa-chevron-down text-xs" /> Show more</>
-                      }
-                    </button>
+                {/* Infinite scroll sentinel */}
+                <div ref={sentinelRef} className="h-4 mt-6" />
+                {loadMoreLoading && (
+                  <div className="flex justify-center pb-8">
+                    <div className="w-8 h-8 border-4 border-gray-700 border-t-netflix-red rounded-full animate-spin" />
                   </div>
                 )}
               </>

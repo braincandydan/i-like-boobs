@@ -71,6 +71,9 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<() => void>(() => {});
 
   // Error state
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -1001,6 +1004,77 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     }, 400);
     return () => clearTimeout(timer);
   }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadMoreResults = async () => {
+    if (loadingMore || isLoading || currentPage >= totalPages || !hasSearched) return;
+    const nextPage = currentPage + 1;
+    setLoadingMore(true);
+    try {
+      let newItems: SearchResult[] = [];
+      if (searchMode === 'search' && query.trim()) {
+        const data = await searchMulti(query.trim(), nextPage);
+        newItems = (data.results || []).filter(
+          (item: SearchResult) => item.media_type === 'movie' || item.media_type === 'tv'
+        );
+      } else {
+        const mediaType = filters.mediaType === 'all' ? 'movie' : filters.mediaType;
+        const tmdbFilters: TMDBFilters = {};
+        if (filters.genres.length > 0) tmdbFilters.with_genres = filters.genres;
+        if (filters.startYear || filters.endYear) {
+          const sy = filters.startYear ? Number(filters.startYear) : undefined;
+          const ey = filters.endYear ? Number(filters.endYear) : undefined;
+          if (sy && ey && sy === ey) {
+            if (mediaType === 'movie') tmdbFilters.primary_release_year = sy;
+            else tmdbFilters.first_air_date_year = sy;
+          } else {
+            if (sy && !isNaN(sy)) {
+              if (mediaType === 'movie') tmdbFilters['primary_release_date.gte'] = `${sy}-01-01`;
+              else tmdbFilters['first_air_date.gte'] = `${sy}-01-01`;
+            }
+            if (ey && !isNaN(ey)) {
+              if (mediaType === 'movie') tmdbFilters['primary_release_date.lte'] = `${ey}-12-31`;
+              else tmdbFilters['first_air_date.lte'] = `${ey}-12-31`;
+            }
+          }
+        }
+        if (filters.minRating) tmdbFilters['vote_average.gte'] = Number(filters.minRating);
+        if (filters.certification && mediaType === 'movie') {
+          tmdbFilters.certification = filters.certification;
+          tmdbFilters.certification_country = 'US';
+        }
+        if (filters.actors.length > 0) tmdbFilters.with_cast = filters.actors;
+        const sortMap: Record<string, string> = {
+          'rating.desc': 'vote_average.desc', 'rating.asc': 'vote_average.asc',
+          'year.desc': mediaType === 'movie' ? 'primary_release_date.desc' : 'first_air_date.desc',
+          'year.asc': mediaType === 'movie' ? 'primary_release_date.asc' : 'first_air_date.asc',
+          'title.asc': mediaType === 'movie' ? 'original_title.asc' : 'name.asc',
+          'title.desc': mediaType === 'movie' ? 'original_title.desc' : 'name.desc',
+        };
+        tmdbFilters.sort_by = (filters.sortBy !== 'relevance' && sortMap[filters.sortBy]) ? sortMap[filters.sortBy] : 'popularity.desc';
+        const { results: rawResults } = await discoverWithFilters(mediaType, tmdbFilters, nextPage);
+        newItems = rawResults.map(item => ({ ...item, media_type: item.media_type || mediaType }));
+      }
+      if (newItems.length > 0) setAllResults(prev => [...prev, ...newItems]);
+      setCurrentPage(nextPage);
+    } catch (err) {
+      console.error('Error loading more results:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  useEffect(() => { loadMoreRef.current = loadMoreResults; });
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadMoreRef.current(); },
+      { rootMargin: '400px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const handleFilterChange = (key: string, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -1996,36 +2070,18 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                     );
                   })}
                 </div>
-              {/* Results count and pagination */}
+              {/* Results count */}
               {hasSearched && !isLoading && (
-                <div className="flex items-center justify-between mt-6 border-2 border-red-500 p-2 rounded">
-                  <p className="text-sm text-gray-400">
-                    {totalResults > 0
-                      ? `Showing ${filteredResults.length} of ${totalResults.toLocaleString()} results`
-                      : `${filteredResults.length} result${filteredResults.length !== 1 ? 's' : ''}`}
-                    {filters.mediaType === 'all' && (
-                      <span className="ml-2 text-xs text-gray-500">(movies + TV — select one type for full pagination)</span>
-                    )}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => goToPage(currentPage - 1)}
-                      disabled={currentPage <= 1}
-                      className="px-3 py-1 rounded bg-netflix-gray text-white disabled:opacity-40 hover:bg-gray-600 transition-colors text-sm"
-                    >
-                      ← Prev
-                    </button>
-                    <span className="text-sm text-gray-300">
-                      Page {currentPage} of {totalPages.toLocaleString()}
-                    </span>
-                    <button
-                      onClick={() => goToPage(currentPage + 1)}
-                      disabled={currentPage >= totalPages}
-                      className="px-3 py-1 rounded bg-netflix-gray text-white disabled:opacity-40 hover:bg-gray-600 transition-colors text-sm"
-                    >
-                      Next →
-                    </button>
-                  </div>
+                <p className="text-sm text-gray-500 text-center mt-4">
+                  Showing {filteredResults.length.toLocaleString()} of {totalResults > 0 ? totalResults.toLocaleString() : filteredResults.length.toLocaleString()} results
+                  {filters.mediaType === 'all' && <span className="ml-1">(movies + TV)</span>}
+                </p>
+              )}
+              {/* Infinite scroll sentinel */}
+              <div ref={sentinelRef} className="h-4 mt-4" />
+              {loadingMore && (
+                <div className="flex justify-center py-6">
+                  <div className="w-8 h-8 border-4 border-gray-700 border-t-red-600 rounded-full animate-spin" />
                 </div>
               )}
             </>
