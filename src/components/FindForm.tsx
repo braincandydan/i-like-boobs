@@ -481,6 +481,22 @@ export default function FindForm() {
       }
     };
 
+    const dateGteKey = isMovie ? 'primary_release_date.gte' : 'first_air_date.gte';
+    const dateLteKey = isMovie ? 'primary_release_date.lte' : 'first_air_date.lte';
+
+    const toggleDateFilter = (key: string, value: string) => {
+      const current = rf[key];
+      if (current === value) {
+        const n = { ...rf }; delete n[key]; applyRefinement(n);
+      } else {
+        const n = { ...rf };
+        // Clear the opposite date key so newer/older don't conflict
+        if (key === dateGteKey) delete n[dateLteKey];
+        if (key === dateLteKey) delete n[dateGteKey];
+        applyRefinement({ ...n, [key]: value });
+      }
+    };
+
     return (
       <div className="py-8">
         {loading ? (
@@ -513,44 +529,58 @@ export default function FindForm() {
             </div>
 
             {/* Refinement chips */}
-            <div className="flex flex-wrap gap-2 mb-6 pb-4 border-b border-gray-800">
-              <span className="text-gray-500 text-xs self-center mr-1 shrink-0">Refine:</span>
+            <div className="overflow-x-auto mb-6 pb-4 border-b border-gray-800">
+              <div className="flex gap-2 min-w-max">
+                <span className="text-gray-500 text-xs self-center mr-1 shrink-0">Refine:</span>
 
-              {/* Sort */}
-              <Chip label="Most popular" icon="fa-fire" active={sortBy === 'popularity.desc'} onClick={() => setSort('popularity.desc')} />
-              <Chip label="Highest rated" icon="fa-star" active={sortBy === 'vote_average.desc'} onClick={() => setSort('vote_average.desc')} />
-              <Chip label="Newest first" icon="fa-calendar-plus" active={sortBy === (isMovie ? 'primary_release_date.desc' : 'first_air_date.desc')}
-                onClick={() => setSort(isMovie ? 'primary_release_date.desc' : 'first_air_date.desc')} />
-              <Chip label="Oldest first" icon="fa-calendar-minus" active={sortBy === (isMovie ? 'primary_release_date.asc' : 'first_air_date.asc')}
-                onClick={() => setSort(isMovie ? 'primary_release_date.asc' : 'first_air_date.asc')} />
+                {/* Sort */}
+                <Chip label="Most popular" icon="fa-fire" active={sortBy === 'popularity.desc'} onClick={() => setSort('popularity.desc')} />
+                <Chip label="Highest rated" icon="fa-star" active={sortBy === 'vote_average.desc'} onClick={() => setSort('vote_average.desc')} />
+                <Chip label="Newest first" icon="fa-sort-amount-down" active={sortBy === (isMovie ? 'primary_release_date.desc' : 'first_air_date.desc')}
+                  onClick={() => setSort(isMovie ? 'primary_release_date.desc' : 'first_air_date.desc')} />
+                <Chip label="Oldest first" icon="fa-sort-amount-up" active={sortBy === (isMovie ? 'primary_release_date.asc' : 'first_air_date.asc')}
+                  onClick={() => setSort(isMovie ? 'primary_release_date.asc' : 'first_air_date.asc')} />
 
-              {/* Cert (movies only) */}
-              {isMovie && <>
-                <Chip label="Family-friendly" icon="fa-child" active={rf['certification.lte'] === 'PG'} onClick={() => toggleCert('certification.lte', 'PG')} />
-                <Chip label="Teen & up (PG-13+)" icon="fa-user" active={rf['certification.gte'] === 'PG-13'} onClick={() => toggleCert('certification.gte', 'PG-13')} />
-              </>}
+                <span className="text-gray-700 self-center">|</span>
 
-              {/* Runtime (movies only) */}
-              {isMovie && <>
-                <Chip label="Under 2 hrs" icon="fa-clock" active={rf['with_runtime.lte'] === 120} onClick={() => toggleRuntime('with_runtime.lte', 120)} />
-                <Chip label="Over 2 hrs" icon="fa-hourglass-half" active={rf['with_runtime.gte'] === 120} onClick={() => toggleRuntime('with_runtime.gte', 120)} />
-              </>}
+                {/* Date range filters — Show newer / Show older */}
+                <Chip label="Show newer" icon="fa-calendar-plus" active={rf[dateGteKey] === '2020-01-01'}
+                  onClick={() => toggleDateFilter(dateGteKey, '2020-01-01')} />
+                <Chip label="Show older" icon="fa-calendar-minus" active={rf[dateLteKey] === '2010-12-31'}
+                  onClick={() => toggleDateFilter(dateLteKey, '2010-12-31')} />
 
-              {/* Hidden gems vs blockbusters */}
-              <Chip label="Hidden gems" icon="fa-gem" active={rf['vote_count.lte'] === 500}
-                onClick={() => {
-                  const already = rf['vote_count.lte'] === 500;
-                  if (already) { const n = {...rf}; delete n['vote_count.lte']; applyRefinement(n); }
-                  else applyRefinement({ ...rf, 'vote_count.lte': 500 });
-                }}
-              />
-              <Chip label="Well-known" icon="fa-crown" active={rf['vote_count.gte'] === 1000}
-                onClick={() => {
-                  const already = rf['vote_count.gte'] === 1000;
-                  if (already) { const n = {...rf}; delete n['vote_count.gte']; applyRefinement(n); }
-                  else applyRefinement({ ...rf, 'vote_count.gte': 1000 });
-                }}
-              />
+                <span className="text-gray-700 self-center">|</span>
+
+                {/* Audience (movies only) */}
+                {isMovie && <>
+                  <Chip label="More family-friendly" icon="fa-child" active={rf['certification.lte'] === 'PG'} onClick={() => toggleCert('certification.lte', 'PG')} />
+                  <Chip label="Less family-friendly" icon="fa-user" active={rf['certification.gte'] === 'PG-13'} onClick={() => toggleCert('certification.gte', 'PG-13')} />
+                  <span className="text-gray-700 self-center">|</span>
+                </>}
+
+                {/* Runtime (movies only) */}
+                {isMovie && <>
+                  <Chip label="Under 2 hrs" icon="fa-clock" active={rf['with_runtime.lte'] === 120} onClick={() => toggleRuntime('with_runtime.lte', 120)} />
+                  <Chip label="Over 2 hrs" icon="fa-hourglass-half" active={rf['with_runtime.gte'] === 120} onClick={() => toggleRuntime('with_runtime.gte', 120)} />
+                  <span className="text-gray-700 self-center">|</span>
+                </>}
+
+                {/* Popularity/obscurity */}
+                <Chip label="Hidden gems" icon="fa-gem" active={rf['vote_count.lte'] === 500}
+                  onClick={() => {
+                    const already = rf['vote_count.lte'] === 500;
+                    if (already) { const n = {...rf}; delete n['vote_count.lte']; applyRefinement(n); }
+                    else applyRefinement({ ...rf, 'vote_count.lte': 500 });
+                  }}
+                />
+                <Chip label="Well-known" icon="fa-crown" active={rf['vote_count.gte'] === 1000}
+                  onClick={() => {
+                    const already = rf['vote_count.gte'] === 1000;
+                    if (already) { const n = {...rf}; delete n['vote_count.gte']; applyRefinement(n); }
+                    else applyRefinement({ ...rf, 'vote_count.gte': 1000 });
+                  }}
+                />
+              </div>
             </div>
 
             {refineLoading ? (
