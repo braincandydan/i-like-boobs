@@ -1032,6 +1032,24 @@ export default function FindForm() {
                   >
                     <i className="fas fa-star text-xs" /> Highest rated
                   </button>
+                  <button
+                    onClick={() => refineTaste(contentType === 'movie'
+                      ? { 'certification.gte': 'R', certification_country: 'US' }
+                      : { 'certification.gte': 'TV-MA', certification_country: 'US' }
+                    )}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-300 text-sm font-semibold hover:bg-netflix-red hover:border-netflix-red hover:text-white transition-all"
+                  >
+                    <i className="fas fa-exclamation-circle text-xs" /> Too PG → R-rated
+                  </button>
+                  <button
+                    onClick={() => refineTaste(contentType === 'movie'
+                      ? { 'certification.lte': 'PG', certification_country: 'US' }
+                      : { 'certification.lte': 'TV-PG', certification_country: 'US' }
+                    )}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-300 text-sm font-semibold hover:bg-netflix-red hover:border-netflix-red hover:text-white transition-all"
+                  >
+                    <i className="fas fa-child text-xs" /> Too mature → Keep it PG
+                  </button>
                   {Object.keys(tasteFilters).length > 0 && (
                     <button
                       onClick={() => refineTaste({})}
