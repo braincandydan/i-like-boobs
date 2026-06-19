@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Working with the owner — MUST READ
+
+- **When a request is ambiguous, ASK before building.** Do not interpret and implement — confirm exactly what is wanted first.
+- **Never add, remove, or change anything beyond what was explicitly asked.** Scope creep causes rework and frustration.
+- **One thing at a time.** Implement exactly what was requested, build, confirm it works, then stop.
+- The owner has explicitly said: repeated wrong implementations due to assumptions are unacceptable. If unsure about any detail, ask a single clear question before writing any code.
+
 ## Commands
 
 ```bash

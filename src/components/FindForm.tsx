@@ -993,72 +993,80 @@ export default function FindForm() {
                     <TasteTile key={item.id} item={item} onToggle={() => toggleTasteSelection(item.id)} />
                   ))}
                 </div>
-                <div className="w-full max-w-4xl flex flex-wrap items-center gap-2 mb-6">
-                  {(visibleCount < tastePool.length || tastePage < tasteTotalPages) && (
-                    <button onClick={loadMoreTasteSamples} disabled={tasteLoadingMore}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-600 text-white text-sm font-semibold hover:border-gray-400 transition-all disabled:opacity-50"
+                {(() => {
+                  const tf = tasteFilters;
+                  const dateGteKey = contentType === 'movie' ? 'primary_release_date.gte' : 'first_air_date.gte';
+                  const certGte = contentType === 'movie' ? 'R' : 'TV-MA';
+                  const certLte = contentType === 'movie' ? 'PG' : 'TV-PG';
+
+                  // Toggle a preset on/off. Clears conflicting keys before applying.
+                  const togglePreset = (add: Record<string, any>, clearKeys: string[] = []) => {
+                    const isActive = Object.entries(add).every(([k, v]) => tf[k] === v);
+                    const n = { ...tf };
+                    [...Object.keys(add), ...clearKeys].forEach(k => delete n[k]);
+                    if (!isActive) Object.assign(n, add);
+                    refineTaste(n);
+                  };
+
+                  const AdjustBtn = ({ label, icon, active, onClick }: { label: string; icon: string; active: boolean; onClick: () => void }) => (
+                    <button onClick={onClick}
+                      className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold border transition-all ${
+                        active
+                          ? 'bg-netflix-red border-netflix-red text-white'
+                          : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-netflix-red hover:border-netflix-red hover:text-white'
+                      }`}
                     >
-                      {tasteLoadingMore
-                        ? <><div className="w-3 h-3 border-2 border-gray-600 border-t-white rounded-full animate-spin" /> Loading…</>
-                        : <><i className="fas fa-chevron-down text-xs" /> Show more</>
-                      }
+                      <i className={`fas ${icon} text-xs`} /> {label}
                     </button>
-                  )}
-                  <span className="text-gray-600 text-xs self-center">or adjust:</span>
-                  <button
-                    onClick={() => refineTaste({ 'vote_count.gte': 1000, sort_by: 'popularity.desc' })}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-300 text-sm font-semibold hover:bg-netflix-red hover:border-netflix-red hover:text-white transition-all"
-                  >
-                    <i className="fas fa-fire text-xs" /> More mainstream
-                  </button>
-                  <button
-                    onClick={() => refineTaste({ 'vote_count.lte': 400, sort_by: 'vote_average.desc' })}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-300 text-sm font-semibold hover:bg-netflix-red hover:border-netflix-red hover:text-white transition-all"
-                  >
-                    <i className="fas fa-gem text-xs" /> More obscure
-                  </button>
-                  <button
-                    onClick={() => {
-                      const key = contentType === 'movie' ? 'primary_release_date.gte' : 'first_air_date.gte';
-                      refineTaste({ [key]: '2021-01-01', sort_by: 'popularity.desc' });
-                    }}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-300 text-sm font-semibold hover:bg-netflix-red hover:border-netflix-red hover:text-white transition-all"
-                  >
-                    <i className="fas fa-calendar-alt text-xs" /> Recent only
-                  </button>
-                  <button
-                    onClick={() => refineTaste({ sort_by: 'vote_average.desc', 'vote_count.gte': 200 })}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-300 text-sm font-semibold hover:bg-netflix-red hover:border-netflix-red hover:text-white transition-all"
-                  >
-                    <i className="fas fa-star text-xs" /> Highest rated
-                  </button>
-                  <button
-                    onClick={() => refineTaste(contentType === 'movie'
-                      ? { 'certification.gte': 'R', certification_country: 'US' }
-                      : { 'certification.gte': 'TV-MA', certification_country: 'US' }
-                    )}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-300 text-sm font-semibold hover:bg-netflix-red hover:border-netflix-red hover:text-white transition-all"
-                  >
-                    <i className="fas fa-exclamation-circle text-xs" /> Too PG → R-rated
-                  </button>
-                  <button
-                    onClick={() => refineTaste(contentType === 'movie'
-                      ? { 'certification.lte': 'PG', certification_country: 'US' }
-                      : { 'certification.lte': 'TV-PG', certification_country: 'US' }
-                    )}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-300 text-sm font-semibold hover:bg-netflix-red hover:border-netflix-red hover:text-white transition-all"
-                  >
-                    <i className="fas fa-child text-xs" /> Too mature → Keep it PG
-                  </button>
-                  {Object.keys(tasteFilters).length > 0 && (
-                    <button
-                      onClick={() => refineTaste({})}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-900 border border-gray-700 text-gray-500 text-sm hover:text-white transition-all"
-                    >
-                      <i className="fas fa-times text-xs" /> Reset
-                    </button>
-                  )}
-                </div>
+                  );
+
+                  return (
+                    <div className="w-full max-w-4xl flex flex-wrap items-center gap-2 mb-6">
+                      {(visibleCount < tastePool.length || tastePage < tasteTotalPages) && (
+                        <button onClick={loadMoreTasteSamples} disabled={tasteLoadingMore}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-800 border border-gray-600 text-white text-sm font-semibold hover:border-gray-400 transition-all disabled:opacity-50"
+                        >
+                          {tasteLoadingMore
+                            ? <><div className="w-3 h-3 border-2 border-gray-600 border-t-white rounded-full animate-spin" /> Loading…</>
+                            : <><i className="fas fa-chevron-down text-xs" /> Show more</>
+                          }
+                        </button>
+                      )}
+                      <span className="text-gray-600 text-xs self-center">adjust:</span>
+                      <AdjustBtn label="Too PG → R-rated" icon="fa-exclamation-circle"
+                        active={tf['certification.gte'] === certGte}
+                        onClick={() => togglePreset({ 'certification.gte': certGte, certification_country: 'US' }, ['certification.lte'])}
+                      />
+                      <AdjustBtn label="Too mature → Keep PG" icon="fa-child"
+                        active={tf['certification.lte'] === certLte}
+                        onClick={() => togglePreset({ 'certification.lte': certLte, certification_country: 'US' }, ['certification.gte'])}
+                      />
+                      <AdjustBtn label="More mainstream" icon="fa-fire"
+                        active={tf['vote_count.gte'] === 1000}
+                        onClick={() => togglePreset({ 'vote_count.gte': 1000, sort_by: 'popularity.desc' }, ['vote_count.lte'])}
+                      />
+                      <AdjustBtn label="More obscure" icon="fa-gem"
+                        active={!!tf['vote_count.lte']}
+                        onClick={() => togglePreset({ 'vote_count.lte': 400, sort_by: 'vote_average.desc' }, ['vote_count.gte'])}
+                      />
+                      <AdjustBtn label="Recent only" icon="fa-calendar-alt"
+                        active={tf[dateGteKey] === '2021-01-01'}
+                        onClick={() => togglePreset({ [dateGteKey]: '2021-01-01' })}
+                      />
+                      <AdjustBtn label="Highest rated" icon="fa-star"
+                        active={tf.sort_by === 'vote_average.desc' && !tf['vote_count.lte']}
+                        onClick={() => togglePreset({ sort_by: 'vote_average.desc', 'vote_count.gte': 200 }, ['vote_count.lte'])}
+                      />
+                      {Object.keys(tf).length > 0 && (
+                        <button onClick={() => refineTaste({})}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gray-900 border border-gray-700 text-gray-500 text-sm hover:text-white transition-all"
+                        >
+                          <i className="fas fa-times text-xs" /> Reset all
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </>
             )}
 
