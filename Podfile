@@ -1,0 +1,16 @@
+platform :ios, '16.0'
+
+target 'Stereo' do
+  use_frameworks!
+
+  pod 'opencv2', '~> 4.9.0'
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+      config.build_settings['ENABLE_BITCODE'] = 'NO'
+    end
+  end
+end
