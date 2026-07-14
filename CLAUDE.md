@@ -54,7 +54,7 @@ Astro renders everything statically by default. React components are hydrated on
 
 ### Base path
 
-`astro.config.mjs` sets `base: '/i-like-boobs'`. All internal links must use the `getUrl()` helper from `src/lib/utils.ts` to prepend this base path correctly. Hardcoded `/` paths will break on GitHub Pages.
+`astro.config.mjs` sets `base: '/i-like-boobs'`. All internal links must use the `createUrl()` helper from `src/lib/utils.ts` to prepend this base path correctly. Hardcoded `/` paths will break on GitHub Pages.
 
 ### Streaming
 

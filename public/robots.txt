@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://braincandydan.github.io/i-like-boobs/sitemap-index.xml
