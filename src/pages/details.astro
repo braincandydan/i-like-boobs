@@ -236,7 +236,14 @@ import { createUrl } from '../lib/utils';
       if (!contentResponse.ok) {
         const errorText = await contentResponse.text().catch(() => 'Unknown error');
         console.error(`TMDB API Error (${contentResponse.status}):`, errorText);
-        throw new Error(`${type === 'movie' ? 'Movie' : 'TV show'} not found (${contentResponse.status})`);
+        const label = type === 'movie' ? 'Movie' : 'TV show';
+        if (contentResponse.status === 429) {
+          throw new Error(`Too many requests to the movie database right now. Please try again in a moment.`);
+        }
+        if (contentResponse.status >= 500) {
+          throw new Error(`The movie database is temporarily unavailable. Please try again shortly.`);
+        }
+        throw new Error(`${label} not found (${contentResponse.status})`);
       }
       
       // Credits are optional, don't fail if they're missing

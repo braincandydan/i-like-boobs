@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import { createUrl } from '../lib/utils';
 
 export interface Props {
   title: string;
@@ -16,7 +17,7 @@ const { title, description = "NotFlix - Your favorite movies and TV shows" } = A
     <meta name="description" content={description} />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="astro-base" content={import.meta.env.BASE_URL} />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href={createUrl('/favicon.svg')} />
     <title>{title}</title>
     
     <!-- Security headers for popup blocking -->

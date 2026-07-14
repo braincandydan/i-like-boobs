@@ -141,6 +141,10 @@ import { createUrl } from '../lib/utils';
   </div>
 </Layout>
 
+<script define:vars={{ basePath: import.meta.env.BASE_URL || '/' }}>
+  window.__BASE_PATH__ = basePath;
+</script>
+
 <script>
   // Wait for DOM to be ready
   document.addEventListener('DOMContentLoaded', () => {
@@ -227,8 +231,8 @@ import { createUrl } from '../lib/utils';
     document.title = `Watch ${title} - NotFlix`;
     
     // Update navigation links with proper base path
-    const basePath = window.location.pathname.includes('/i-like-boobs') ? '/i-like-boobs/' : '/';
-    backLink.href = basePath;
+    const basePath = window.__BASE_PATH__ || '/';
+    backLink.href = basePath.endsWith('/') ? basePath : `${basePath}/`;
     
     // WebTorrent client
     let webtorrentClient = null;

@@ -75,6 +75,9 @@ module.exports = async function handler(req, res) {
   } = req.query;
 
   if (!id) return res.status(400).json({ error: 'Missing required parameter: id' });
+  if (!DOMAINS.includes(domain)) {
+    return res.status(400).json({ error: 'Invalid domain: must be one of the configured embed domains' });
+  }
 
   const embedUrl = buildEmbedUrl(domain, type, id, season, episode);
   const startTime = Date.now();

@@ -163,18 +163,10 @@ export async function discoverWithFilters(
       params.with_companies = params.with_companies.join(',');
     }
 
-    // Include adult content if certification filter is set (needed for X, NC-17, etc.)
-    // Also include if explicitly requested
-    // Always include adult content when filtering by certification to ensure all ratings are available
-    // Also include for adult certifications (X, NC-17, R18+, etc.)
-    if (params.certification) {
-      params.include_adult = true;
-    } else if (filters.include_adult) {
-      params.include_adult = true;
-    } else {
-      // Default to including adult content for discover API to show all available content
-      params.include_adult = true;
-    }
+    // Always include adult content for the discover API so all ratings
+    // (including certifications like X/NC-17) are available to filter by.
+    // There is currently no UI toggle to exclude adult content.
+    params.include_adult = true;
 
     // Set default sort if not provided
     if (!params.sort_by) {
