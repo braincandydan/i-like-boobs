@@ -690,9 +690,21 @@ export default function CategoryManager() {
         throw new Error('Custom section not found');
       }
 
-      const currentMovies = Array.isArray(customSection.movies) ? customSection.movies : [];
+      // Re-fetch the row right before merging so we edit the latest saved
+      // list instead of a possibly-stale local copy — shrinks (does not
+      // fully eliminate) the window for a concurrent editor's change to be
+      // silently overwritten by this read-modify-write.
+      const { data: latestRow, error: fetchError } = await supabase!
+        .from('custom_sections')
+        .select('movies')
+        .eq('id', section.custom_section_id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const currentMovies = Array.isArray(latestRow?.movies) ? latestRow.movies : [];
       const alreadyExists = currentMovies.some((m: any) => m.id === movie.id && m.media_type === movie.media_type);
-      
+
       if (alreadyExists) {
         setMessage({ type: 'error', text: 'This movie is already in the category' });
         setAddingMovieId(null);
@@ -746,7 +758,16 @@ export default function CategoryManager() {
         throw new Error('Custom section not found');
       }
 
-      const currentMovies = Array.isArray(customSection.movies) ? customSection.movies : [];
+      // Re-fetch the row right before merging — see addMovieToCategory for why.
+      const { data: latestRow, error: fetchError } = await supabase!
+        .from('custom_sections')
+        .select('movies')
+        .eq('id', section.custom_section_id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const currentMovies = Array.isArray(latestRow?.movies) ? latestRow.movies : [];
       const updatedMovies = currentMovies.filter(
         (m: any) => !(m.id === movieId && m.media_type === mediaType)
       );

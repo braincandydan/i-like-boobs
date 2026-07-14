@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
-import { $user, $profile, isAdmin, initAuth } from '../stores/auth';
+import { $user, $profile, $isLoading, isAdmin, initAuth } from '../stores/auth';
 import CategoryManager from './CategoryManager';
 import { createUrl } from '../lib/utils';
 
 export default function AdminPanel() {
   const user = useStore($user);
   const profile = useStore($profile);
+  const isLoading = useStore($isLoading);
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
@@ -19,6 +20,14 @@ export default function AdminPanel() {
 
   // Check if user is admin
   const userIsAdmin = isAdmin();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
+      </div>
+    );
+  }
 
   if (!user) {
     return (

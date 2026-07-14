@@ -243,8 +243,9 @@ import { createUrl } from '../lib/utils';
     
     async function loadWebTorrent(magnetLink: string | null, torrentFile?: File) {
       try {
-        // Import WebTorrent as ES module
-        const WebTorrentModule = await import('https://esm.sh/webtorrent') as any;
+        // Import WebTorrent as ES module, pinned to a specific version so a
+        // CDN/package update can't silently change what code runs here.
+        const WebTorrentModule = await import('https://esm.sh/webtorrent@3.0.16') as any;
         const WebTorrentClient = WebTorrentModule.default || WebTorrentModule;
         
         // Stop any existing torrent

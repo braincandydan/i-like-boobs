@@ -89,48 +89,50 @@ export const tmdbEndpoints = {
 // Import filter types from supabase
 import type { TMDBFilters } from './supabase';
 
+// Shared shape for the many TMDB lookups below that should never throw:
+// run the fetch, log and fall back to an empty/default value on failure.
+async function fetchTMDBSafe<T>(errorLabel: string, fetcher: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fetcher();
+  } catch (error) {
+    console.error(`Error ${errorLabel}:`, error);
+    return fallback;
+  }
+}
+
 /**
  * Fetch genres for movies or TV shows
  */
 export async function fetchGenres(type: 'movie' | 'tv' = 'movie'): Promise<{ id: number; name: string }[]> {
-  try {
+  return fetchTMDBSafe(`fetching ${type} genres`, async () => {
     const data = await fetchFromTMDB(tmdbEndpoints.genres(type));
     return data.genres || [];
-  } catch (error) {
-    console.error(`Error fetching ${type} genres:`, error);
-    return [];
-  }
+  }, []);
 }
 
 /**
  * Search for companies by name
  */
 export async function searchCompanies(query: string): Promise<{ id: number; name: string; logo_path?: string }[]> {
-  try {
-    if (!query.trim()) return [];
+  if (!query.trim()) return [];
+  return fetchTMDBSafe('searching companies', async () => {
     const data = await fetchFromTMDB(tmdbEndpoints.companies, { query: query.trim() });
     return data.results || [];
-  } catch (error) {
-    console.error('Error searching companies:', error);
-    return [];
-  }
+  }, []);
 }
 
 /**
  * Search for actors/people by name
  */
 export async function searchActors(query: string): Promise<{ id: number; name: string; profile_path?: string; known_for_department?: string; popularity?: number }[]> {
-  try {
-    if (!query.trim()) return [];
-    const data = await fetchFromTMDB(tmdbEndpoints.searchPerson, { 
+  if (!query.trim()) return [];
+  return fetchTMDBSafe('searching actors', async () => {
+    const data = await fetchFromTMDB(tmdbEndpoints.searchPerson, {
       query: query.trim(),
-      include_adult: true 
+      include_adult: true
     });
     return (data.results || []).slice(0, 20); // Limit to 20 results
-  } catch (error) {
-    console.error('Error searching actors:', error);
-    return [];
-  }
+  }, []);
 }
 
 /**
@@ -213,26 +215,20 @@ export async function searchMulti(
  * Fetch available languages for filtering
  */
 export async function fetchLanguages(): Promise<{ iso_639_1: string; english_name: string }[]> {
-  try {
+  return fetchTMDBSafe('fetching languages', async () => {
     const data = await fetchFromTMDB(tmdbEndpoints.languages);
     return data || [];
-  } catch (error) {
-    console.error('Error fetching languages:', error);
-    return [];
-  }
+  }, []);
 }
 
 /**
  * Fetch available regions/countries for filtering
  */
 export async function fetchRegions(): Promise<{ iso_3166_1: string; english_name: string }[]> {
-  try {
+  return fetchTMDBSafe('fetching regions', async () => {
     const data = await fetchFromTMDB(tmdbEndpoints.regions);
     return data || [];
-  } catch (error) {
-    console.error('Error fetching regions:', error);
-    return [];
-  }
+  }, []);
 }
 
 /**
@@ -240,14 +236,10 @@ export async function fetchRegions(): Promise<{ iso_3166_1: string; english_name
  */
 export async function searchKeywords(query: string): Promise<{ id: number; name: string }[]> {
   if (!query.trim()) return [];
-  
-  try {
+  return fetchTMDBSafe('searching keywords', async () => {
     const data = await fetchFromTMDB(tmdbEndpoints.keywords, { query: query.trim() });
     return (data.results || []).slice(0, 10);
-  } catch (error) {
-    console.error('Error searching keywords:', error);
-    return [];
-  }
+  }, []);
 }
 
 /**
@@ -255,20 +247,17 @@ export async function searchKeywords(query: string): Promise<{ id: number; name:
  * Returns certifications for US by default, but includes all countries
  */
 export async function fetchMovieCertifications(): Promise<{ country: string; certifications: { certification: string; meaning: string; order: number }[] }[]> {
-  try {
+  return fetchTMDBSafe('fetching movie certifications', async () => {
     const data = await fetchFromTMDB(tmdbEndpoints.certifications('movie'));
     // Data structure: { certifications: { US: [...], CA: [...], ... } }
     const certifications = data.certifications || {};
-    
+
     // Convert to array format for easier use
     return Object.entries(certifications).map(([country, certs]: [string, any]) => ({
       country,
       certifications: certs || []
     }));
-  } catch (error) {
-    console.error('Error fetching movie certifications:', error);
-    return [];
-  }
+  }, []);
 }
 
 /**

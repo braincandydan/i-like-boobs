@@ -81,6 +81,7 @@ import { createUrl } from '../lib/utils';
         referrerpolicy="origin"
         title="Video Player"
         scrolling="no"
+        sandbox="allow-scripts allow-same-origin allow-forms"
       ></iframe>
       
       <!-- WebTorrent Player (for torrent playback) -->
@@ -737,7 +738,9 @@ import { createUrl } from '../lib/utils';
     async function loadWebTorrent(magnetLink, torrentFile) {
       // Import WebTorrent as ES module (as per official docs: https://esm.sh/webtorrent)
       // Using dynamic import() which works in modern browsers
-      const WebTorrentModule = await import('https://esm.sh/webtorrent') as any;
+      // Pinned to a specific version so a CDN/package update can't silently
+      // change what code runs in every visitor's browser.
+      const WebTorrentModule = await import('https://esm.sh/webtorrent@3.0.16') as any;
       const WebTorrentClient = WebTorrentModule.default || WebTorrentModule;
       
       // Stop any existing torrent
@@ -1193,6 +1196,12 @@ import { createUrl } from '../lib/utils';
     // Capture duration + currentTime to drive a precise end timer.
     window.addEventListener('message', (e) => {
       try {
+        // Only trust messages posted from the embedded player iframe itself —
+        // the active server domain changes at runtime, so we can't pin this
+        // to a fixed origin list, but we can require the message to come
+        // from that exact window (blocks forged events from other frames).
+        if (e.source !== videoPlayer.contentWindow) return;
+
         const raw = typeof e.data === 'string' ? e.data : JSON.stringify(e.data);
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         if (!data) return;

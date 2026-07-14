@@ -7,34 +7,33 @@ export const $user = atom<User | null>(null);
 export const $profile = atom<Profile | null>(null);
 export const $isLoading = atom<boolean>(true);
 
-// Initialize auth state
-export async function initAuth() {
-  if (!isSupabaseConfigured()) {
-    console.warn('Supabase is not configured');
-    $isLoading.set(false);
-    return;
-  }
+// initAuth() is called independently by every component that needs auth
+// state (AuthButton, AdminPanel, ...) on mount. Memoize it so the session
+// fetch and the onAuthStateChange listener are only ever set up once,
+// instead of once per mounted component (which was double/triple-fetching
+// the profile on every auth event).
+let initAuthPromise: Promise<void> | null = null;
 
-  try {
-    // Get current session
-    const { data: { session }, error: sessionError } = await supabase!.auth.getSession();
-    
-    if (sessionError) {
-      console.error('Error getting session:', sessionError);
+export function initAuth(): Promise<void> {
+  if (initAuthPromise) return initAuthPromise;
+
+  initAuthPromise = (async () => {
+    if (!isSupabaseConfigured()) {
+      console.warn('Supabase is not configured');
       $isLoading.set(false);
       return;
     }
 
-    if (session?.user) {
-      $user.set(session.user);
-      await loadProfile(session.user.id);
-    } else {
-      $user.set(null);
-      $profile.set(null);
-    }
+    try {
+      // Get current session
+      const { data: { session }, error: sessionError } = await supabase!.auth.getSession();
 
-    // Listen for auth changes
-    supabase!.auth.onAuthStateChange(async (event, session) => {
+      if (sessionError) {
+        console.error('Error getting session:', sessionError);
+        $isLoading.set(false);
+        return;
+      }
+
       if (session?.user) {
         $user.set(session.user);
         await loadProfile(session.user.id);
@@ -42,12 +41,25 @@ export async function initAuth() {
         $user.set(null);
         $profile.set(null);
       }
-    });
-  } catch (error) {
-    console.error('Error initializing auth:', error);
-  } finally {
-    $isLoading.set(false);
-  }
+
+      // Listen for auth changes
+      supabase!.auth.onAuthStateChange(async (event, session) => {
+        if (session?.user) {
+          $user.set(session.user);
+          await loadProfile(session.user.id);
+        } else {
+          $user.set(null);
+          $profile.set(null);
+        }
+      });
+    } catch (error) {
+      console.error('Error initializing auth:', error);
+    } finally {
+      $isLoading.set(false);
+    }
+  })();
+
+  return initAuthPromise;
 }
 
 // Load user profile
@@ -102,18 +114,23 @@ export async function signUp(email: string, password: string, userData: {
       return { success: false, error: 'Failed to create account' };
     }
 
-    // Wait a moment for trigger to potentially create profile
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Try to load profile first (might have been created by trigger)
-    let profile = null;
-    let profileError = null;
-    
-    const { data: existingProfile, error: loadError } = await supabase!
-      .from('profiles')
-      .select('*')
-      .eq('id', authData.user.id)
-      .single();
+    // Poll briefly for the profile-creation trigger to finish, instead of
+    // guessing a single fixed delay (which either wastes time or gives up
+    // too early under slow DB conditions).
+    let existingProfile: any = null;
+    let loadError: any = null;
+    const pollDelaysMs = [200, 400, 800, 1600];
+    for (const delay of pollDelaysMs) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+      const result = await supabase!
+        .from('profiles')
+        .select('*')
+        .eq('id', authData.user.id)
+        .single();
+      existingProfile = result.data;
+      loadError = result.error;
+      if (existingProfile) break;
+    }
 
     if (loadError || !existingProfile) {
       // Profile doesn't exist, create it manually
@@ -131,8 +148,7 @@ export async function signUp(email: string, password: string, userData: {
 
       if (createError) {
         console.error('Error creating profile:', createError);
-        profileError = createError;
-        
+
         // Try one more time with upsert
         const { error: upsertError } = await supabase!
           .from('profiles')
