@@ -134,7 +134,6 @@ export async function signUp(email: string, password: string, userData: {
 
     if (loadError || !existingProfile) {
       // Profile doesn't exist, create it manually
-      console.log('Profile not found, creating manually...');
       
       const { error: createError } = await supabase!
         .from('profiles')

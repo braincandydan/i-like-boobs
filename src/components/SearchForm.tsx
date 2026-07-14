@@ -391,13 +391,11 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
         .trim()
         .replace(/\s+/g, ' ');
       
-      console.log(`🔍 Direct torrent search for: "${cleanQuery}" (category: ${category})`);
       
       // Variable to hold successful data
       let data: any = null;
       
       // Direct torrent search using public APIs (no external libraries needed)
-      console.log('🔍 Starting direct torrent search via public APIs...');
       
       // Try multiple public torrent search APIs
       const corsProxies = [
@@ -434,7 +432,6 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
         for (const proxy of corsProxies) {
           try {
             const apiUrl = proxy ? `${proxy}${encodeURIComponent(endpoint.url)}` : endpoint.url;
-            console.log(`Trying ${endpoint.name} via ${proxy ? 'CORS proxy' : 'direct'}...`);
             
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -453,7 +450,6 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
               
               if (parsed && parsed.length > 0) {
                 data = parsed;
-                console.log(`✅ Found ${data.length} torrents from ${endpoint.name}`);
                 break; // Success!
               }
             }
@@ -479,7 +475,6 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       
       // If still no data, try HTML-based search via proxy (less reliable but might work)
       if (!data || data.length === 0) {
-        console.log('Trying HTML-based search via proxy...');
         
         // Try 1337x search via proxy
         const searchUrl = `https://1337x.to/search/${encodeURIComponent(cleanQuery)}/1/`;
@@ -505,7 +500,6 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
               const magnetMatches = html.match(magnetRegex);
               
               if (magnetMatches && magnetMatches.length > 0) {
-                console.log(`✅ Found ${magnetMatches.length} magnet links in HTML`);
                 
                 // Try to extract titles (basic approach)
                 const titleRegex = /<a[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/a>/gi;
@@ -529,7 +523,6 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                 }));
                 
                 if (data.length > 0) {
-                  console.log(`✅ Successfully extracted ${data.length} torrents from HTML`);
                   break;
                 }
               }
@@ -600,7 +593,6 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
           searchQuery = `${searchQuery} S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
         }
         
-        console.log(`Searching torrents for: ${searchQuery}`);
       } catch (error) {
         console.error('Error fetching title from TMDB:', error);
         setLoadingStreams(prev => ({ ...prev, [key]: false }));

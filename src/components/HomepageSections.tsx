@@ -163,7 +163,6 @@ export default function HomepageSections() {
   const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
 
   useEffect(() => {
-    console.log('HomepageSections: Component mounted, starting loadSections');
     let mounted = true;
     
     const load = async () => {
@@ -185,15 +184,12 @@ export default function HomepageSections() {
   }, []);
 
   const loadSections = async () => {
-    console.log('loadSections: Starting...');
     setHasAttemptedLoad(true);
     setLoading(true);
     
     try {
-      console.log('loadSections: Checking Supabase config...', isSupabaseConfigured());
       if (!isSupabaseConfigured()) {
         // Fallback to default sections if Supabase not configured
-        console.log('loadSections: Supabase not configured, loading defaults');
         await loadDefaultSections();
         return;
       }
@@ -206,13 +202,11 @@ export default function HomepageSections() {
 
       if (sectionsError) {
         console.error('Error loading homepage sections:', sectionsError);
-        console.log('Falling back to default sections');
         await loadDefaultSections();
         return;
       }
 
       if (!homepageSections || homepageSections.length === 0) {
-        console.log('No homepage sections found in database, loading defaults');
         await loadDefaultSections();
         return;
       }
@@ -306,7 +300,6 @@ export default function HomepageSections() {
                   section_type: 'custom',
                 });
               } else {
-                console.log(`Custom section "${customSection.title}" has no movies yet, skipping from homepage`);
               }
             } else if (customError) {
               console.error('Error loading custom section:', customError);
@@ -379,8 +372,6 @@ export default function HomepageSections() {
   const loadDefaultSections = async () => {
     setLoading(true);
     try {
-      console.log('Loading default sections from TMDB...');
-      console.log('TMDB API Key configured:', !!import.meta.env.PUBLIC_TMDB_API_KEY);
       
       const [trendingData, popularMoviesData, topRatedData, popularTvData, upcomingData] = await Promise.allSettled([
         fetchFromTMDB(tmdbEndpoints.trending),
@@ -393,7 +384,6 @@ export default function HomepageSections() {
       // Extract results from Promise.allSettled
       const getResults = (result: PromiseSettledResult<any>, sectionName: string) => {
         if (result.status === 'fulfilled') {
-          console.log(`${sectionName}: Success`, result.value?.results?.length || 0, 'items');
           return result.value?.results || [];
         } else {
           console.error(`Error fetching ${sectionName}:`, result.reason);
@@ -450,7 +440,6 @@ export default function HomepageSections() {
         },
       ].filter(section => section.movies.length > 0);
       
-      console.log('Sections with content:', defaultSections.length, 'out of 5');
       
       if (defaultSections.length === 0) {
         console.error('All TMDB API calls failed or returned no data. Check your TMDB API key and network connection.');
@@ -478,7 +467,6 @@ export default function HomepageSections() {
         }
       }, 500);
       
-      console.log('Default sections loaded:', defaultSections.length);
     } catch (error) {
       console.error('Error loading default sections:', error);
       // Even on error, set loading to false so we can show error state
@@ -553,8 +541,6 @@ export default function HomepageSections() {
             </button>
             <button
               onClick={() => {
-                console.log('TMDB API Key configured:', hasApiKey);
-                console.log('TMDB Base URL:', import.meta.env.PUBLIC_TMDB_BASE_URL);
                 loadSections();
               }}
               className="btn-secondary"

@@ -231,7 +231,6 @@ import { createUrl } from '../lib/utils';
         
         // Try with include_adult as a fallback (though it shouldn't be needed)
         if (contentResponse.status === 404 || contentResponse.status === 401) {
-          console.log('Retrying with include_adult parameter...');
           contentResponse = await fetch(`${BASE_URL}${endpoint}?api_key=${API_KEY}&include_adult=true`);
         }
       }
@@ -613,15 +612,10 @@ import { createUrl } from '../lib/utils';
   // Initialize page
   async function initializePage() {
     try {
-      console.log('Starting page initialization...');
-      console.log('API_KEY available:', !!API_KEY);
-      console.log('BASE_URL:', BASE_URL);
-      
       // Get current user
       window.currentUser = await getCurrentUser();
       
       const urlData = parseUrl();
-      console.log('URL data:', urlData);
       
       if (!urlData) {
         throw new Error('No content specified');
@@ -630,9 +624,7 @@ import { createUrl } from '../lib/utils';
       contentType = urlData.type;
       contentId = urlData.id;
       
-      console.log('Fetching content for type:', contentType, 'id:', contentId);
       const { content, cast } = await fetchContentData(contentType, contentId);
-      console.log('Content fetched successfully:', content);
       
       populateContent(content, cast, contentType);
       

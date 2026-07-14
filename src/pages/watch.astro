@@ -357,7 +357,6 @@ import { createUrl } from '../lib/utils';
   // Minimal popup blocking - only log attempts for debugging
   const originalWindowOpen = window.open;
   window.open = function(url, name, specs) {
-    console.log('Popup attempt detected:', url);
     // Allow all popups for now to ensure video controls work
     return originalWindowOpen.call(window, url, name, specs);
   };
@@ -407,41 +406,6 @@ import { createUrl } from '../lib/utils';
         });
       });
     }
-    
-    // Monitor iframe load events to see what's being loaded
-    const originalCreateElement = document.createElement;
-    document.createElement = function(tagName) {
-      const element = originalCreateElement.call(this, tagName);
-      if (tagName.toLowerCase() === 'iframe') {
-        console.log('Iframe created:', element);
-        element.addEventListener('load', function() {
-          console.log('Iframe loaded:', {
-            src: this.src,
-            contentWindow: this.contentWindow ? 'has contentWindow' : 'no contentWindow',
-            contentDocument: this.contentDocument ? 'has contentDocument' : 'no contentDocument'
-          });
-          // Try to log nested iframes
-          try {
-            if (this.contentDocument) {
-              const nestedIframes = this.contentDocument.querySelectorAll('iframe');
-              if (nestedIframes.length > 0) {
-                console.log('Nested iframes found:', nestedIframes.length);
-                nestedIframes.forEach((iframe, index) => {
-                  console.log(`Nested iframe ${index}:`, {
-                    src: iframe.src,
-                    id: iframe.id,
-                    className: iframe.className
-                  });
-                });
-              }
-            }
-          } catch (e) {
-            // CORS will prevent this, but we try
-          }
-        });
-      }
-      return element;
-    };
     
     // Get URL parameters
     const urlParams = new URLSearchParams(window.location.search);
@@ -503,18 +467,7 @@ import { createUrl } from '../lib/utils';
     // Update video player
     videoPlayer.src = primaryUrl;
     checkSavedProgress();
-    
-    // Monitor iframe src changes
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'src') {
-          console.log('Iframe src changed to:', videoPlayer.src);
-        }
-      });
-    });
-    observer.observe(videoPlayer, { attributes: true, attributeFilter: ['src'] });
-    
-    
+
     // Update titles
     const displayTitle = type === 'tv' ? `${title} S${season}E${episode}` : title;
     videoTitle.textContent = displayTitle;
@@ -692,7 +645,6 @@ import { createUrl } from '../lib/utils';
       if (webtorrentIndex !== -1) {
         // Wait for DOM to be fully ready, then switch to WebTorrent
         setTimeout(() => {
-          console.log('Auto-loading magnet link:', magnetLink);
           // Set the server select value
           serverSelect.value = webtorrentIndex.toString();
           // Load the WebTorrent server (this will open the modal)
@@ -704,13 +656,11 @@ import { createUrl } from '../lib/utils';
             if (magnetInput) {
               const decodedMagnet = decodeURIComponent(magnetLink);
               magnetInput.value = decodedMagnet;
-              console.log('Pre-filled magnet link in input');
               
               // Auto-click load button after a short delay
               setTimeout(() => {
                 const loadBtn = document.getElementById('load-webtorrent-btn') as HTMLButtonElement;
                 if (loadBtn) {
-                  console.log('Auto-clicking load button');
                   loadBtn.click();
                 } else {
                   console.error('Load button not found');
@@ -781,7 +731,6 @@ import { createUrl } from '../lib/utils';
       `;
       
       torrent.on('metadata', () => {
-        console.log('Torrent metadata received');
         webtorrentStatus.innerHTML = `
           <div class="flex items-center space-x-2">
             <i class="fas fa-check-circle text-green-400"></i>
@@ -816,7 +765,6 @@ import { createUrl } from '../lib/utils';
         }
         
         if (videoFile) {
-          console.log('Playing video file:', videoFile.name);
           videoFile.renderTo(webtorrentPlayer, {
             autoplay: true,
             controls: true
@@ -1191,9 +1139,8 @@ import { createUrl } from '../lib/utils';
       nextOverlay.classList.add('hidden');
     });
 
-    // Listen to every postMessage from the embed.
-    // Log everything so we know exactly what events VidSrc sends.
-    // Capture duration + currentTime to drive a precise end timer.
+    // Listen to every postMessage from the embed to capture duration +
+    // currentTime, driving a precise end-of-episode timer.
     window.addEventListener('message', (e) => {
       try {
         // Only trust messages posted from the embedded player iframe itself —
@@ -1202,28 +1149,21 @@ import { createUrl } from '../lib/utils';
         // from that exact window (blocks forged events from other frames).
         if (e.source !== videoPlayer.contentWindow) return;
 
-        const raw = typeof e.data === 'string' ? e.data : JSON.stringify(e.data);
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         if (!data) return;
-
-        // Log every message from the embed so we can see what's available
-        console.log('[embed msg]', raw.slice(0, 300));
 
         // Extract duration and position from whatever field name the player uses
         const dur = data.duration ?? data.totalTime ?? data.length ?? data.total;
         const cur = data.currentTime ?? data.position ?? data.time ?? data.current;
 
         if (dur != null && !isNaN(dur) && parseFloat(dur) > 10) {
-          const prev = videoDuration;
           videoDuration = parseFloat(dur);
-          if (prev !== videoDuration) console.log(`[embed] duration locked: ${videoDuration}s`);
         }
         if (cur != null && !isNaN(cur)) {
           videoCurrentTime = parseFloat(cur);
         }
 
         const evt = (data.event ?? data.type ?? data.name ?? data.status ?? '').toString().toLowerCase();
-        if (evt) console.log(`[embed] event="${evt}" cur=${videoCurrentTime?.toFixed(1)} dur=${videoDuration?.toFixed(1)}`);
 
         // Play / resume → set timer for remaining time
         if (evt === 'play' || evt === 'playing') {
@@ -1426,7 +1366,6 @@ import { createUrl } from '../lib/utils';
     // Block document.open calls
     const originalDocOpen = document.open;
     document.open = function() {
-      console.log('Blocked document.open call');
       return null;
     };
     
@@ -1440,7 +1379,6 @@ import { createUrl } from '../lib/utils';
         const originalSetAttribute = element.setAttribute;
         element.setAttribute = function(name, value) {
           if (name === 'target' && value === '_blank') {
-            console.log('Blocked target="_blank" on dynamically created link');
             showPopupBlockedNotification();
             return;
           }
@@ -1455,7 +1393,6 @@ import { createUrl } from '../lib/utils';
     document.addEventListener('submit', (e) => {
       const form = e.target;
       if (form.target === '_blank') {
-        console.log('Blocked form submission with target="_blank"');
         showPopupBlockedNotification();
         e.preventDefault();
         return false;
@@ -1626,8 +1563,6 @@ import { createUrl } from '../lib/utils';
       // Restore scrolling on touch events
       document.addEventListener('touchstart', restoreScrolling);
       document.addEventListener('touchmove', restoreScrolling);
-      
-      console.log('Amazon Silk browser detected - scroll fixes applied');
     }
   }
   

@@ -276,7 +276,6 @@ import { createUrl } from '../lib/utils';
         webtorrentTorrent = torrent;
         
         torrent.on('metadata', () => {
-          console.log('Torrent metadata received');
           webtorrentStatus.innerHTML = `
             <div class="flex items-center space-x-2">
               <i class="fas fa-check-circle text-green-400"></i>
@@ -311,7 +310,6 @@ import { createUrl } from '../lib/utils';
           }
           
           if (videoFile) {
-            console.log('Playing video file:', videoFile.name);
             videoFile.renderTo(webtorrentPlayer, {
               autoplay: true,
               controls: true

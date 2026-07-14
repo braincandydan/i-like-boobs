@@ -520,7 +520,6 @@ export default function CategoryManager() {
         config.tmdb_filters = tmdbFilters;
       } else {
         // Manual category
-        console.log('Creating manual custom section...');
         const { data: manualSectionData, error: manualError } = await supabase!
           .from('custom_sections')
           .insert({
@@ -539,7 +538,6 @@ export default function CategoryManager() {
           console.error('Error creating custom section:', manualError);
           throw new Error(`Failed to create custom section: ${manualError.message}`);
         }
-        console.log('Custom section created:', manualSectionData);
         sectionData = manualSectionData;
       }
 
@@ -553,8 +551,6 @@ export default function CategoryManager() {
         enabled: true,
         config: config
       };
-
-      console.log('Creating homepage section:', homepageSectionData);
 
       const { data: homepageData, error: homepageError } = await supabase!
         .from('homepage_sections')
@@ -579,8 +575,6 @@ export default function CategoryManager() {
         }
         throw new Error(`Failed to add to homepage: ${homepageError.message}`);
       }
-
-      console.log('Homepage section created successfully:', homepageData);
 
       setMessage({ type: 'success', text: 'Custom category created successfully!' });
       setNewCategoryTitle('');
