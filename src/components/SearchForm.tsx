@@ -1106,25 +1106,41 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     setActorSearchResults([]);
   };
 
-  // Handle actor search
-  const handleActorSearch = async (query: string) => {
+  // Handle actor search input — the actual TMDB request is debounced in the
+  // effect below instead of firing on every keystroke.
+  const handleActorSearch = (query: string) => {
     setActorSearchQuery(query);
-    if (!query.trim()) {
+  };
+
+  // Debounced actor search, guarded against out-of-order responses (a slow
+  // response for an earlier keystroke arriving after a faster one for a
+  // later keystroke would otherwise overwrite the newer results).
+  useEffect(() => {
+    if (!actorSearchQuery.trim()) {
       setActorSearchResults([]);
+      setSearchingActors(false);
       return;
     }
-    
+
+    let cancelled = false;
     setSearchingActors(true);
-    try {
-      const results = await searchActors(query);
-      setActorSearchResults(results);
-    } catch (error) {
-      console.error('Error searching actors:', error);
-      setActorSearchResults([]);
-    } finally {
-      setSearchingActors(false);
-    }
-  };
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchActors(actorSearchQuery);
+        if (!cancelled) setActorSearchResults(results);
+      } catch (error) {
+        console.error('Error searching actors:', error);
+        if (!cancelled) setActorSearchResults([]);
+      } finally {
+        if (!cancelled) setSearchingActors(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [actorSearchQuery]);
 
   // Add actor to selected list
   const addActor = (actor: { id: number; name: string; profile_path?: string }) => {

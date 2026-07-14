@@ -384,24 +384,39 @@ export default function CategoryManager() {
     }
   };
 
-  const handleCompanySearch = async (query: string) => {
+  // Search input is debounced in the effect below instead of firing a TMDB
+  // request on every keystroke.
+  const handleCompanySearch = (query: string) => {
     setCompanySearchQuery(query);
-    if (!query.trim()) {
+  };
+
+  // Debounced company search, guarded against out-of-order responses.
+  useEffect(() => {
+    if (!companySearchQuery.trim()) {
       setCompanySearchResults([]);
+      setSearchingCompanies(false);
       return;
     }
 
+    let cancelled = false;
     setSearchingCompanies(true);
-    try {
-      const results = await searchCompanies(query);
-      setCompanySearchResults(results);
-    } catch (error) {
-      console.error('Error searching companies:', error);
-      setCompanySearchResults([]);
-    } finally {
-      setSearchingCompanies(false);
-    }
-  };
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchCompanies(companySearchQuery);
+        if (!cancelled) setCompanySearchResults(results);
+      } catch (error) {
+        console.error('Error searching companies:', error);
+        if (!cancelled) setCompanySearchResults([]);
+      } finally {
+        if (!cancelled) setSearchingCompanies(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [companySearchQuery]);
 
   const addCompany = (company: { id: number; name: string; logo_path?: string }) => {
     if (!selectedCompanies.find(c => c.id === company.id)) {
