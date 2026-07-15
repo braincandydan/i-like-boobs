@@ -363,12 +363,12 @@ import { createUrl } from '../lib/utils';
       // Check if in watchlist and update button state
       (async () => {
         try {
-          const { isInWatchlist } = await import('../lib/localStorage');
+          const { isInWatchlist } = await import('../lib/supabase');
           const userId = window.currentUser?.id;
           if (userId) {
             const movieId = parseInt(watchlistBtn.dataset.movieId);
             const mediaType = watchlistBtn.dataset.mediaType;
-            const inWatchlist = isInWatchlist(movieId, mediaType, userId);
+            const inWatchlist = await isInWatchlist(movieId, mediaType, userId);
             if (inWatchlist) {
               watchlistBtn.innerHTML = '<i class="fas fa-heart mr-2" style="color: red;"></i><span>In Watchlist</span>';
               watchlistBtn.classList.add('added');
@@ -385,29 +385,29 @@ import { createUrl } from '../lib/utils';
         e.stopPropagation();
         
         try {
-          const { addToWatchlist, removeFromWatchlist, isInWatchlist } = await import('../lib/localStorage');
+          const { addToWatchlist, removeFromWatchlist, isInWatchlist } = await import('../lib/supabase');
           const userId = window.currentUser?.id;
-          
+
           if (!userId) {
             window.location.href = createUrl('/auth/signin');
             return;
           }
-          
+
           const movieId = parseInt(watchlistBtn.dataset.movieId);
           const mediaType = watchlistBtn.dataset.mediaType;
           const title = watchlistBtn.dataset.title;
           const posterPath = watchlistBtn.dataset.posterPath;
-          
-          const inWatchlist = isInWatchlist(movieId, mediaType, userId);
-          
+
+          const inWatchlist = await isInWatchlist(movieId, mediaType, userId);
+
           if (inWatchlist) {
-            const success = removeFromWatchlist(movieId, mediaType, userId);
+            const success = await removeFromWatchlist(movieId, mediaType, userId);
             if (success) {
               watchlistBtn.innerHTML = '<i class="fas fa-heart mr-2"></i><span>Add to Watchlist</span>';
               watchlistBtn.classList.remove('added');
             }
           } else {
-            const success = addToWatchlist({
+            const success = await addToWatchlist({
               movieId,
               mediaType,
               title,

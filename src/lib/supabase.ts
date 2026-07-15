@@ -47,6 +47,94 @@ export type UserWatchlist = {
   added_at: string;
 };
 
+// Watchlist — synced via the `watchlist` table (see
+// migrations/watchlist_table.sql) so it follows the user across
+// devices/browsers instead of living only in one browser's localStorage.
+
+export async function getWatchlist(userId: string): Promise<UserWatchlist[]> {
+  if (!isSupabaseConfigured() || !userId) return [];
+
+  const { data, error } = await supabase!
+    .from('watchlist')
+    .select('*')
+    .eq('user_id', userId)
+    .order('added_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching watchlist:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+export async function isInWatchlist(movieId: number, mediaType: 'movie' | 'tv', userId: string): Promise<boolean> {
+  if (!isSupabaseConfigured() || !userId) return false;
+
+  const { data, error } = await supabase!
+    .from('watchlist')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('movie_id', movieId)
+    .eq('media_type', mediaType)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error checking watchlist:', error);
+    return false;
+  }
+
+  return Boolean(data);
+}
+
+export async function addToWatchlist(
+  item: { movieId: number; mediaType: 'movie' | 'tv'; title: string; posterPath?: string },
+  userId: string
+): Promise<boolean> {
+  if (!isSupabaseConfigured() || !userId) return false;
+
+  const { error } = await supabase!
+    .from('watchlist')
+    .insert({
+      user_id: userId,
+      movie_id: item.movieId,
+      media_type: item.mediaType,
+      title: item.title,
+      poster_path: item.posterPath || null,
+    });
+
+  if (error) {
+    // Unique constraint violation just means it's already there — not a failure.
+    if (error.code === '23505') return true;
+    console.error('Error adding to watchlist:', error);
+    return false;
+  }
+
+  return true;
+}
+
+export async function removeFromWatchlist(
+  movieId: number,
+  mediaType: 'movie' | 'tv',
+  userId: string
+): Promise<boolean> {
+  if (!isSupabaseConfigured() || !userId) return false;
+
+  const { error } = await supabase!
+    .from('watchlist')
+    .delete()
+    .eq('user_id', userId)
+    .eq('movie_id', movieId)
+    .eq('media_type', mediaType);
+
+  if (error) {
+    console.error('Error removing from watchlist:', error);
+    return false;
+  }
+
+  return true;
+}
+
 export type TMDBFilters = {
   media_type?: 'movie' | 'tv';
   with_genres?: number[];

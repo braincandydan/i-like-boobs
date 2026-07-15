@@ -36,17 +36,16 @@ PUBLIC_TMDB_IMAGE_BASE_URL=https://image.tmdb.org/t/p   # optional
 
 ### Key layers
 
-- **`src/pages/`** — Astro routes. Dynamic routes exist for `details/movie/[id].astro` and `details/tv/[id].astro`. The `watch.astro` and `watch-torrent.astro` pages handle playback via VidSrc embeds and WebTorrent fallback respectively.
+- **`src/pages/`** — Astro routes. `details.astro` is the single universal detail page for both movies and TV shows — it renders a shell and fetches TMDB data client-side by reading `?type=` and `id=` from the query string (there is no per-movie/per-show static route). The `watch.astro` and `watch-torrent.astro` pages handle playback via VidSrc embeds and WebTorrent fallback respectively.
 - **`src/components/`** — Mostly React (`.tsx`) for interactive UI, Astro (`.astro`) for static shells. Heavy components: `SearchForm.tsx`, `CategoryManager.tsx`, `HomepageSections.tsx`.
 - **`src/lib/tmdb.ts`** — All TMDB API calls: discover, search, filters (genres, certifications, actors, keywords, companies), image URL helpers.
 - **`src/lib/supabase.ts`** — Supabase client, all DB operations (watchlist, custom sections, homepage config, user profiles with roles).
 - **`src/stores/auth.ts`** — Nanostores atoms for user session. Auth state is reactive and shared across React islands.
 - **`src/lib/authInit.ts`** — Runs client-side on every page to hydrate auth store from Supabase session.
-- **`src/lib/localStorage.ts`** — localStorage-based auth fallback used when Supabase is not configured.
 
-### Auth dual-mode
+### Auth and watchlist require Supabase
 
-The app supports two auth modes simultaneously: Supabase (primary) and localStorage (fallback). If `PUBLIC_SUPABASE_URL` is absent, auth degrades gracefully to localStorage. Check `src/stores/auth.ts` for the switching logic.
+There is no localStorage-based auth or watchlist fallback — both require `PUBLIC_SUPABASE_URL`/`PUBLIC_SUPABASE_ANON_KEY` to be set. Without them, `isSupabaseConfigured()` (in `src/lib/supabase.ts`) returns false and sign-in/watchlist features are unavailable rather than degrading to a local-only mode. The watchlist itself is stored in the `watchlist` table (see `migrations/watchlist_table.sql`) and syncs across devices for a signed-in user.
 
 ### Islands architecture
 

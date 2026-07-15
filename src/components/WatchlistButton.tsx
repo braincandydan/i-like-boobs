@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { $user } from '../stores/auth';
-import { 
-  addToWatchlist, 
-  removeFromWatchlist, 
-  isInWatchlist, 
-  onStorageChange 
-} from '../lib/localStorage';
+import {
+  addToWatchlist,
+  removeFromWatchlist,
+  isInWatchlist,
+} from '../lib/supabase';
 import { createUrl } from '../lib/utils';
 
 interface WatchlistButtonProps {
@@ -16,45 +15,39 @@ interface WatchlistButtonProps {
   posterPath?: string;
 }
 
-export default function WatchlistButton({ 
-  movieId, 
-  mediaType, 
-  title, 
-  posterPath 
+export default function WatchlistButton({
+  movieId,
+  mediaType,
+  title,
+  posterPath
 }: WatchlistButtonProps) {
   const user = useStore($user);
   const [isInWatchlistState, setIsInWatchlistState] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    checkWatchlistStatus();
-  }, [user, movieId, mediaType]);
+    let cancelled = false;
 
-  // Listen for storage changes to sync across tabs
-  useEffect(() => {
-    const cleanup = onStorageChange(() => {
-      checkWatchlistStatus();
-    });
-    return cleanup;
-  }, [movieId, mediaType]);
-
-  const checkWatchlistStatus = () => {
     if (!user) {
       setIsInWatchlistState(false);
       return;
     }
 
-    try {
-      // Use Supabase user ID
-      const inWatchlist = isInWatchlist(movieId, mediaType, user.id);
-      setIsInWatchlistState(inWatchlist);
-    } catch (error) {
-      console.error('Error checking watchlist:', error);
-      setIsInWatchlistState(false);
-    }
-  };
+    isInWatchlist(movieId, mediaType, user.id)
+      .then(inWatchlist => {
+        if (!cancelled) setIsInWatchlistState(inWatchlist);
+      })
+      .catch(error => {
+        console.error('Error checking watchlist:', error);
+        if (!cancelled) setIsInWatchlistState(false);
+      });
 
-  const toggleWatchlist = (e: React.MouseEvent) => {
+    return () => {
+      cancelled = true;
+    };
+  }, [user, movieId, mediaType]);
+
+  const toggleWatchlist = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -68,16 +61,14 @@ export default function WatchlistButton({
 
     try {
       if (isInWatchlistState) {
-        // Remove from watchlist
-        const success = removeFromWatchlist(movieId, mediaType, user.id);
+        const success = await removeFromWatchlist(movieId, mediaType, user.id);
         if (success) {
           setIsInWatchlistState(false);
         } else {
           console.error('Failed to remove from watchlist');
         }
       } else {
-        // Add to watchlist
-        const success = addToWatchlist({
+        const success = await addToWatchlist({
           movieId,
           mediaType,
           title,

@@ -1,55 +1,52 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { $user } from '../stores/auth';
-import { 
-  getWatchlist, 
-  removeFromWatchlist, 
-  onStorageChange,
-  type WatchlistItem 
-} from '../lib/localStorage';
+import {
+  getWatchlist,
+  removeFromWatchlist,
+  type UserWatchlist
+} from '../lib/supabase';
 import { createUrl } from '../lib/utils';
 
 export default function WatchlistDisplay() {
   const user = useStore($user);
-  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [watchlist, setWatchlist] = useState<UserWatchlist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadWatchlist();
+    let cancelled = false;
+
+    if (!user) {
+      setWatchlist([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    getWatchlist(user.id)
+      .then(userWatchlist => {
+        if (!cancelled) setWatchlist(userWatchlist);
+      })
+      .catch(error => {
+        console.error('Error loading watchlist:', error);
+        if (!cancelled) setWatchlist([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
-  // Listen for storage changes to sync across tabs
-  useEffect(() => {
-    const cleanup = onStorageChange(() => {
-      loadWatchlist();
-    });
-    return cleanup;
-  }, []);
-
-  const loadWatchlist = () => {
-    try {
-      if (user) {
-        // Use Supabase user ID
-        const userWatchlist = getWatchlist(user.id);
-        setWatchlist(userWatchlist);
-      } else {
-        setWatchlist([]);
-      }
-    } catch (error) {
-      console.error('Error loading watchlist:', error);
-      setWatchlist([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleRemoveFromWatchlist = (movieId: number, mediaType: 'movie' | 'tv') => {
+  const handleRemoveFromWatchlist = async (movieId: number, mediaType: 'movie' | 'tv') => {
     if (!user) return;
-    
+
     try {
-      const success = removeFromWatchlist(movieId, mediaType, user.id);
+      const success = await removeFromWatchlist(movieId, mediaType, user.id);
       if (success) {
-        setWatchlist(prev => prev.filter(item => !(item.movieId === movieId && item.mediaType === mediaType)));
+        setWatchlist(prev => prev.filter(item => !(item.movie_id === movieId && item.media_type === mediaType)));
       }
     } catch (error) {
       console.error('Error removing from watchlist:', error);
@@ -116,11 +113,11 @@ export default function WatchlistDisplay() {
 
       <div className="grid grid-cols-5 md:grid-cols-7 lg:grid-cols-8 gap-4">
         {watchlist.map((item) => (
-          <div key={`${item.mediaType}-${item.movieId}`} className="group relative">
+          <div key={`${item.media_type}-${item.movie_id}`} className="group relative">
             <div className="aspect-[2/3] relative overflow-hidden rounded-lg bg-gray-800">
-              {item.posterPath ? (
+              {item.poster_path ? (
                 <img
-                  src={`https://image.tmdb.org/t/p/w500${item.posterPath}`}
+                  src={`https://image.tmdb.org/t/p/w500${item.poster_path}`}
                   alt={item.title}
                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                   loading="lazy"
@@ -130,10 +127,10 @@ export default function WatchlistDisplay() {
                   <i className="fas fa-film text-4xl text-gray-500"></i>
                 </div>
               )}
-              
+
               {/* Remove button */}
               <button
-                onClick={() => handleRemoveFromWatchlist(item.movieId, item.mediaType)}
+                onClick={() => handleRemoveFromWatchlist(item.movie_id, item.media_type)}
                 className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                 title="Remove from watchlist"
               >
@@ -144,20 +141,20 @@ export default function WatchlistDisplay() {
 
               {/* Media type badge */}
               <div className="absolute top-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-medium">
-                {item.mediaType === 'movie' ? 'Movie' : 'TV Show'}
+                {item.media_type === 'movie' ? 'Movie' : 'TV Show'}
               </div>
             </div>
 
             {/* Title and link */}
             <div className="mt-3">
               <a
-                href={createUrl(`/details?type=${item.mediaType}&id=${item.movieId}`)}
+                href={createUrl(`/details?type=${item.media_type}&id=${item.movie_id}`)}
                 className="text-white font-medium hover:text-blue-400 transition-colors duration-200 line-clamp-2"
               >
                 {item.title}
               </a>
               <p className="text-gray-500 text-sm mt-1">
-                Added {new Date(item.addedAt).toLocaleDateString()}
+                Added {new Date(item.added_at).toLocaleDateString()}
               </p>
             </div>
           </div>
