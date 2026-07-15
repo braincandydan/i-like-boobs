@@ -143,7 +143,7 @@ export default function WatchlistDisplay() {
               </button>
 
               {/* Media type badge */}
-              <div className="absolute top-2 left-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-xs font-medium">
+              <div className="absolute top-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-medium">
                 {item.mediaType === 'movie' ? 'Movie' : 'TV Show'}
               </div>
             </div>

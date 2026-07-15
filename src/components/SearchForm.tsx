@@ -1557,7 +1557,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       {showGenreDropdown && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-black bg-opacity-50"
+            className="fixed inset-0 z-40 bg-black/50"
             onClick={() => setShowGenreDropdown(false)}
           ></div>
           <div className="max-w-6xl mx-auto mb-6 relative z-50">
@@ -1624,7 +1624,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       {showYearDropdown && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-black bg-opacity-50"
+            className="fixed inset-0 z-40 bg-black/50"
             onClick={() => setShowYearDropdown(false)}
           ></div>
           <div className="max-w-6xl mx-auto mb-6 relative z-50">
@@ -1716,7 +1716,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       {showRatingDropdown && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-black bg-opacity-50"
+            className="fixed inset-0 z-40 bg-black/50"
             onClick={() => setShowRatingDropdown(false)}
           ></div>
           <div className="max-w-6xl mx-auto mb-6 relative z-50">
@@ -1786,7 +1786,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       {showCertificationDropdown && (filters.mediaType === 'movie' || filters.mediaType === 'all') && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-black bg-opacity-50"
+            className="fixed inset-0 z-40 bg-black/50"
             onClick={() => setShowCertificationDropdown(false)}
           ></div>
           <div className="max-w-6xl mx-auto mb-6 relative z-50">

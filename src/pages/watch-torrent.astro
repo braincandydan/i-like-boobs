@@ -65,7 +65,7 @@ import { createUrl } from '../lib/utils';
   <!-- Video Player Section -->
   <div id="player-container" class="relative w-full hidden">
     <!-- Player Header -->
-    <div class="bg-black bg-opacity-50 p-4">
+    <div class="bg-black/50 p-4">
       <div class="max-w-7xl mx-auto flex items-center justify-between">
         <div class="flex items-center space-x-4">
           <a id="back-link" href={createUrl("/")} class="text-white hover:text-red-600 transition-colors">
@@ -90,7 +90,7 @@ import { createUrl } from '../lib/utils';
         ></video>
         
         <!-- WebTorrent Status -->
-        <div id="webtorrent-status" class="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-4 py-2 rounded text-sm">
+        <div id="webtorrent-status" class="absolute top-4 left-4 bg-black/70 text-white px-4 py-2 rounded text-sm">
           <div class="flex items-center space-x-2">
             <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
             <span>Connecting to peers...</span>
@@ -98,7 +98,7 @@ import { createUrl } from '../lib/utils';
         </div>
         
         <!-- WebTorrent Progress -->
-        <div id="webtorrent-progress" class="absolute bottom-4 left-4 right-4 bg-black bg-opacity-70 rounded p-2">
+        <div id="webtorrent-progress" class="absolute bottom-4 left-4 right-4 bg-black/70 rounded p-2">
           <div class="flex items-center justify-between text-white text-xs mb-1">
             <span>Download Speed: <span id="download-speed">0</span> MB/s</span>
             <span>Upload Speed: <span id="upload-speed">0</span> MB/s</span>

@@ -437,7 +437,7 @@ export default function FindForm() {
             : <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center"><i className="fas fa-image text-gray-600 text-3xl" /></div>
           }
           {isSelected && (
-            <div className="absolute inset-0 bg-netflix-red bg-opacity-20 flex items-start justify-end p-2">
+            <div className="absolute inset-0 bg-netflix-red/20 flex items-start justify-end p-2">
               <div className="bg-netflix-red rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
                 <i className="fas fa-check text-white text-xs" />
               </div>
@@ -838,7 +838,7 @@ export default function FindForm() {
                         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-1.5">
                           <p className="text-white text-xs truncate">{title}</p>
                         </div>
-                        <div className={`absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center ${isPinned ? 'bg-netflix-red' : 'bg-black bg-opacity-60'}`}>
+                        <div className={`absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center ${isPinned ? 'bg-netflix-red' : 'bg-black/60'}`}>
                           <i className={`fas ${isPinned ? 'fa-check' : 'fa-plus'} text-white text-xs`} />
                         </div>
                       </button>

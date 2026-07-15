@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../../tailwind.config.mjs";
 
 /* Custom NotFlix styles */
 @layer base {
@@ -83,7 +82,7 @@
   }
   
   .carousel-arrow {
-    @apply absolute top-1/2 -translate-y-1/2 z-10 bg-black bg-opacity-70 hover:bg-opacity-90 text-white rounded-full w-10 h-10 flex items-center justify-center cursor-pointer transition-all duration-200;
+    @apply absolute top-1/2 -translate-y-1/2 z-10 bg-black/70 hover:bg-black/90 text-white rounded-full w-10 h-10 flex items-center justify-center cursor-pointer transition-all duration-200;
   }
   
   .carousel-arrow-left {
@@ -116,7 +115,7 @@
   }
   
   .watchlist-btn {
-    @apply absolute top-2 right-2 bg-black bg-opacity-70 border-none rounded-full w-8 h-8 flex items-center justify-center cursor-pointer opacity-0 transition-opacity duration-300 z-10;
+    @apply absolute top-2 right-2 bg-black/70 border-none rounded-full w-8 h-8 flex items-center justify-center cursor-pointer opacity-0 transition-opacity duration-300 z-10;
   }
   
   .movie-card:hover .watchlist-btn {
