@@ -84,6 +84,11 @@ export const tmdbEndpoints = {
   personDetails: (id: number) => `/person/${id}`,
   personMovieCredits: (id: number) => `/person/${id}/movie_credits`,
   personTvCredits: (id: number) => `/person/${id}/tv_credits`,
+  personCombinedCredits: (id: number) => `/person/${id}/combined_credits`,
+  companyDetails: (id: number) => `/company/${id}`,
+  networkDetails: (id: number) => `/network/${id}`,
+  movieWatchProviders: (id: number) => `/movie/${id}/watch/providers`,
+  tvWatchProviders: (id: number) => `/tv/${id}/watch/providers`,
 };
 
 // Import filter types from supabase
@@ -130,6 +135,73 @@ export async function searchActors(query: string): Promise<{ id: number; name: s
   } catch (error) {
     console.error('Error searching actors:', error);
     return [];
+  }
+}
+
+/**
+ * Fetch a person's details (bio, photo, birthday, etc.)
+ */
+export async function getPersonDetails(id: number): Promise<any | null> {
+  try {
+    return await fetchFromTMDB(tmdbEndpoints.personDetails(id));
+  } catch (error) {
+    console.error('Error fetching person details:', error);
+    return null;
+  }
+}
+
+/**
+ * Fetch a person's combined movie + TV credits (both cast and crew roles)
+ */
+export async function getPersonCombinedCredits(id: number): Promise<{ cast: any[]; crew: any[] }> {
+  try {
+    const data = await fetchFromTMDB(tmdbEndpoints.personCombinedCredits(id));
+    return { cast: data.cast || [], crew: data.crew || [] };
+  } catch (error) {
+    console.error('Error fetching person combined credits:', error);
+    return { cast: [], crew: [] };
+  }
+}
+
+/**
+ * Fetch a production company's details (name, logo, description, etc.)
+ */
+export async function getCompanyDetails(id: number): Promise<any | null> {
+  try {
+    return await fetchFromTMDB(tmdbEndpoints.companyDetails(id));
+  } catch (error) {
+    console.error('Error fetching company details:', error);
+    return null;
+  }
+}
+
+/**
+ * Fetch a TV network's details (name, logo, etc.)
+ */
+export async function getNetworkDetails(id: number): Promise<any | null> {
+  try {
+    return await fetchFromTMDB(tmdbEndpoints.networkDetails(id));
+  } catch (error) {
+    console.error('Error fetching network details:', error);
+    return null;
+  }
+}
+
+/**
+ * Fetch watch providers (streaming platforms) for a movie or TV show, for a given region
+ */
+export async function getWatchProvidersForRegion(
+  type: 'movie' | 'tv',
+  id: number,
+  region: string = 'US'
+): Promise<{ link?: string; flatrate?: any[]; rent?: any[]; buy?: any[] }> {
+  try {
+    const endpoint = type === 'movie' ? tmdbEndpoints.movieWatchProviders(id) : tmdbEndpoints.tvWatchProviders(id);
+    const data = await fetchFromTMDB(endpoint);
+    return (data.results && data.results[region]) || {};
+  } catch (error) {
+    console.error('Error fetching watch providers:', error);
+    return {};
   }
 }
 

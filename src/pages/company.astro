@@ -1,0 +1,10 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/Navbar.astro';
+import CompanyHub from '../components/CompanyHub';
+---
+
+<Layout title="Company - NotFlix">
+  <Navbar />
+  <CompanyHub client:load />
+</Layout>
