@@ -121,13 +121,25 @@ import { createUrl } from '../lib/utils';
         <h2 class="text-3xl font-bold text-white mb-6">Cast</h2>
         <div id="cast-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6"></div>
       </section>
-      
+
+      <!-- Credits & Production (clickable links to person/company/network hub pages) -->
+      <section class="mb-12 hidden" id="credits-section">
+        <h2 class="text-3xl font-bold text-white mb-6">Credits &amp; Production</h2>
+        <div id="credits-grid" class="bg-gray-800 rounded-lg p-6"></div>
+      </section>
+
       <!-- Details -->
       <section class="mb-12">
         <h2 class="text-3xl font-bold text-white mb-6">Details</h2>
         <div id="content-details" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
       </section>
-      
+
+      <!-- Where to Watch (clickable links to provider hub page) -->
+      <section class="mb-12 hidden" id="providers-section">
+        <h2 class="text-3xl font-bold text-white mb-6">Where to Watch</h2>
+        <div id="providers-grid" class="flex flex-wrap gap-3"></div>
+      </section>
+
     </main>
   </div>
 </Layout>
@@ -252,23 +264,56 @@ import { createUrl } from '../lib/utils';
       }
       
       const content = await contentResponse.json();
-      
+
       // Check if content was actually returned
       if (!content || !content.id) {
         throw new Error(`${type === 'movie' ? 'Movie' : 'TV show'} data is invalid`);
       }
-      
+
       window.currentContent = content;
-      
-      return { content, cast: credits.cast.slice(0, 10) };
+
+      // Watch providers (streaming platforms) - optional, don't fail the page if this fails
+      let watchProviders = {};
+      try {
+        const providersResponse = await fetch(`${BASE_URL}/${type}/${id}/watch/providers?api_key=${API_KEY}`);
+        if (providersResponse.ok) {
+          const providersData = await providersResponse.json();
+          watchProviders = (providersData.results && providersData.results.US) || {};
+        }
+      } catch (providersError) {
+        console.warn('Could not fetch watch providers:', providersError);
+      }
+
+      return { content, cast: credits.cast.slice(0, 10), crew: credits.crew || [], watchProviders };
     } catch (error) {
       console.error('Error fetching content data:', error);
       throw error;
     }
   }
   
+  // Dedupe a list of TMDB people/companies by id, keeping first occurrence
+  function dedupeById(list) {
+    const map = new Map();
+    (list || []).forEach(item => { if (!map.has(item.id)) map.set(item.id, item); });
+    return Array.from(map.values());
+  }
+
+  // Build one "label: linked names" row for the credits box, or '' if empty
+  function creditRow(label, people, hrefBuilder) {
+    if (!people || people.length === 0) return '';
+    const links = people.map(p =>
+      `<a href="${hrefBuilder(p)}" class="text-white hover:text-red-500 underline decoration-gray-600 transition-colors">${p.name}</a>`
+    ).join(', ');
+    return `
+      <div>
+        <h3 class="text-gray-400 text-sm mb-1">${label}</h3>
+        <p>${links}</p>
+      </div>
+    `;
+  }
+
   // Populate content
-  function populateContent(content, cast, type) {
+  function populateContent(content, cast, crew, watchProviders, type) {
     const backdropUrl = content.backdrop_path 
       ? getImageUrl(content.backdrop_path, 'original')
       : getImageUrl(content.poster_path, 'original');
@@ -408,20 +453,69 @@ import { createUrl } from '../lib/utils';
     // Overview
     document.getElementById('content-overview').textContent = content.overview;
     
-    // Cast
+    // Cast (clickable through to each actor's hub page)
     const castHtml = cast.map(actor => `
-      <div class="text-center">
-        <img 
-          src="${getImageUrl(actor.profile_path, 'w185')}" 
+      <a href="${createUrl(`/person?id=${actor.id}`)}" class="text-center block group">
+        <img
+          src="${getImageUrl(actor.profile_path, 'w185')}"
           alt="${actor.name}"
-          class="w-full aspect-[2/3] object-cover rounded-lg mb-2"
+          class="w-full aspect-[2/3] object-cover rounded-lg mb-2 group-hover:scale-105 transition-transform"
         />
-        <p class="font-semibold text-white text-sm">${actor.name}</p>
+        <p class="font-semibold text-white text-sm group-hover:text-red-500 transition-colors">${actor.name}</p>
         <p class="text-gray-400 text-xs">${actor.character}</p>
-      </div>
+      </a>
     `).join('');
     document.getElementById('cast-grid').innerHTML = castHtml;
-    
+
+    // Credits & Production: director/writers/producers link to person pages,
+    // production companies/networks link to their own hub pages
+    const directors = dedupeById(crew.filter(c => c.job === 'Director'));
+    const writers = dedupeById(crew.filter(c => ['Writer', 'Screenplay', 'Story'].includes(c.job)));
+    const producers = dedupeById(crew.filter(c => ['Producer', 'Executive Producer'].includes(c.job)));
+    const companiesOrNetworks = type === 'movie' ? (content.production_companies || []) : (content.networks || []);
+
+    const creditsHtml = [
+      creditRow('Directed by', directors, p => createUrl(`/person?id=${p.id}`)),
+      creditRow('Written by', writers, p => createUrl(`/person?id=${p.id}`)),
+      creditRow('Produced by', producers, p => createUrl(`/person?id=${p.id}`)),
+      creditRow(
+        type === 'movie' ? 'Production Companies' : 'Networks',
+        companiesOrNetworks,
+        p => createUrl(`${type === 'movie' ? '/company' : '/network'}?id=${p.id}`)
+      ),
+    ].filter(Boolean).join('');
+
+    const creditsSection = document.getElementById('credits-section');
+    if (creditsHtml) {
+      document.getElementById('credits-grid').innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">${creditsHtml}</div>`;
+      creditsSection.classList.remove('hidden');
+    } else {
+      creditsSection.classList.add('hidden');
+    }
+
+    // Where to Watch: streaming platforms link to their own provider hub page
+    const allProviders = [
+      ...(watchProviders.flatrate || []),
+      ...(watchProviders.rent || []),
+      ...(watchProviders.buy || []),
+    ];
+    const uniqueProviders = Array.from(new Map(allProviders.map(p => [p.provider_id, p])).values());
+    const providersSection = document.getElementById('providers-section');
+    if (uniqueProviders.length > 0) {
+      document.getElementById('providers-grid').innerHTML = uniqueProviders.map(p => `
+        <a
+          href="${createUrl(`/provider?id=${p.provider_id}&name=${encodeURIComponent(p.provider_name)}&logo=${encodeURIComponent(p.logo_path || '')}`)}"
+          class="bg-gray-800 hover:bg-gray-700 transition-colors rounded-lg p-2 block"
+          title="${p.provider_name}"
+        >
+          <img src="${getImageUrl(p.logo_path, 'w92')}" alt="${p.provider_name}" class="w-12 h-12 rounded object-cover" />
+        </a>
+      `).join('');
+      providersSection.classList.remove('hidden');
+    } else {
+      providersSection.classList.add('hidden');
+    }
+
     // Details
     let detailsHtml;
     if (type === 'movie') {
@@ -611,10 +705,10 @@ import { createUrl } from '../lib/utils';
       contentId = urlData.id;
       
       console.log('Fetching content for type:', contentType, 'id:', contentId);
-      const { content, cast } = await fetchContentData(contentType, contentId);
+      const { content, cast, crew, watchProviders } = await fetchContentData(contentType, contentId);
       console.log('Content fetched successfully:', content);
-      
-      populateContent(content, cast, contentType);
+
+      populateContent(content, cast, crew, watchProviders, contentType);
       
       // Hide loading, show content
       document.getElementById('loading-screen').classList.add('hidden');

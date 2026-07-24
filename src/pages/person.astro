@@ -1,0 +1,11 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/Navbar.astro';
+import PersonHub from '../components/PersonHub.tsx';
+---
+
+<Layout title="Person - NotFlix">
+  <Navbar />
+
+  <PersonHub client:load />
+</Layout>

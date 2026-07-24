@@ -1,0 +1,10 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/Navbar.astro';
+import NetworkHub from '../components/NetworkHub';
+---
+
+<Layout title="Network - NotFlix">
+  <Navbar />
+  <NetworkHub client:load />
+</Layout>

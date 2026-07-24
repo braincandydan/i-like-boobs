@@ -1,0 +1,10 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/Navbar.astro';
+import ProviderHub from '../components/ProviderHub';
+---
+
+<Layout title="Streaming Provider - NotFlix">
+  <Navbar />
+  <ProviderHub client:load />
+</Layout>
