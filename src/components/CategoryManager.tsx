@@ -3,16 +3,18 @@ import { useStore } from '@nanostores/react';
 import { supabase, isSupabaseConfigured, type HomepageSection, type CustomSection, type TMDBFilters } from '../lib/supabase';
 import { DEFAULT_HOMEPAGE_SECTIONS } from '../lib/supabase';
 import { $user } from '../stores/auth';
-import { 
-  fetchFromTMDB, 
-  tmdbEndpoints, 
-  getImageUrl, 
+import {
+  fetchFromTMDB,
+  tmdbEndpoints,
+  getImageUrl,
   fetchGenres,
   discoverWithFilters,
+  getMoviesByDirector,
   sortByOptions,
   tvSortByOptions,
   searchKeywords,
   searchCompanies,
+  searchActors,
   getAllMovieCertifications
 } from '../lib/tmdb';
 
@@ -69,6 +71,10 @@ export default function CategoryManager() {
   const [companySearchResults, setCompanySearchResults] = useState<{ id: number; name: string; logo_path?: string }[]>([]);
   const [searchingCompanies, setSearchingCompanies] = useState(false);
   const [selectedCompanies, setSelectedCompanies] = useState<{ id: number; name: string; logo_path?: string }[]>([]);
+  const [directorSearchQuery, setDirectorSearchQuery] = useState('');
+  const [directorSearchResults, setDirectorSearchResults] = useState<{ id: number; name: string; profile_path?: string }[]>([]);
+  const [searchingDirectors, setSearchingDirectors] = useState(false);
+  const [selectedDirector, setSelectedDirector] = useState<{ id: number; name: string; profile_path?: string } | null>(null);
   const [filterPreview, setFilterPreview] = useState<Movie[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [activePage, setActivePage] = useState<PageOption | 'all'>('all');
@@ -107,12 +113,15 @@ export default function CategoryManager() {
       await loadGenres(filters.media_type);
     }
     
-    // Reset company selection (user will need to re-select if they want to edit)
-    // This is because we only store company IDs, not full company objects
+    // Reset company/director selection (user will need to re-select if they want to edit)
+    // This is because we only store IDs, not full company/person objects
     setSelectedCompanies([]);
     setCompanySearchQuery('');
     setCompanySearchResults([]);
-    
+    setSelectedDirector(null);
+    setDirectorSearchQuery('');
+    setDirectorSearchResults([]);
+
     setEditingFilters(section.id);
   };
 
@@ -423,6 +432,42 @@ export default function CategoryManager() {
     });
   };
 
+  const handleDirectorSearch = async (query: string) => {
+    setDirectorSearchQuery(query);
+    if (!query.trim()) {
+      setDirectorSearchResults([]);
+      return;
+    }
+
+    setSearchingDirectors(true);
+    try {
+      const results = await searchActors(query);
+      setDirectorSearchResults(results);
+    } catch (error) {
+      console.error('Error searching directors:', error);
+      setDirectorSearchResults([]);
+    } finally {
+      setSearchingDirectors(false);
+    }
+  };
+
+  const selectDirector = (person: { id: number; name: string; profile_path?: string }) => {
+    setSelectedDirector(person);
+    setTmdbFilters({
+      ...tmdbFilters,
+      media_type: 'movie',
+      director_id: person.id
+    });
+    setDirectorSearchQuery('');
+    setDirectorSearchResults([]);
+  };
+
+  const clearDirector = () => {
+    setSelectedDirector(null);
+    const { director_id, ...rest } = tmdbFilters;
+    setTmdbFilters(rest);
+  };
+
   const previewFilters = async () => {
     if (!tmdbFilters.media_type) {
       setMessage({ type: 'error', text: 'Please select a media type' });
@@ -431,8 +476,10 @@ export default function CategoryManager() {
 
     setLoadingPreview(true);
     try {
-      const results = await discoverWithFilters(tmdbFilters.media_type, tmdbFilters, 12);
-      setFilterPreview(results);
+      const { results } = tmdbFilters.director_id
+        ? await getMoviesByDirector(tmdbFilters.director_id)
+        : await discoverWithFilters(tmdbFilters.media_type, tmdbFilters, 1);
+      setFilterPreview(results.slice(0, 12));
       if (results.length === 0) {
         setMessage({ type: 'error', text: 'No results found with these filters. Try adjusting your criteria.' });
       }
@@ -467,14 +514,16 @@ export default function CategoryManager() {
 
       if (categoryType === 'auto' && tmdbFilters.media_type) {
         // Auto-generated category with TMDB filters
-        const results = await discoverWithFilters(tmdbFilters.media_type, tmdbFilters, 20);
-        
+        const { results } = tmdbFilters.director_id
+          ? await getMoviesByDirector(tmdbFilters.director_id)
+          : await discoverWithFilters(tmdbFilters.media_type, tmdbFilters, 1);
+
         if (results.length === 0) {
           throw new Error('No results found with the selected filters. Please adjust your criteria.');
         }
 
         // Create custom section with auto-generated movies
-        const movies = results.map((movie: any) => ({
+        const movies = results.slice(0, 20).map((movie: any) => ({
           id: movie.id,
           title: movie.title || movie.name,
           poster_path: movie.poster_path || null,
@@ -576,6 +625,9 @@ export default function CategoryManager() {
       setSelectedCompanies([]);
       setCompanySearchQuery('');
       setCompanySearchResults([]);
+      setSelectedDirector(null);
+      setDirectorSearchQuery('');
+      setDirectorSearchResults([]);
       setFilterPreview([]);
       await loadSections();
     } catch (error: any) {
@@ -1026,6 +1078,7 @@ export default function CategoryManager() {
                   <div>
                     <label className="block text-white mb-2">Media Type *</label>
                     <select
+                      disabled={!!tmdbFilters.director_id}
                       value={tmdbFilters.media_type || 'movie'}
                       onChange={async (e) => {
                         const newType = e.target.value as 'movie' | 'tv';
@@ -1033,11 +1086,14 @@ export default function CategoryManager() {
                         const genres = await fetchGenres(newType);
                         setAvailableGenres(genres);
                       }}
-                      className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                      className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50"
                     >
                       <option value="movie">Movies</option>
                       <option value="tv">TV Shows</option>
                     </select>
+                    {tmdbFilters.director_id && (
+                      <p className="text-gray-400 text-xs mt-1">Director categories are always movies.</p>
+                    )}
                   </div>
 
                   {/* Genres */}
@@ -1045,12 +1101,13 @@ export default function CategoryManager() {
                     <label className="block text-white mb-2">Genres (optional)</label>
                     <select
                       multiple
+                      disabled={!!tmdbFilters.director_id}
                       value={tmdbFilters.with_genres?.map(String) || []}
                       onChange={(e) => {
                         const selected = Array.from(e.target.selectedOptions, opt => parseInt(opt.value));
                         setTmdbFilters({ ...tmdbFilters, with_genres: selected });
                       }}
-                      className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 h-32"
+                      className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 h-32 disabled:opacity-50"
                     >
                       {availableGenres.map(genre => (
                         <option key={genre.id} value={genre.id}>{genre.name}</option>
@@ -1065,10 +1122,11 @@ export default function CategoryManager() {
                     <div className="relative">
                       <input
                         type="text"
+                        disabled={!!tmdbFilters.director_id}
                         value={companySearchQuery}
                         onChange={(e) => handleCompanySearch(e.target.value)}
                         placeholder="Search for companies..."
-                        className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                        className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50"
                       />
                       {searchingCompanies && (
                         <div className="absolute right-3 top-2.5">
@@ -1076,7 +1134,7 @@ export default function CategoryManager() {
                         </div>
                       )}
                     </div>
-                    
+
                     {/* Search Results Dropdown */}
                     {companySearchResults.length > 0 && (
                       <div className="mt-2 max-h-48 overflow-y-auto bg-gray-800 rounded border border-gray-700">
@@ -1129,6 +1187,70 @@ export default function CategoryManager() {
                     )}
                   </div>
 
+                  {/* Director */}
+                  <div>
+                    <label className="block text-white mb-2">Director (optional)</label>
+                    {!selectedDirector ? (
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={directorSearchQuery}
+                          onChange={(e) => handleDirectorSearch(e.target.value)}
+                          placeholder="Search for a director, e.g. Steven Spielberg..."
+                          className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                        />
+                        {searchingDirectors && (
+                          <div className="absolute right-3 top-2.5">
+                            <i className="fas fa-spinner fa-spin text-gray-400"></i>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="bg-red-600 text-white px-3 py-2 rounded-full text-sm inline-flex items-center gap-2">
+                        {selectedDirector.profile_path && (
+                          <img
+                            src={getImageUrl(selectedDirector.profile_path, 'w92')}
+                            alt={selectedDirector.name}
+                            className="w-5 h-5 rounded-full object-cover"
+                          />
+                        )}
+                        <span>{selectedDirector.name}</span>
+                        <button type="button" onClick={clearDirector} className="ml-1 hover:text-red-200">
+                          <i className="fas fa-times"></i>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Search Results Dropdown */}
+                    {directorSearchResults.length > 0 && (
+                      <div className="mt-2 max-h-48 overflow-y-auto bg-gray-800 rounded border border-gray-700">
+                        {directorSearchResults.map(person => (
+                          <button
+                            key={person.id}
+                            type="button"
+                            onClick={() => selectDirector(person)}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-700 flex items-center gap-3"
+                          >
+                            {person.profile_path && (
+                              <img
+                                src={getImageUrl(person.profile_path, 'w92')}
+                                alt={person.name}
+                                className="w-8 h-8 rounded-full object-cover"
+                              />
+                            )}
+                            <span className="text-white">{person.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {selectedDirector && (
+                      <p className="text-gray-400 text-xs mt-2">
+                        Category will contain this person's movies as director, sorted by rating (highest to lowest). Genres, Companies, Year, Certification and Sort By below are ignored.
+                      </p>
+                    )}
+                  </div>
+
                   {/* Year Range */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -1137,6 +1259,7 @@ export default function CategoryManager() {
                       </label>
                       <input
                         type="number"
+                        disabled={!!tmdbFilters.director_id}
                         value={tmdbFilters.primary_release_year || tmdbFilters.first_air_date_year || ''}
                         onChange={(e) => {
                           const year = e.target.value ? parseInt(e.target.value) : undefined;
@@ -1149,7 +1272,7 @@ export default function CategoryManager() {
                         placeholder="2023"
                         min="1900"
                         max={new Date().getFullYear() + 1}
-                        className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                        className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50"
                       />
                     </div>
                     <div>
@@ -1159,13 +1282,14 @@ export default function CategoryManager() {
                         step="0.1"
                         min="0"
                         max="10"
+                        disabled={!!tmdbFilters.director_id}
                         value={tmdbFilters['vote_average.gte'] || ''}
                         onChange={(e) => {
                           const rating = e.target.value ? parseFloat(e.target.value) : undefined;
                           setTmdbFilters({ ...tmdbFilters, 'vote_average.gte': rating });
                         }}
                         placeholder="Min rating (0-10)"
-                        className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                        className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50"
                       />
                     </div>
                   </div>
@@ -1178,16 +1302,17 @@ export default function CategoryManager() {
                         <div className="text-gray-400 text-sm">Loading certifications...</div>
                       ) : (
                         <select
+                          disabled={!!tmdbFilters.director_id}
                           value={tmdbFilters.certification || ''}
                           onChange={(e) => {
                             const cert = e.target.value || undefined;
-                            setTmdbFilters({ 
-                              ...tmdbFilters, 
+                            setTmdbFilters({
+                              ...tmdbFilters,
                               certification: cert,
                               certification_country: cert ? 'US' : undefined
                             });
                           }}
-                          className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                          className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50"
                         >
                           <option value="">Any Certification</option>
                           {availableCertifications.map(cert => (
@@ -1205,9 +1330,10 @@ export default function CategoryManager() {
                   <div>
                     <label className="block text-white mb-2">Sort By</label>
                     <select
-                      value={tmdbFilters.sort_by || 'popularity.desc'}
+                      disabled={!!tmdbFilters.director_id}
+                      value={tmdbFilters.director_id ? 'vote_average.desc' : (tmdbFilters.sort_by || 'popularity.desc')}
                       onChange={(e) => setTmdbFilters({ ...tmdbFilters, sort_by: e.target.value })}
-                      className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                      className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50"
                     >
                       {(tmdbFilters.media_type === 'tv' ? tvSortByOptions : sortByOptions).map(option => (
                         <option key={option.value} value={option.value}>{option.label}</option>
@@ -1501,6 +1627,9 @@ export default function CategoryManager() {
                         <div className="p-3 bg-gray-700 rounded">
                           <p className="text-green-400 text-sm mb-2">✓ Filters are configured</p>
                           <div className="text-sm text-gray-300 mb-2">
+                            {section.config.tmdb_filters.director_id && (
+                              <p>Director (TMDB person ID {section.config.tmdb_filters.director_id}), sorted by rating</p>
+                            )}
                             {section.config.tmdb_filters.media_type && (
                               <p>Type: {section.config.tmdb_filters.media_type}</p>
                             )}
@@ -1574,6 +1703,9 @@ export default function CategoryManager() {
                               setSelectedCompanies([]);
                               setCompanySearchQuery('');
                               setCompanySearchResults([]);
+                              setSelectedDirector(null);
+                              setDirectorSearchQuery('');
+                              setDirectorSearchResults([]);
                             }}
                             className="text-gray-400 hover:text-white"
                           >
@@ -1585,17 +1717,21 @@ export default function CategoryManager() {
                         <div>
                           <label className="block text-white mb-2">Media Type *</label>
                           <select
+                            disabled={!!tmdbFilters.director_id}
                             value={tmdbFilters.media_type || 'movie'}
                             onChange={async (e) => {
                               const newType = e.target.value as 'movie' | 'tv';
                               setTmdbFilters({ ...tmdbFilters, media_type: newType });
                               await loadGenres(newType);
                             }}
-                            className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                            className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50"
                           >
                             <option value="movie">Movies</option>
                             <option value="tv">TV Shows</option>
                           </select>
+                          {tmdbFilters.director_id && (
+                            <p className="text-gray-400 text-xs mt-1">Director categories are always movies.</p>
+                          )}
                         </div>
 
                         {/* Genres */}
@@ -1603,12 +1739,13 @@ export default function CategoryManager() {
                           <label className="block text-white mb-2">Genres (optional)</label>
                           <select
                             multiple
+                            disabled={!!tmdbFilters.director_id}
                             value={tmdbFilters.with_genres?.map(String) || []}
                             onChange={(e) => {
                               const selected = Array.from(e.target.selectedOptions, opt => parseInt(opt.value));
                               setTmdbFilters({ ...tmdbFilters, with_genres: selected });
                             }}
-                            className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 h-32"
+                            className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 h-32 disabled:opacity-50"
                           >
                             {availableGenres.map(genre => (
                               <option key={genre.id} value={genre.id}>{genre.name}</option>
@@ -1623,10 +1760,11 @@ export default function CategoryManager() {
                           <div className="relative">
                             <input
                               type="text"
+                              disabled={!!tmdbFilters.director_id}
                               value={companySearchQuery}
                               onChange={(e) => handleCompanySearch(e.target.value)}
                               placeholder="Search for companies..."
-                              className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                              className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50"
                             />
                             {searchingCompanies && (
                               <div className="absolute right-3 top-2.5">
@@ -1634,7 +1772,7 @@ export default function CategoryManager() {
                               </div>
                             )}
                           </div>
-                          
+
                           {/* Search Results Dropdown */}
                           {companySearchResults.length > 0 && (
                             <div className="mt-2 max-h-48 overflow-y-auto bg-gray-800 rounded border border-gray-700">
@@ -1687,6 +1825,80 @@ export default function CategoryManager() {
                           )}
                         </div>
 
+                        {/* Director */}
+                        <div>
+                          <label className="block text-white mb-2">Director (optional)</label>
+                          {!selectedDirector ? (
+                            <div className="relative">
+                              <input
+                                type="text"
+                                value={directorSearchQuery}
+                                onChange={(e) => handleDirectorSearch(e.target.value)}
+                                placeholder="Search for a director, e.g. Steven Spielberg..."
+                                className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                              />
+                              {searchingDirectors && (
+                                <div className="absolute right-3 top-2.5">
+                                  <i className="fas fa-spinner fa-spin text-gray-400"></i>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="bg-red-600 text-white px-3 py-2 rounded-full text-sm inline-flex items-center gap-2">
+                              {selectedDirector.profile_path && (
+                                <img
+                                  src={getImageUrl(selectedDirector.profile_path, 'w92')}
+                                  alt={selectedDirector.name}
+                                  className="w-5 h-5 rounded-full object-cover"
+                                />
+                              )}
+                              <span>{selectedDirector.name}</span>
+                              <button type="button" onClick={clearDirector} className="ml-1 hover:text-red-200">
+                                <i className="fas fa-times"></i>
+                              </button>
+                            </div>
+                          )}
+
+                          {directorSearchResults.length > 0 && (
+                            <div className="mt-2 max-h-48 overflow-y-auto bg-gray-800 rounded border border-gray-700">
+                              {directorSearchResults.map(person => (
+                                <button
+                                  key={person.id}
+                                  type="button"
+                                  onClick={() => selectDirector(person)}
+                                  className="w-full px-4 py-2 text-left hover:bg-gray-700 flex items-center gap-3"
+                                >
+                                  {person.profile_path && (
+                                    <img
+                                      src={getImageUrl(person.profile_path, 'w92')}
+                                      alt={person.name}
+                                      className="w-8 h-8 rounded-full object-cover"
+                                    />
+                                  )}
+                                  <span className="text-white">{person.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {selectedDirector && (
+                            <p className="text-gray-400 text-xs mt-2">
+                              Category will contain this person's movies as director, sorted by rating (highest to lowest). Genres, Companies, Year, Certification and Sort By below are ignored.
+                            </p>
+                          )}
+
+                          {!selectedDirector && tmdbFilters.director_id && (
+                            <p className="text-yellow-400 text-xs mt-2">
+                              A director filter is saved on this category (ID {tmdbFilters.director_id}). Search and re-select the director above to change it, or clear it below.
+                            </p>
+                          )}
+                          {!selectedDirector && tmdbFilters.director_id && (
+                            <button type="button" onClick={clearDirector} className="text-gray-400 hover:text-white text-xs underline mt-1">
+                              Clear saved director
+                            </button>
+                          )}
+                        </div>
+
                         {/* Year Range */}
                         <div className="grid grid-cols-2 gap-4">
                           <div>
@@ -1695,6 +1907,7 @@ export default function CategoryManager() {
                             </label>
                             <input
                               type="number"
+                              disabled={!!tmdbFilters.director_id}
                               value={tmdbFilters.primary_release_year || tmdbFilters.first_air_date_year || ''}
                               onChange={(e) => {
                                 const year = e.target.value ? parseInt(e.target.value) : undefined;
@@ -1707,7 +1920,7 @@ export default function CategoryManager() {
                               placeholder="2023"
                               min="1900"
                               max={new Date().getFullYear() + 1}
-                              className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                              className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50"
                             />
                           </div>
                           <div>
@@ -1717,13 +1930,14 @@ export default function CategoryManager() {
                               step="0.1"
                               min="0"
                               max="10"
+                              disabled={!!tmdbFilters.director_id}
                               value={tmdbFilters['vote_average.gte'] || ''}
                               onChange={(e) => {
                                 const rating = e.target.value ? parseFloat(e.target.value) : undefined;
                                 setTmdbFilters({ ...tmdbFilters, 'vote_average.gte': rating });
                               }}
                               placeholder="Min rating (0-10)"
-                              className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                              className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50"
                             />
                           </div>
                         </div>
@@ -1736,16 +1950,17 @@ export default function CategoryManager() {
                               <div className="text-gray-400 text-sm">Loading certifications...</div>
                             ) : (
                               <select
+                                disabled={!!tmdbFilters.director_id}
                                 value={tmdbFilters.certification || ''}
                                 onChange={(e) => {
                                   const cert = e.target.value || undefined;
-                                  setTmdbFilters({ 
-                                    ...tmdbFilters, 
+                                  setTmdbFilters({
+                                    ...tmdbFilters,
                                     certification: cert,
                                     certification_country: cert ? 'US' : undefined
                                   });
                                 }}
-                                className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                                className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50"
                               >
                                 <option value="">Any Certification</option>
                                 {availableCertifications.map(cert => (
@@ -1763,9 +1978,10 @@ export default function CategoryManager() {
                         <div>
                           <label className="block text-white mb-2">Sort By</label>
                           <select
-                            value={tmdbFilters.sort_by || 'popularity.desc'}
+                            disabled={!!tmdbFilters.director_id}
+                            value={tmdbFilters.director_id ? 'vote_average.desc' : (tmdbFilters.sort_by || 'popularity.desc')}
                             onChange={(e) => setTmdbFilters({ ...tmdbFilters, sort_by: e.target.value })}
-                            className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
+                            className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50"
                           >
                             {(tmdbFilters.media_type === 'tv' ? tvSortByOptions : sortByOptions).map(option => (
                               <option key={option.value} value={option.value}>{option.label}</option>
@@ -1842,6 +2058,9 @@ export default function CategoryManager() {
                       <div className="p-3 bg-gray-700 rounded">
                         <p className="text-green-400 text-sm mb-2">✓ Auto-Generated Category</p>
                         <div className="text-sm text-gray-300 mb-2">
+                          {section.config.tmdb_filters.director_id && (
+                            <p>Director (TMDB person ID {section.config.tmdb_filters.director_id}), sorted by rating</p>
+                          )}
                           {section.config.tmdb_filters.media_type && (
                             <p>Type: {section.config.tmdb_filters.media_type}</p>
                           )}

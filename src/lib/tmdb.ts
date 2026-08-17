@@ -206,6 +206,38 @@ export async function getWatchProvidersForRegion(
 }
 
 /**
+ * Fetch all movies a person directed, sorted by rating (highest to lowest).
+ * TMDB's /discover endpoint has no "director" parameter, so this pulls the
+ * person's movie credits and keeps only crew entries where job === 'Director'.
+ */
+export async function getMoviesByDirector(
+  personId: number
+): Promise<{ results: any[]; total_pages: number; total_results: number }> {
+  try {
+    const data = await fetchFromTMDB(tmdbEndpoints.personMovieCredits(personId));
+    const directingCredits = (data.crew || []).filter((credit: any) => credit.job === 'Director');
+
+    // A person can have more than one "Director" crew entry for the same movie
+    const uniqueMovies = Array.from(
+      new Map(directingCredits.map((movie: any) => [movie.id, movie])).values()
+    );
+
+    const sorted = (uniqueMovies as any[])
+      .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0))
+      .map(movie => ({ ...movie, media_type: 'movie' }));
+
+    return {
+      results: sorted,
+      total_pages: 1,
+      total_results: sorted.length,
+    };
+  } catch (error) {
+    console.error('Error fetching movies by director:', error);
+    return { results: [], total_pages: 1, total_results: 0 };
+  }
+}
+
+/**
  * Discover movies or TV shows with filters
  * Uses TMDB discover API with comprehensive filter support
  */

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase, isSupabaseConfigured, type HomepageSection, type CustomSection } from '../lib/supabase';
-import { fetchFromTMDB, tmdbEndpoints, getImageUrl, discoverWithFilters } from '../lib/tmdb';
+import { fetchFromTMDB, tmdbEndpoints, getImageUrl, discoverWithFilters, getMoviesByDirector } from '../lib/tmdb';
 import { createUrl } from '../lib/utils';
 import WatchlistButton from './WatchlistButton';
 
@@ -235,17 +235,16 @@ export default function HomepageSections() {
           // Check if section has TMDB filters
           if (section.config?.tmdb_filters && section.config.tmdb_filters.media_type) {
             // Load with TMDB filters
-            const movies = await discoverWithFilters(
-              section.config.tmdb_filters.media_type,
-              section.config.tmdb_filters,
-              12
-            );
+            const filters = section.config.tmdb_filters;
+            const { results: movies } = filters.director_id
+              ? await getMoviesByDirector(filters.director_id)
+              : await discoverWithFilters(filters.media_type, filters, 1);
             if (movies && movies.length > 0) {
               loadedSections.push({
                 id: section.id,
                 title: section.title,
-                movies: movies,
-                mediaType: section.config.tmdb_filters.media_type,
+                movies: movies.slice(0, 12),
+                mediaType: filters.media_type,
                 section_key: section.section_key,
                 section_type: 'builtin',
                 section_id: section.id,
@@ -270,17 +269,16 @@ export default function HomepageSections() {
           // Check if custom section has TMDB filters for auto-generation
           if (section.config?.tmdb_filters && section.config.tmdb_filters.media_type) {
             // Auto-generated category - fetch from TMDB
-            const movies = await discoverWithFilters(
-              section.config.tmdb_filters.media_type,
-              section.config.tmdb_filters,
-              12
-            );
+            const filters = section.config.tmdb_filters;
+            const { results: movies } = filters.director_id
+              ? await getMoviesByDirector(filters.director_id)
+              : await discoverWithFilters(filters.media_type, filters, 1);
             if (movies && movies.length > 0) {
               loadedSections.push({
                 id: section.id,
                 title: section.title,
-                movies: movies,
-                mediaType: section.config.tmdb_filters.media_type,
+                movies: movies.slice(0, 12),
+                mediaType: filters.media_type,
                 section_key: section.section_key,
                 section_type: 'custom',
                 section_id: section.id,
