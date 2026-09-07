@@ -420,9 +420,14 @@ import { createUrl } from '../lib/utils';
         onVideoReady(stereoEnabled);
       };
 
-      // Native HLS support (Safari) - no library needed
+      // Native HLS support (Safari) - no library needed.
+      // Only force crossOrigin when stereo mode needs to read video frames
+      // into a WebGL texture - it requires CORS and would otherwise break
+      // plain playback of sources that don't send CORS headers.
       if (webtorrentPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-        webtorrentPlayer.crossOrigin = 'anonymous';
+        if (stereoEnabled) {
+          webtorrentPlayer.crossOrigin = 'anonymous';
+        }
         webtorrentPlayer.src = url;
         webtorrentPlayer.addEventListener('loadedmetadata', onReady, { once: true });
         webtorrentPlayer.play().catch(() => {});
@@ -451,14 +456,21 @@ import { createUrl } from '../lib/utils';
           onReady();
         });
         hls.on(Hls.Events.ERROR, (_event: any, data: any) => {
-          if (data.fatal) {
-            webtorrentStatus.innerHTML = `
-              <div class="flex items-center space-x-2">
-                <i class="fas fa-exclamation-circle text-red-400"></i>
-                <span>Stream error: ${data.details}</span>
-              </div>
-            `;
-          }
+          if (!data.fatal) return;
+          // A load error with no HTTP status usually means the request
+          // never got a response body back - the most common cause is the
+          // server not sending CORS headers, which a JS-based HLS player
+          // can't work around.
+          const looksLikeCors = data.details?.includes('LoadError') && !data.response?.code;
+          const message = looksLikeCors
+            ? `This stream's server doesn't allow cross-origin playback (no CORS headers) - can't be played here`
+            : `Stream error: ${data.details}`;
+          webtorrentStatus.innerHTML = `
+            <div class="flex items-center space-x-2">
+              <i class="fas fa-exclamation-circle text-red-400"></i>
+              <span>${message}</span>
+            </div>
+          `;
         });
       } catch (error: any) {
         console.error('Error loading HLS stream:', error);
