@@ -430,6 +430,17 @@ import { createUrl } from '../lib/utils';
         }
         webtorrentPlayer.src = url;
         webtorrentPlayer.addEventListener('loadedmetadata', onReady, { once: true });
+        webtorrentPlayer.addEventListener('error', () => {
+          const message = stereoEnabled
+            ? `Couldn't load this stream with stereoscopic VR enabled - its server likely doesn't allow cross-origin playback (no CORS headers), which VR mode requires. Try again with VR off, or use a different source.`
+            : `Couldn't load this stream (network or format error)`;
+          webtorrentStatus.innerHTML = `
+            <div class="flex items-center space-x-2">
+              <i class="fas fa-exclamation-circle text-red-400"></i>
+              <span>${message}</span>
+            </div>
+          `;
+        }, { once: true });
         webtorrentPlayer.play().catch(() => {});
         return;
       }
@@ -599,9 +610,18 @@ import { createUrl } from '../lib/utils';
 
       await renderer.xr.setSession(session);
 
+      let taintErrorShown = false;
       renderer.setAnimationLoop(() => {
-        videoTexture.needsUpdate = true;
-        renderer.render(scene, camera);
+        try {
+          videoTexture.needsUpdate = true;
+          renderer.render(scene, camera);
+        } catch (err: any) {
+          if (!taintErrorShown) {
+            taintErrorShown = true;
+            alert("Can't render this video in VR - its server doesn't allow cross-origin access to the video data (no CORS headers), which VR mode requires.");
+          }
+          session.end().catch(() => {});
+        }
       });
 
       session.addEventListener('end', () => {
