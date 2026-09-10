@@ -357,12 +357,6 @@ import { createUrl } from '../lib/utils';
     return originalWindowOpen.call(window, url, name, specs);
   };
   
-  // Block popunder attempts
-  window.addEventListener('beforeunload', (e) => {
-    // Prevent any popunder attempts on page unload
-    e.preventDefault();
-  });
-  
   // Block focus/blur popup tricks
   let userInteracted = false;
   document.addEventListener('click', () => { userInteracted = true; }, { once: true });

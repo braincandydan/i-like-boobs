@@ -151,7 +151,7 @@ export default function WatchlistDisplay() {
             {/* Title and link */}
             <div className="mt-3">
               <a
-                href={`/details/${item.mediaType}/${item.movieId}`}
+                href={createUrl(`/details?type=${item.mediaType}&id=${item.movieId}`)}
                 className="text-white font-medium hover:text-blue-400 transition-colors duration-200 line-clamp-2"
               >
                 {item.title}
