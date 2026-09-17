@@ -3,17 +3,34 @@ import Layout from '../layouts/Layout.astro';
 import Navbar from '../components/Navbar.astro';
 import HomepageSections from '../components/HomepageSections';
 import MovieCard from '../components/MovieCard.astro';
-import { fetchFromTMDB, tmdbEndpoints } from '../lib/tmdb';
+import { fetchFromTMDB, tmdbEndpoints, discoverWithFilters } from '../lib/tmdb';
 import { createUrl } from '../lib/utils';
 import rawRecommendations from '../data/recommendations.json';
 
+// Streaming platforms to surface as their own "Popular on X" rows.
+// TMDB watch provider IDs: https://developer.themoviedb.org/reference/watch-providers-movie-list
+const STREAMING_PLATFORMS = [
+  { id: 'netflix', providerId: '8', title: 'Popular on Netflix' },
+  { id: 'hulu', providerId: '15', title: 'Popular on Hulu' },
+  { id: 'disney-plus', providerId: '337', title: 'Popular on Disney+' },
+] as const;
+const WATCH_REGION = 'US';
+
 // Fetch default data at build time for fallback/SEO - always fetch this
-const [trendingData, popularMoviesData, topRatedData, popularTvData, upcomingData] = await Promise.all([
+const [trendingData, popularMoviesData, topRatedData, popularTvData, upcomingData, ...streamingData] = await Promise.all([
   fetchFromTMDB(tmdbEndpoints.trending).catch(() => ({ results: [] })),
   fetchFromTMDB(tmdbEndpoints.popularMovies).catch(() => ({ results: [] })),
   fetchFromTMDB(tmdbEndpoints.topRatedMovies).catch(() => ({ results: [] })),
   fetchFromTMDB(tmdbEndpoints.popularTv).catch(() => ({ results: [] })),
   fetchFromTMDB(tmdbEndpoints.upcomingMovies).catch(() => ({ results: [] })),
+  ...STREAMING_PLATFORMS.map((platform) =>
+    discoverWithFilters('movie', {
+      with_watch_providers: platform.providerId,
+      watch_region: WATCH_REGION,
+      with_watch_monetization_types: 'flatrate',
+      sort_by: 'popularity.desc',
+    }).catch(() => ({ results: [], total_pages: 0, total_results: 0 }))
+  ),
 ]);
 
 // Fetch each recommendation from TMDB at build time
@@ -62,7 +79,13 @@ const sections = [
     title: 'Upcoming Movies',
     movies: upcomingData.results?.slice(0, 12) || [],
     mediaType: 'movie' as const
-  }
+  },
+  ...STREAMING_PLATFORMS.map((platform, index) => ({
+    id: `streaming-${platform.id}`,
+    title: platform.title,
+    movies: streamingData[index]?.results?.slice(0, 12) || [],
+    mediaType: 'movie' as const
+  }))
 ].filter(section => section.movies.length > 0);
 
 // Hero movie (first trending movie)
