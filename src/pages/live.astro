@@ -1,7 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Navbar from '../components/Navbar.astro';
-import { liveStreams, replayStreams, f1DashUrl } from '../data/live';
+import { liveStreams, replayStreams, liveDataApp } from '../data/live';
 
 // Streams are defined in src/data/live.ts — add your links there.
 const sections = [
@@ -44,23 +44,21 @@ const sections = [
       </section>
     ))}
 
-    {f1DashUrl && (
+    {liveDataApp.url && (
       <section class="mb-12">
         <h2 class="text-2xl font-bold text-white mb-2">Formula 1 — Live Data</h2>
-        <p class="text-gray-400 mb-6">
-          Live timing, leaderboard, tyres and telemetry during sessions, powered by
-          <a href="https://github.com/slowlydev/f1-dash" target="_blank" rel="noopener noreferrer" class="text-netflix-red hover:underline">f1-dash</a>.
-          Data is only live while a session is running.
-        </p>
-        <div class="w-full h-[80vh] bg-black rounded-lg overflow-hidden">
-          <iframe
-            src={f1DashUrl}
-            title="Formula 1 live data dashboard"
-            class="w-full h-full"
-            loading="lazy"
-            referrerpolicy="strict-origin-when-cross-origin"
-          ></iframe>
-        </div>
+        <p class="text-gray-400 mb-6">Live timing and telemetry are available through a separate app.</p>
+        <a
+          href={liveDataApp.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="block max-w-xl p-6 rounded-lg bg-netflix-gray hover:bg-netflix-red transition-colors duration-200"
+        >
+          <div class="text-xl font-bold text-white mb-2">
+            {liveDataApp.name} <i class="fas fa-external-link-alt text-sm ml-1"></i>
+          </div>
+          <p class="text-gray-200">{liveDataApp.description}</p>
+        </a>
       </section>
     )}
   </main>

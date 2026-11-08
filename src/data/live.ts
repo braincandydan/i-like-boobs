@@ -53,8 +53,13 @@ export const replayStreams: LiveStream[] = [
   // { name: 'Your replay link', url: 'PASTE LINK HERE', type: 'iframe' },
 ];
 
-// ---- LIVE DATA DASHBOARD: embedded on the /live page --------------------------
-// Live timing, leaderboard, tyres and telemetry from the fan-made f1-dash
-// project (https://github.com/slowlydev/f1-dash). Set to '' to hide the section.
-// The domain must also be listed in `frame-src` in src/layouts/Layout.astro.
-export const f1DashUrl = 'https://f1-dash.com';
+// ---- LIVE DATA APP: shown as a link card on the /live page --------------------
+// f1-dash (hosted) was shut down by its author; Nitrous is its desktop successor
+// for live timing and telemetry. It is a separate app, so it is linked, not
+// embedded. Set `url` to '' to hide the card.
+export const liveDataApp = {
+  name: 'Nitrous',
+  url: 'https://nitrous.software',
+  description:
+    'Desktop app (macOS, Linux, Windows) for live Formula 1 timing, leaderboard, tyres and telemetry. Successor to f1-dash.',
+};
