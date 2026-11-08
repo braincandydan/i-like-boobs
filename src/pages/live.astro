@@ -1,12 +1,13 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Navbar from '../components/Navbar.astro';
+import { liveStreams, replayStreams, f1DashUrl } from '../data/live';
 
-// Official FORMULA 1 YouTube channel
-const F1_CHANNEL_ID = 'UCB_qr75-ydFVKSF9Dmo6izg';
-const F1_UPLOADS_PLAYLIST = 'UU' + F1_CHANNEL_ID.slice(2);
-const liveUrl = `https://www.youtube.com/embed/live_stream?channel=${F1_CHANNEL_ID}`;
-const highlightsUrl = `https://www.youtube.com/embed/videoseries?list=${F1_UPLOADS_PLAYLIST}`;
+// Streams are defined in src/data/live.ts — add your links there.
+const sections = [
+  { id: 'live', title: 'Live', blurb: 'Pick a stream below. If a stream is not live right now it may show as offline.', streams: liveStreams },
+  { id: 'replays', title: 'Replays & Highlights', blurb: 'Pick a replay or highlight below.', streams: replayStreams },
+];
 ---
 
 <Layout title="Live - NotFlix">
@@ -15,37 +16,144 @@ const highlightsUrl = `https://www.youtube.com/embed/videoseries?list=${F1_UPLOA
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     <h1 class="text-4xl font-bold text-white mb-12">Live</h1>
 
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-white mb-2">Formula 1 — Live</h2>
-      <p class="text-gray-400 mb-6">
-        Official FORMULA 1 YouTube live streams. If nothing is live right now, the player will show as offline.
-      </p>
-      <div class="aspect-video w-full bg-black rounded-lg overflow-hidden">
-        <iframe
-          src={liveUrl}
-          title="Formula 1 live"
-          class="w-full h-full"
-          allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-          allowfullscreen
-          referrerpolicy="strict-origin-when-cross-origin"
-        ></iframe>
-      </div>
-    </section>
+    {sections.map((section) => (
+      <section class="mb-12 live-section" data-section={section.id}>
+        <h2 class="text-2xl font-bold text-white mb-2">{section.title}</h2>
+        {section.streams.length === 0 ? (
+          <p class="text-gray-400">
+            No streams added yet. Add links in <code class="text-netflix-red">src/data/live.ts</code>.
+          </p>
+        ) : (
+          <>
+            <p class="text-gray-400 mb-6">{section.blurb}</p>
+            <div class="aspect-video w-full bg-black rounded-lg overflow-hidden mb-4 live-player"></div>
+            <div class="flex flex-wrap gap-2 live-buttons">
+              {section.streams.map((stream, i) => (
+                <button
+                  type="button"
+                  data-index={i}
+                  class="live-btn px-4 py-2 rounded-md bg-netflix-gray text-white hover:bg-netflix-red transition-colors duration-200"
+                >
+                  {stream.name}
+                </button>
+              ))}
+            </div>
+            <script type="application/json" class="live-data" set:html={JSON.stringify(section.streams)} />
+          </>
+        )}
+      </section>
+    ))}
 
-    <section>
-      <h2 class="text-2xl font-bold text-white mb-2">Formula 1 — Replays &amp; Highlights</h2>
-      <p class="text-gray-400 mb-6">Latest uploads from the official FORMULA 1 channel.</p>
-      <div class="aspect-video w-full bg-black rounded-lg overflow-hidden">
-        <iframe
-          src={highlightsUrl}
-          title="Formula 1 replays and highlights"
-          class="w-full h-full"
-          loading="lazy"
-          allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-          allowfullscreen
-          referrerpolicy="strict-origin-when-cross-origin"
-        ></iframe>
-      </div>
-    </section>
+    {f1DashUrl && (
+      <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-2">Formula 1 — Live Data</h2>
+        <p class="text-gray-400 mb-6">
+          Live timing, leaderboard, tyres and telemetry during sessions, powered by
+          <a href="https://github.com/slowlydev/f1-dash" target="_blank" rel="noopener noreferrer" class="text-netflix-red hover:underline">f1-dash</a>.
+          Data is only live while a session is running.
+        </p>
+        <div class="w-full h-[80vh] bg-black rounded-lg overflow-hidden">
+          <iframe
+            src={f1DashUrl}
+            title="Formula 1 live data dashboard"
+            class="w-full h-full"
+            loading="lazy"
+            referrerpolicy="strict-origin-when-cross-origin"
+          ></iframe>
+        </div>
+      </section>
+    )}
   </main>
 </Layout>
+
+<style>
+  .live-btn.active {
+    @apply bg-netflix-red;
+  }
+</style>
+
+<script>
+  type Stream = { name: string; url: string; type: 'iframe' | 'hls' };
+
+  let hlsModulePromise: Promise<any> | null = null;
+
+  function setupSection(section: HTMLElement) {
+    const dataEl = section.querySelector('.live-data');
+    const player = section.querySelector<HTMLElement>('.live-player');
+    const buttons = Array.from(section.querySelectorAll<HTMLButtonElement>('.live-btn'));
+    if (!dataEl || !player) return;
+
+    const streams: Stream[] = JSON.parse(dataEl.textContent || '[]');
+    let cleanup: (() => void) | null = null;
+
+    function showMessage(text: string) {
+      player!.innerHTML = '';
+      const p = document.createElement('p');
+      p.className = 'w-full h-full flex items-center justify-center text-gray-300 px-4 text-center';
+      p.textContent = text;
+      player!.appendChild(p);
+    }
+
+    async function play(index: number) {
+      const stream = streams[index];
+      if (!stream) return;
+
+      cleanup?.();
+      cleanup = null;
+      player!.innerHTML = '';
+      buttons.forEach((b, i) => b.classList.toggle('active', i === index));
+
+      if (stream.type === 'iframe') {
+        const iframe = document.createElement('iframe');
+        iframe.src = stream.url;
+        iframe.title = stream.name;
+        iframe.className = 'w-full h-full';
+        iframe.allow = 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen';
+        iframe.allowFullscreen = true;
+        iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+        player!.appendChild(iframe);
+        return;
+      }
+
+      // HLS
+      const video = document.createElement('video');
+      video.className = 'w-full h-full';
+      video.controls = true;
+      video.autoplay = true;
+      video.playsInline = true;
+      player!.appendChild(video);
+
+      try {
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = stream.url;
+          cleanup = () => { video.pause(); video.removeAttribute('src'); video.load(); };
+          return;
+        }
+        hlsModulePromise ??= import(/* @vite-ignore */ 'https://esm.sh/hls.js@1.5.15');
+        const mod: any = await hlsModulePromise;
+        const Hls = mod.default || mod;
+        if (!Hls.isSupported()) {
+          showMessage('This browser cannot play HLS streams.');
+          return;
+        }
+        const hls = new Hls();
+        hls.loadSource(stream.url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.ERROR, (_e: any, data: any) => {
+          if (data.fatal) showMessage(`Could not play "${stream.name}". The stream may be offline or blocking playback.`);
+        });
+        cleanup = () => hls.destroy();
+      } catch {
+        showMessage(`Could not load the player for "${stream.name}".`);
+      }
+    }
+
+    buttons.forEach((btn) => {
+      btn.addEventListener('click', () => play(Number(btn.dataset.index)));
+    });
+
+    play(0);
+  }
+
+  document.querySelectorAll<HTMLElement>('.live-section').forEach(setupSection);
+</script>
