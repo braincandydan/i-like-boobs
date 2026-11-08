@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase, isSupabaseConfigured, type CustomSection, type HomepageSection } from '../lib/supabase';
 import { $user } from '../stores/auth';
 import { useStore } from '@nanostores/react';
@@ -35,13 +35,19 @@ export default function CustomCategoryManager() {
   const [searching, setSearching] = useState(false);
   const [addingMovieId, setAddingMovieId] = useState<string | null>(null);
 
+  const loadRequestId = useRef(0);
+  const movieWriteInFlight = useRef(false);
+  const searchRequestId = useRef(0);
+
+  // Re-run when the user becomes available (auth hydrates after mount)
   useEffect(() => {
     loadCategories();
-  }, []);
+  }, [user?.id]);
 
   const loadCategories = async () => {
     if (!isSupabaseConfigured() || !user) return;
 
+    const requestId = ++loadRequestId.current;
     try {
       const { data, error } = await supabase!
         .from('custom_sections')
@@ -51,12 +57,17 @@ export default function CustomCategoryManager() {
 
       if (error) throw error;
 
+      // Ignore stale responses from older loads
+      if (requestId !== loadRequestId.current) return;
       setCategories((data as CustomSection[]) || []);
     } catch (error: any) {
+      if (requestId !== loadRequestId.current) return;
       console.error('Error loading categories:', error);
       setMessage({ type: 'error', text: error.message || 'Failed to load categories' });
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestId.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -137,12 +148,16 @@ export default function CustomCategoryManager() {
       return;
     }
 
+    const requestId = ++searchRequestId.current;
     setSearching(true);
 
     try {
       const data = await fetchFromTMDB(tmdbEndpoints.search, {
         query: query.trim(),
       });
+
+      // Ignore stale responses from older queries
+      if (requestId !== searchRequestId.current) return;
 
       // Filter to only movies and TV shows
       const results = (data.results || []).filter(
@@ -151,10 +166,13 @@ export default function CustomCategoryManager() {
 
       setSearchResults(results.slice(0, 20)); // Limit to 20 results
     } catch (error: any) {
+      if (requestId !== searchRequestId.current) return;
       console.error('Error searching movies:', error);
       setMessage({ type: 'error', text: 'Failed to search movies' });
     } finally {
-      setSearching(false);
+      if (requestId === searchRequestId.current) {
+        setSearching(false);
+      }
     }
   };
 
@@ -174,12 +192,22 @@ export default function CustomCategoryManager() {
       return;
     }
 
+    if (movieWriteInFlight.current) return;
+    movieWriteInFlight.current = true;
+
     const movieKey = `${movie.id}-${movie.media_type}`;
     setAddingMovieId(movieKey);
     console.log('Adding movie to category:', { categoryId: category.id, movie: movie.title || movie.name });
 
     try {
-      const currentMovies = Array.isArray(category.movies) ? category.movies : [];
+      // Read the latest movies from the database so concurrent edits are not overwritten
+      const { data: fresh, error: freshError } = await supabase!
+        .from('custom_sections')
+        .select('movies')
+        .eq('id', category.id)
+        .single();
+      if (freshError) throw freshError;
+      const currentMovies = Array.isArray(fresh?.movies) ? fresh.movies : [];
       
       // Check if movie already exists
       const alreadyExists = currentMovies.some((m: any) => m.id === movie.id && m.media_type === movie.media_type);
@@ -240,15 +268,25 @@ export default function CustomCategoryManager() {
         text: error.message || 'Failed to add movie. Check console for details.' 
       });
     } finally {
+      movieWriteInFlight.current = false;
       setAddingMovieId(null);
     }
   };
 
   const removeMovieFromCategory = async (category: CustomSection, movieId: number, mediaType: 'movie' | 'tv') => {
     if (!isSupabaseConfigured() || !user) return;
+    if (movieWriteInFlight.current) return;
+    movieWriteInFlight.current = true;
 
     try {
-      const currentMovies = Array.isArray(category.movies) ? category.movies : [];
+      // Read the latest movies from the database so concurrent edits are not overwritten
+      const { data: fresh, error: freshError } = await supabase!
+        .from('custom_sections')
+        .select('movies')
+        .eq('id', category.id)
+        .single();
+      if (freshError) throw freshError;
+      const currentMovies = Array.isArray(fresh?.movies) ? fresh.movies : [];
       const updatedMovies = currentMovies.filter(
         (m: any) => !(m.id === movieId && m.media_type === mediaType)
       );
@@ -274,6 +312,8 @@ export default function CustomCategoryManager() {
     } catch (error: any) {
       console.error('Error removing movie:', error);
       setMessage({ type: 'error', text: error.message || 'Failed to remove movie' });
+    } finally {
+      movieWriteInFlight.current = false;
     }
   };
 

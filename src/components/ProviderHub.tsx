@@ -80,11 +80,13 @@ export default function ProviderHub() {
           discoverWithFilters('movie', {
             with_watch_providers: String(id),
             watch_region: 'US',
+            with_watch_monetization_types: 'flatrate',
             sort_by: 'popularity.desc',
           }).catch(() => ({ results: [], total_pages: 0, total_results: 0 })),
           discoverWithFilters('tv', {
             with_watch_providers: String(id),
             watch_region: 'US',
+            with_watch_monetization_types: 'flatrate',
             sort_by: 'popularity.desc',
           }).catch(() => ({ results: [], total_pages: 0, total_results: 0 })),
         ]);

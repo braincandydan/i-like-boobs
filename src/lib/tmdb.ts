@@ -1,3 +1,5 @@
+import { createUrl } from './utils';
+
 const API_KEY = import.meta.env.PUBLIC_TMDB_API_KEY;
 const BASE_URL = import.meta.env.PUBLIC_TMDB_BASE_URL || 'https://api.themoviedb.org/3';
 const IMAGE_BASE_URL = import.meta.env.PUBLIC_TMDB_IMAGE_BASE_URL || 'https://image.tmdb.org/t/p';
@@ -11,9 +13,14 @@ export async function fetchFromTMDB(endpoint: string, params: Record<string, any
     throw new Error('TMDB API key is not configured');
   }
 
+  // Drop undefined/null values so they aren't sent as the literal string "undefined"/"null"
+  const cleanParams = Object.fromEntries(
+    Object.entries(params).filter(([, v]) => v !== undefined && v !== null)
+  );
+
   const searchParams = new URLSearchParams({
     api_key: API_KEY,
-    ...params,
+    ...cleanParams,
   });
 
   try {
@@ -34,7 +41,7 @@ export async function fetchFromTMDB(endpoint: string, params: Record<string, any
 
 export function getImageUrl(path: string, size: string = 'w500'): string {
   if (!path) {
-    return '/placeholder-poster.jpg';
+    return createUrl('images/placeholder-poster.jpg');
   }
   return `${IMAGE_BASE_URL}/${size}${path}`;
 }
@@ -230,27 +237,39 @@ export async function discoverWithFilters(
       params.with_keywords = params.with_keywords.join(',');
     }
 
-    // Convert companies array to comma-separated string if present
+    // Convert companies array to '|' separated string (match ANY of the companies)
     if (params.with_companies && Array.isArray(params.with_companies)) {
-      params.with_companies = params.with_companies.join(',');
+      params.with_companies = params.with_companies.join('|');
     }
 
-    // Include adult content if certification filter is set (needed for X, NC-17, etc.)
-    // Also include if explicitly requested
-    // Always include adult content when filtering by certification to ensure all ratings are available
-    // Also include for adult certifications (X, NC-17, R18+, etc.)
-    if (params.certification) {
-      params.include_adult = true;
-    } else if (filters.include_adult) {
-      params.include_adult = true;
-    } else {
-      // Default to including adult content for discover API to show all available content
-      params.include_adult = true;
+    // Adult content is excluded unless the caller explicitly asks for it
+    params.include_adult = !!filters.include_adult;
+
+    // Certification filters need a country; default to US
+    if ((params.certification || params['certification.lte'] || params['certification.gte']) && !params.certification_country) {
+      params.certification_country = 'US';
+    }
+
+    if (type === 'tv') {
+      // Movie-only params are not supported by /discover/tv
+      [
+        'certification', 'certification.lte', 'certification.gte', 'certification_country',
+        'include_video', 'primary_release_year', 'primary_release_date.gte', 'primary_release_date.lte',
+        'release_date.gte', 'release_date.lte', 'with_cast', 'with_crew', 'with_people', 'with_release_type',
+      ].forEach(key => delete params[key]);
+
+      // Movie-only sorts -> TV equivalents
+      if (typeof params.sort_by === 'string') {
+        params.sort_by = params.sort_by
+          .replace(/^(primary_release_date|release_date)\./, 'first_air_date.')
+          .replace(/^(original_title|title)\./, 'name.')
+          .replace(/^revenue\./, 'popularity.');
+      }
     }
 
     // Set default sort if not provided
     if (!params.sort_by) {
-      params.sort_by = type === 'movie' ? 'popularity.desc' : 'popularity.desc';
+      params.sort_by = 'popularity.desc';
     }
 
     // Remove media_type from params (it's in the endpoint)

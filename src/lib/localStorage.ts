@@ -176,7 +176,8 @@ export function addToWatchlist(item: Omit<WatchlistItem, 'id' | 'addedAt'>, user
     // Trigger storage event for cross-tab sync
     window.dispatchEvent(new StorageEvent('storage', {
       key: `${STORAGE_KEYS.WATCHLIST}_${id}`,
-      newValue: JSON.stringify(updatedWatchlist)
+      newValue: JSON.stringify(updatedWatchlist),
+      storageArea: localStorage
     }));
     
     return true;
@@ -208,7 +209,8 @@ export function removeFromWatchlist(movieId: number, mediaType: 'movie' | 'tv', 
     // Trigger storage event for cross-tab sync
     window.dispatchEvent(new StorageEvent('storage', {
       key: `${STORAGE_KEYS.WATCHLIST}_${id}`,
-      newValue: JSON.stringify(updatedWatchlist)
+      newValue: JSON.stringify(updatedWatchlist),
+      storageArea: localStorage
     }));
     
     return true;

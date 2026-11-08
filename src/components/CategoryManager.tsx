@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useStore } from '@nanostores/react';
 import { supabase, isSupabaseConfigured, type HomepageSection, type CustomSection, type TMDBFilters } from '../lib/supabase';
 import { DEFAULT_HOMEPAGE_SECTIONS } from '../lib/supabase';
@@ -13,6 +13,7 @@ import {
   tvSortByOptions,
   searchKeywords,
   searchCompanies,
+  getCompanyDetails,
   getAllMovieCertifications
 } from '../lib/tmdb';
 
@@ -73,6 +74,13 @@ export default function CategoryManager() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [activePage, setActivePage] = useState<PageOption | 'all'>('all');
 
+  // Refs to avoid stale reads / overlapping writes when editing custom section movies and searching
+  const customSectionDataRef = useRef<Record<string, CustomSection>>({});
+  customSectionDataRef.current = customSectionData;
+  const movieWriteInFlight = useRef(false);
+  const movieSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const movieSearchRequestId = useRef(0);
+
   useEffect(() => {
     loadSections();
     loadGenres();
@@ -107,11 +115,20 @@ export default function CategoryManager() {
       await loadGenres(filters.media_type);
     }
     
-    // Reset company selection (user will need to re-select if they want to edit)
-    // This is because we only store company IDs, not full company objects
+    // Only company IDs are stored, so look up their details to make them visible/removable
     setSelectedCompanies([]);
     setCompanySearchQuery('');
     setCompanySearchResults([]);
+    if (filters.with_companies && filters.with_companies.length > 0) {
+      const details = await Promise.all(filters.with_companies.map((id) => getCompanyDetails(Number(id))));
+      setSelectedCompanies(
+        filters.with_companies.map((id, i) => ({
+          id: Number(id),
+          name: details[i]?.name || `Company ${id}`,
+          logo_path: details[i]?.logo_path || undefined,
+        }))
+      );
+    }
     
     setEditingFilters(section.id);
   };
@@ -133,6 +150,28 @@ export default function CategoryManager() {
       };
 
       await updateSectionConfig(sectionId, newConfig);
+
+      // Refresh the stored movie snapshot of auto-generated custom categories (best effort)
+      if (section.section_type === 'custom' && section.custom_section_id) {
+        try {
+          const discovered = await discoverWithFilters(tmdbFilters.media_type, tmdbFilters, 1);
+          const movies = (discovered?.results || []).slice(0, 20).map((movie: any) => ({
+            id: movie.id,
+            title: movie.title || movie.name,
+            poster_path: movie.poster_path || null,
+            backdrop_path: movie.backdrop_path || null,
+            overview: movie.overview || null,
+            release_date: movie.release_date || movie.first_air_date || null,
+            media_type: movie.media_type || tmdbFilters.media_type,
+          }));
+          if (movies.length > 0) {
+            await supabase!.from('custom_sections').update({ movies }).eq('id', section.custom_section_id);
+          }
+        } catch (snapshotError) {
+          console.error('Error refreshing category snapshot:', snapshotError);
+        }
+      }
+
       setMessage({ type: 'success', text: 'Filters updated successfully!' });
       setEditingFilters(null);
       await loadSections(); // Reload to get fresh data
@@ -144,7 +183,7 @@ export default function CategoryManager() {
     }
   };
 
-  const loadSections = async () => {
+  const loadSections = async (retried = false) => {
     if (!isSupabaseConfigured()) {
       setMessage({ type: 'error', text: 'Supabase is not configured' });
       setLoading(false);
@@ -167,8 +206,11 @@ export default function CategoryManager() {
       }
 
       if (!data || data.length === 0) {
+        if (retried) {
+          throw new Error('No sections found after initializing defaults');
+        }
         await initializeDefaultSections();
-        await loadSections();
+        await loadSections(true);
         return;
       }
 
@@ -268,7 +310,7 @@ export default function CategoryManager() {
       if (error) throw error;
 
       // Update local state immediately for responsiveness
-      setSections(sections.map(s => 
+      setSections(prev => prev.map(s => 
         s.id === sectionId ? { ...s, config: newConfig } : s
       ));
 
@@ -286,7 +328,7 @@ export default function CategoryManager() {
 
     const currentConfig = section.config || { visible_on: ['homepage'], page_order: {} };
     const visibleOn = currentConfig.visible_on || ['homepage'];
-    const pageOrder = currentConfig.page_order || {};
+    const pageOrder = { ...(currentConfig.page_order || {}) };
 
     const isVisible = visibleOn.includes(page);
     const newVisibleOn = isVisible
@@ -299,15 +341,20 @@ export default function CategoryManager() {
     }
 
     // Update page order for newly visible pages
-    if (!isVisible && !pageOrder[page]) {
+    if (!isVisible && pageOrder[page] === undefined) {
       const maxOrder = Math.max(...Object.values(pageOrder), -1);
       pageOrder[page] = maxOrder + 1;
     }
 
-    await updateSectionConfig(sectionId, {
-      visible_on: newVisibleOn,
-      page_order: pageOrder
-    });
+    try {
+      await updateSectionConfig(sectionId, {
+        visible_on: newVisibleOn,
+        page_order: pageOrder
+      });
+    } catch (error: any) {
+      console.error('Error updating page visibility:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to update page visibility' });
+    }
   };
 
   const updatePageOrder = async (sectionId: string, page: PageOption, direction: 'up' | 'down') => {
@@ -341,9 +388,15 @@ export default function CategoryManager() {
       }
 
       // Swap orders
-      const tempOrder = pageOrder[page] ?? section.order_index;
+      let tempOrder = pageOrder[page] ?? section.order_index;
       const swapSection = visibleOnPage[newIndex];
-      const swapOrder = (swapSection.config?.page_order || {})[page] ?? swapSection.order_index;
+      let swapOrder = (swapSection.config?.page_order || {})[page] ?? swapSection.order_index;
+
+      // If the two orders are equal a swap does nothing, so renumber this page's sections by position
+      if (tempOrder === swapOrder) {
+        tempOrder = currentIndex;
+        swapOrder = newIndex;
+      }
 
       const newPageOrder = {
         ...pageOrder,
@@ -431,7 +484,8 @@ export default function CategoryManager() {
 
     setLoadingPreview(true);
     try {
-      const results = await discoverWithFilters(tmdbFilters.media_type, tmdbFilters, 12);
+      const discovered = await discoverWithFilters(tmdbFilters.media_type, tmdbFilters, 1);
+      const results = (discovered?.results || []).slice(0, 12);
       setFilterPreview(results);
       if (results.length === 0) {
         setMessage({ type: 'error', text: 'No results found with these filters. Try adjusting your criteria.' });
@@ -467,7 +521,8 @@ export default function CategoryManager() {
 
       if (categoryType === 'auto' && tmdbFilters.media_type) {
         // Auto-generated category with TMDB filters
-        const results = await discoverWithFilters(tmdbFilters.media_type, tmdbFilters, 20);
+        const discovered = await discoverWithFilters(tmdbFilters.media_type, tmdbFilters, 1);
+        const results = (discovered?.results || []).slice(0, 20);
         
         if (results.length === 0) {
           throw new Error('No results found with the selected filters. Please adjust your criteria.');
@@ -601,7 +656,8 @@ export default function CategoryManager() {
     try {
       if (section.section_type === 'custom' && section.custom_section_id) {
         // Delete custom section first
-        await supabase!.from('custom_sections').delete().eq('id', section.custom_section_id);
+        const { error: customDeleteError } = await supabase!.from('custom_sections').delete().eq('id', section.custom_section_id);
+        if (customDeleteError) throw customDeleteError;
       }
 
       // Delete from homepage_sections
@@ -659,11 +715,15 @@ export default function CategoryManager() {
       return;
     }
 
+    const requestId = ++movieSearchRequestId.current;
     setSearching(true);
     try {
       const data = await fetchFromTMDB(tmdbEndpoints.search, {
         query: query.trim(),
       });
+
+      // Ignore stale responses from older queries
+      if (requestId !== movieSearchRequestId.current) return;
 
       const results = (data.results || []).filter(
         (item: any) => item.media_type === 'movie' || item.media_type === 'tv'
@@ -671,21 +731,27 @@ export default function CategoryManager() {
 
       setSearchResults(results.slice(0, 20));
     } catch (error: any) {
+      if (requestId !== movieSearchRequestId.current) return;
       console.error('Error searching movies:', error);
       setMessage({ type: 'error', text: 'Failed to search movies' });
     } finally {
-      setSearching(false);
+      if (requestId === movieSearchRequestId.current) {
+        setSearching(false);
+      }
     }
   };
 
   const addMovieToCategory = async (section: HomepageSection, movie: Movie) => {
     if (!isSupabaseConfigured() || !user || !section.custom_section_id) return;
 
+    if (movieWriteInFlight.current) return;
+    movieWriteInFlight.current = true;
+
     const movieKey = `${movie.id}-${movie.media_type}`;
     setAddingMovieId(movieKey);
 
     try {
-      const customSection = customSectionData[section.custom_section_id];
+      const customSection = customSectionDataRef.current[section.custom_section_id];
       if (!customSection) {
         throw new Error('Custom section not found');
       }
@@ -695,7 +761,6 @@ export default function CategoryManager() {
       
       if (alreadyExists) {
         setMessage({ type: 'error', text: 'This movie is already in the category' });
-        setAddingMovieId(null);
         return;
       }
 
@@ -718,13 +783,13 @@ export default function CategoryManager() {
 
       if (error) throw error;
 
-      setCustomSectionData({
-        ...customSectionData,
-        [section.custom_section_id]: {
+      setCustomSectionData(prev => ({
+        ...prev,
+        [section.custom_section_id!]: {
           ...customSection,
           movies: updatedMovies,
         },
-      });
+      }));
 
       setMessage({ type: 'success', text: 'Movie added successfully!' });
       setTimeout(() => setMessage(null), 3000);
@@ -732,16 +797,19 @@ export default function CategoryManager() {
       console.error('Error adding movie:', error);
       setMessage({ type: 'error', text: error.message || 'Failed to add movie' });
     } finally {
+      movieWriteInFlight.current = false;
       setAddingMovieId(null);
     }
   };
 
   const removeMovieFromCategory = async (section: HomepageSection, movieId: number, mediaType: string) => {
     if (!isSupabaseConfigured() || !section.custom_section_id) return;
+    if (movieWriteInFlight.current) return;
+    movieWriteInFlight.current = true;
 
     setSaving(true);
     try {
-      const customSection = customSectionData[section.custom_section_id];
+      const customSection = customSectionDataRef.current[section.custom_section_id];
       if (!customSection) {
         throw new Error('Custom section not found');
       }
@@ -758,13 +826,13 @@ export default function CategoryManager() {
 
       if (error) throw error;
 
-      setCustomSectionData({
-        ...customSectionData,
-        [section.custom_section_id]: {
+      setCustomSectionData(prev => ({
+        ...prev,
+        [section.custom_section_id!]: {
           ...customSection,
           movies: updatedMovies,
         },
-      });
+      }));
 
       setMessage({ type: 'success', text: 'Movie removed successfully!' });
       setTimeout(() => setMessage(null), 3000);
@@ -772,6 +840,7 @@ export default function CategoryManager() {
       console.error('Error removing movie:', error);
       setMessage({ type: 'error', text: error.message || 'Failed to remove movie' });
     } finally {
+      movieWriteInFlight.current = false;
       setSaving(false);
     }
   };
@@ -781,13 +850,12 @@ export default function CategoryManager() {
 
     if (newIndex < 0 || newIndex >= sections.length) return;
 
-    const newSections = [...sections];
-    [newSections[index], newSections[newIndex]] = [newSections[newIndex], newSections[index]];
+    const previousSections = sections;
+    const swapped = [...sections];
+    [swapped[index], swapped[newIndex]] = [swapped[newIndex], swapped[index]];
 
-    // Update order_index for all sections
-    newSections.forEach((section, idx) => {
-      section.order_index = idx;
-    });
+    // Update order_index for all sections (without mutating the existing state objects)
+    const newSections = swapped.map((section, idx) => ({ ...section, order_index: idx }));
 
     // Update local state immediately for responsiveness
     setSections(newSections);
@@ -797,7 +865,7 @@ export default function CategoryManager() {
 
     try {
       // Update both swapped sections in parallel
-      await Promise.all([
+      const results = await Promise.all([
         supabase!.from('homepage_sections')
           .update({ order_index: newSections[index].order_index, updated_at: new Date().toISOString() })
           .eq('id', newSections[index].id),
@@ -805,9 +873,12 @@ export default function CategoryManager() {
           .update({ order_index: newSections[newIndex].order_index, updated_at: new Date().toISOString() })
           .eq('id', newSections[newIndex].id)
       ]);
+      const failed = results.find(r => r.error);
+      if (failed?.error) throw failed.error;
     } catch (error: any) {
       console.error('Error saving order:', error);
-      setMessage({ type: 'error', text: 'Failed to save order. Click "Save Order" to retry.' });
+      setSections(previousSections);
+      setMessage({ type: 'error', text: `Failed to save order: ${error.message || 'unknown error'}` });
     }
   };
 
@@ -1029,7 +1100,17 @@ export default function CategoryManager() {
                       value={tmdbFilters.media_type || 'movie'}
                       onChange={async (e) => {
                         const newType = e.target.value as 'movie' | 'tv';
-                        setTmdbFilters({ ...tmdbFilters, media_type: newType });
+                        // Clear filters that are specific to the previous media type
+                        setTmdbFilters({
+                          ...tmdbFilters,
+                          media_type: newType,
+                          with_genres: undefined,
+                          primary_release_year: undefined,
+                          first_air_date_year: undefined,
+                          certification: undefined,
+                          certification_country: undefined,
+                          sort_by: 'popularity.desc'
+                        });
                         const genres = await fetchGenres(newType);
                         setAvailableGenres(genres);
                       }}
@@ -1463,8 +1544,12 @@ export default function CategoryManager() {
                         type="text"
                         defaultValue={section.title}
                         onBlur={(e) => {
-                          if (e.target.value !== section.title) {
-                            updateBuiltinSection(section, { title: e.target.value });
+                          const newTitle = e.target.value.trim();
+                          if (!newTitle) {
+                            // Don't allow a blank title - restore the current one
+                            e.target.value = section.title;
+                          } else if (newTitle !== section.title) {
+                            updateBuiltinSection(section, { title: newTitle });
                           }
                         }}
                         className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
@@ -1510,10 +1595,14 @@ export default function CategoryManager() {
                           </div>
                           <button
                             onClick={async () => {
-                              const newConfig = { ...section.config };
-                              delete newConfig.tmdb_filters;
-                              await updateSectionConfig(section.id, newConfig);
-                              setMessage({ type: 'success', text: 'Filters removed. Section will use default behavior.' });
+                              try {
+                                // updateSectionConfig merges, so explicitly clear tmdb_filters
+                                await updateSectionConfig(section.id, { tmdb_filters: undefined });
+                                setMessage({ type: 'success', text: 'Filters removed. Section will use default behavior.' });
+                              } catch (error: any) {
+                                console.error('Error removing filters:', error);
+                                setMessage({ type: 'error', text: error.message || 'Failed to remove filters' });
+                              }
                             }}
                             className="btn-secondary text-sm"
                           >
@@ -1588,8 +1677,19 @@ export default function CategoryManager() {
                             value={tmdbFilters.media_type || 'movie'}
                             onChange={async (e) => {
                               const newType = e.target.value as 'movie' | 'tv';
-                              setTmdbFilters({ ...tmdbFilters, media_type: newType });
-                              await loadGenres(newType);
+                              // Clear filters that are specific to the previous media type
+                              setTmdbFilters({
+                                ...tmdbFilters,
+                                media_type: newType,
+                                with_genres: undefined,
+                                primary_release_year: undefined,
+                                first_air_date_year: undefined,
+                                certification: undefined,
+                                certification_country: undefined,
+                                sort_by: 'popularity.desc'
+                              });
+                              const genres = await fetchGenres(newType);
+                              setAvailableGenres(genres);
                             }}
                             className="w-full px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-red-600"
                           >
@@ -1885,10 +1985,14 @@ export default function CategoryManager() {
                           type="text"
                           value={searchQuery}
                           onChange={(e) => {
-                            setSearchQuery(e.target.value);
-                            if (e.target.value.trim()) {
-                              searchMovies(e.target.value);
+                            const value = e.target.value;
+                            setSearchQuery(value);
+                            if (movieSearchTimeout.current) clearTimeout(movieSearchTimeout.current);
+                            if (value.trim()) {
+                              movieSearchTimeout.current = setTimeout(() => searchMovies(value), 300);
                             } else {
+                              movieSearchRequestId.current++;
+                              setSearching(false);
                               setSearchResults([]);
                             }
                           }}

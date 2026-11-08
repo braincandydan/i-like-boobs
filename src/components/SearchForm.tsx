@@ -21,6 +21,12 @@ interface SearchResult {
   media_type: 'movie' | 'tv' | 'person';
 }
 
+interface DiscoverContext {
+  mediaType: 'all' | 'movie' | 'tv';
+  filtersByType: Partial<Record<'movie' | 'tv', TMDBFilters>>;
+  totals: Partial<Record<'movie' | 'tv', { pages: number; results: number }>>;
+}
+
 export default function SearchForm({ basePath = '/' }: SearchFormProps) {
   // Create URL with base path for GitHub Pages
   function createUrl(path: string): string {
@@ -74,6 +80,10 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<() => void>(() => {});
+  // Filters used by the most recent discover request (so load-more pages the same query)
+  const discoverCtx = useRef<DiscoverContext | null>(null);
+  // Incremented per search/discover request so stale responses can be ignored
+  const searchSeq = useRef(0);
 
   // Error state
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -122,11 +132,113 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
   const [directTorrentResults, setDirectTorrentResults] = useState<any[]>([]);
   const [loadingDirectTorrents, setLoadingDirectTorrents] = useState(false);
 
-  const handleSearch = async (e?: React.FormEvent, page: number = 1) => {
+  // Parse a year input, ignoring partial/invalid values (e.g. "2" while typing "2020")
+  const parseYear = (v: string | number | undefined): number | undefined => {
+    if (v === '' || v === undefined) return undefined;
+    const n = typeof v === 'string' ? parseInt(v, 10) : v;
+    return n && !isNaN(n) && n >= 1900 ? n : undefined;
+  };
+
+  // Extract the year from a 'YYYY-MM-DD' date string without timezone shifts
+  const yearOf = (date?: string): number => parseInt((date || '').slice(0, 4), 10);
+
+  // Build TMDB discover filters for a given media type from the current filter state
+  const buildTmdbFilters = (mediaType: 'movie' | 'tv'): TMDBFilters => {
+    const tmdbFilters: TMDBFilters = {};
+    tmdbFilters.media_type = mediaType;
+
+    if (filters.genres.length > 0) {
+      tmdbFilters.with_genres = filters.genres;
+    }
+
+    const startYear = parseYear(filters.startYear);
+    const endYear = parseYear(filters.endYear);
+    if (startYear && endYear && startYear === endYear) {
+      if (mediaType === 'movie') {
+        tmdbFilters.primary_release_year = startYear;
+      } else {
+        tmdbFilters.first_air_date_year = startYear;
+      }
+    } else {
+      if (startYear) {
+        if (mediaType === 'movie') {
+          tmdbFilters['primary_release_date.gte'] = `${startYear}-01-01`;
+        } else {
+          tmdbFilters['first_air_date.gte'] = `${startYear}-01-01`;
+        }
+      }
+      if (endYear) {
+        if (mediaType === 'movie') {
+          tmdbFilters['primary_release_date.lte'] = `${endYear}-12-31`;
+        } else {
+          tmdbFilters['first_air_date.lte'] = `${endYear}-12-31`;
+        }
+      }
+    }
+
+    if (filters.minRating) {
+      const minRating = typeof filters.minRating === 'string' ? parseFloat(filters.minRating) : filters.minRating;
+      if (!isNaN(minRating)) {
+        tmdbFilters['vote_average.gte'] = minRating;
+      }
+    }
+
+    // Certification (only for movies)
+    if (filters.certification && mediaType === 'movie') {
+      tmdbFilters.certification = filters.certification;
+      tmdbFilters.certification_country = 'US'; // Default to US certifications
+      // Adult-rated certifications are only returned when adult content is included
+      if (['NC-17', 'X'].includes(filters.certification)) {
+        tmdbFilters.include_adult = true;
+      }
+    }
+
+    if (filters.actors.length > 0) {
+      tmdbFilters.with_cast = filters.actors;
+    }
+
+    if (filters.sortBy && filters.sortBy !== 'relevance') {
+      const sortMap: Record<string, string> = {
+        'rating.desc': 'vote_average.desc',
+        'rating.asc': 'vote_average.asc',
+        'year.desc': mediaType === 'movie' ? 'primary_release_date.desc' : 'first_air_date.desc',
+        'year.asc': mediaType === 'movie' ? 'primary_release_date.asc' : 'first_air_date.asc',
+        'title.asc': mediaType === 'movie' ? 'original_title.asc' : 'name.asc',
+        'title.desc': mediaType === 'movie' ? 'original_title.desc' : 'name.desc',
+      };
+      tmdbFilters.sort_by = sortMap[filters.sortBy] || 'popularity.desc';
+    } else {
+      tmdbFilters.sort_by = 'popularity.desc';
+    }
+
+    return tmdbFilters;
+  };
+
+  // Fetch one page of discover results for the context (both types when "all")
+  const fetchDiscoverPage = async (ctx: DiscoverContext, page: number) => {
+    const types: ('movie' | 'tv')[] = ctx.mediaType === 'all' ? ['movie', 'tv'] : [ctx.mediaType];
+    const responses = await Promise.all(types.map(async (type) => {
+      const known = ctx.totals[type];
+      if (known && page > known.pages) return [] as SearchResult[];
+      const r = await discoverWithFilters(type, ctx.filtersByType[type]!, page);
+      ctx.totals[type] = { pages: r.total_pages, results: r.total_results };
+      return r.results.map((item: any) => ({ ...item, media_type: item.media_type || type })) as SearchResult[];
+    }));
+    const totals = Object.values(ctx.totals);
+    return {
+      results: responses.flat(),
+      totalPages: Math.max(1, ...totals.map(t => t!.pages)),
+      totalResults: totals.reduce((sum, t) => sum + t!.results, 0),
+    };
+  };
+
+  const handleSearch = async (e?: React.FormEvent, page: number = 1, queryOverride?: string) => {
     if (e) e.preventDefault();
+    const q = (queryOverride ?? query).trim();
 
     // If streams mode is active, search torrents directly
-    if (showStreams && query.trim()) {
+    if (showStreams && q) {
+      searchSeq.current++;
       setIsLoading(true);
       setHasSearched(true);
       setSearchMode('search');
@@ -134,7 +246,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       try {
         // Determine category based on filters or default to Movies
         const category = filters.mediaType === 'tv' ? 'TV' : 'Movies';
-        await searchTorrentsDirectly(query.trim(), category);
+        await searchTorrentsDirectly(q, category);
       } catch (error) {
         console.error('Torrent search error:', error);
         setDirectTorrentResults([]);
@@ -145,53 +257,52 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     }
 
     // If no query and no filters, don't search
-    if (!query.trim() && !hasActiveFilters) return;
+    if (!q && !hasActiveFilters) return;
 
+    // No query but filters are set - use discover API
+    if (!q) {
+      await handleDiscover(page);
+      return;
+    }
+
+    const seq = ++searchSeq.current;
     setIsLoading(true);
     setHasSearched(true);
     setSearchError(null);
 
     try {
-      // If there's a text query, use search API
-      if (query.trim()) {
-        if (hasActiveFilters) {
-          // Route through discover so filters + text are combined
-          await handleDiscover(page, query.trim());
-          return;
-        }
-        setSearchMode('search');
-        setCurrentPage(page);
-        updateUrl({ page: page > 1 ? String(page) : null });
-        const data = await searchMulti(query.trim(), page);
+      // Text query: use the search API; active filters are applied client-side
+      setSearchMode('search');
+      setCurrentPage(page);
+      lastSearchedQuery.current = q;
+      updateUrl({ q, page: page > 1 ? String(page) : null });
+      const data = await searchMulti(q, page);
+      if (seq !== searchSeq.current) return;
 
-        // Filter out person results and only keep movies and TV shows
-        const movieTvResults = data.results.filter(
-          (item: SearchResult) => item.media_type === 'movie' || item.media_type === 'tv'
-        );
+      // Filter out person results and only keep movies and TV shows
+      const movieTvResults = data.results.filter(
+        (item: SearchResult) => item.media_type === 'movie' || item.media_type === 'tv'
+      );
 
-        setAllResults(movieTvResults);
-        setTotalPages(data.total_pages);
-        setTotalResults(data.total_results);
-        saveRecentSearch(query.trim());
-        lastSearchedQuery.current = query.trim();
-      } else {
-        // No query but filters are set - use discover API
-        setSearchMode('discover');
-        await handleDiscover(page);
-      }
+      setAllResults(movieTvResults);
+      setTotalPages(data.total_pages);
+      setTotalResults(data.total_results);
+      saveRecentSearch(q);
     } catch (error: any) {
+      if (seq !== searchSeq.current) return;
       console.error('Search error:', error);
       setSearchError(error?.message || 'Search failed. Please try again.');
       setAllResults([]);
       setFilteredResults([]);
     } finally {
-      setIsLoading(false);
+      if (seq === searchSeq.current) setIsLoading(false);
     }
   };
 
-  const handleDiscover = async (page: number = 1, textQuery: string = '') => {
-    if (!hasActiveFilters && !textQuery.trim()) return;
+  const handleDiscover = async (page: number = 1) => {
+    if (!hasActiveFilters) return;
 
+    const seq = ++searchSeq.current;
     setIsLoading(true);
     setHasSearched(true);
     setSearchMode('discover');
@@ -200,135 +311,25 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     updateUrl({ page: page > 1 ? String(page) : null });
 
     try {
-      // Build TMDB filters
-      const tmdbFilters: TMDBFilters = {};
+      const ctx: DiscoverContext = { mediaType: filters.mediaType, filtersByType: {}, totals: {} };
+      const types: ('movie' | 'tv')[] = filters.mediaType === 'all' ? ['movie', 'tv'] : [filters.mediaType];
+      types.forEach(t => { ctx.filtersByType[t] = buildTmdbFilters(t); });
+      discoverCtx.current = ctx;
 
-      // Media type is required for discover
-      const mediaType = filters.mediaType === 'all' ? 'movie' : filters.mediaType;
-      tmdbFilters.media_type = mediaType;
+      const { results, totalPages: pages, totalResults: total } = await fetchDiscoverPage(ctx, page);
+      if (seq !== searchSeq.current) return;
 
-      // Genres
-      if (filters.genres.length > 0) {
-        tmdbFilters.with_genres = filters.genres;
-      }
-
-      // Year range
-      if (filters.startYear || filters.endYear) {
-        const startYear = filters.startYear ? (typeof filters.startYear === 'string' ? parseInt(filters.startYear) : filters.startYear) : undefined;
-        const endYear = filters.endYear ? (typeof filters.endYear === 'string' ? parseInt(filters.endYear) : filters.endYear) : undefined;
-
-        if (startYear && !isNaN(startYear) && endYear && !isNaN(endYear) && startYear === endYear) {
-          // Single year selected
-          if (mediaType === 'movie') {
-            tmdbFilters.primary_release_year = startYear;
-          } else {
-            tmdbFilters.first_air_date_year = startYear;
-          }
-        } else {
-          // Year range
-          if (startYear && !isNaN(startYear)) {
-            if (mediaType === 'movie') {
-              tmdbFilters['primary_release_date.gte'] = `${startYear}-01-01`;
-            } else {
-              tmdbFilters['first_air_date.gte'] = `${startYear}-01-01`;
-            }
-          }
-          if (endYear && !isNaN(endYear)) {
-            if (mediaType === 'movie') {
-              tmdbFilters['primary_release_date.lte'] = `${endYear}-12-31`;
-            } else {
-              tmdbFilters['first_air_date.lte'] = `${endYear}-12-31`;
-            }
-          }
-        }
-      }
-
-      // Rating
-      if (filters.minRating) {
-        const minRating = typeof filters.minRating === 'string' ? parseFloat(filters.minRating) : filters.minRating;
-        if (!isNaN(minRating)) {
-          tmdbFilters['vote_average.gte'] = minRating;
-        }
-      }
-
-      // Certification (only for movies)
-      if (filters.certification && mediaType === 'movie') {
-        tmdbFilters.certification = filters.certification;
-        tmdbFilters.certification_country = 'US'; // Default to US certifications
-      }
-
-      // Actors
-      if (filters.actors.length > 0) {
-        tmdbFilters.with_cast = filters.actors;
-      }
-
-      // Sort
-      if (filters.sortBy && filters.sortBy !== 'relevance') {
-        // Map our sort options to TMDB sort options
-        const sortMap: Record<string, string> = {
-          'rating.desc': 'vote_average.desc',
-          'rating.asc': 'vote_average.asc',
-          'year.desc': mediaType === 'movie' ? 'primary_release_date.desc' : 'first_air_date.desc',
-          'year.asc': mediaType === 'movie' ? 'primary_release_date.asc' : 'first_air_date.asc',
-          'title.asc': mediaType === 'movie' ? 'original_title.asc' : 'name.asc',
-          'title.desc': mediaType === 'movie' ? 'original_title.desc' : 'name.desc',
-        };
-        tmdbFilters.sort_by = sortMap[filters.sortBy] || 'popularity.desc';
-      } else {
-        tmdbFilters.sort_by = 'popularity.desc';
-      }
-
-      if (textQuery.trim()) {
-        (tmdbFilters as any).with_text_query = textQuery.trim();
-      }
-
-      // Discover for the selected media type
-      const { results: rawResults, total_pages, total_results } = await discoverWithFilters(mediaType, tmdbFilters, page);
-      let results = rawResults.map(item => ({
-        ...item,
-        media_type: item.media_type || mediaType
-      }));
-      setTotalPages(total_pages);
-      setTotalResults(total_results);
-
-      // If "all" was selected, also get the other type (page 1 only)
-      if (filters.mediaType === 'all') {
-        const otherType: 'movie' | 'tv' = mediaType === 'movie' ? 'tv' : 'movie';
-        const otherFilters: TMDBFilters = { ...tmdbFilters, media_type: otherType };
-        // Adjust year field for the other type if we have a single year
-        if (filters.startYear && filters.endYear && filters.startYear === filters.endYear) {
-          const year = typeof filters.startYear === 'string' ? parseInt(filters.startYear) : filters.startYear;
-          if (!isNaN(year)) {
-            delete otherFilters.primary_release_year;
-            delete otherFilters.first_air_date_year;
-            if (otherType === 'movie') {
-              otherFilters.primary_release_year = year;
-            } else {
-              otherFilters.first_air_date_year = year;
-            }
-          }
-        }
-        const otherResults = await discoverWithFilters(otherType, otherFilters, 1);
-        // Ensure other results also have media_type set
-        const typedOtherResults = otherResults.results.map(item => ({
-          ...item,
-          media_type: item.media_type || otherType
-        }));
-        results = [...results, ...typedOtherResults];
-      }
-
+      setTotalPages(pages);
+      setTotalResults(total);
       setAllResults(results);
-      if (textQuery.trim()) {
-        saveRecentSearch(textQuery.trim());
-        lastSearchedQuery.current = textQuery.trim();
-      }
     } catch (error: any) {
+      if (seq !== searchSeq.current) return;
       console.error('Discover error:', error);
       setSearchError(error?.message || 'Could not load results. Please try again.');
       setAllResults([]);
       setFilteredResults([]);
     } finally {
-      setIsLoading(false);
+      if (seq === searchSeq.current) setIsLoading(false);
     }
   };
 
@@ -353,13 +354,16 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       if (val === null || val === '') p.delete(key);
       else p.set(key, val);
     });
-    window.history.pushState({}, '', `${window.location.pathname}?${p.toString()}`);
+    const newUrl = `${window.location.pathname}?${p.toString()}`;
+    // Don't push duplicate history entries (e.g. when restoring state on back/forward)
+    if (newUrl === `${window.location.pathname}${window.location.search}`) return;
+    window.history.pushState({}, '', newUrl);
   };
 
   const goToPage = (page: number) => {
     if (page < 1 || page > totalPages) return;
     if (searchMode === 'discover') {
-      handleDiscover(page, query.trim());
+      handleDiscover(page);
     } else {
       handleSearch(undefined, page);
     }
@@ -373,7 +377,8 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
   const getDate = (item: SearchResult) => {
     const date = item.media_type === 'movie' ? item.release_date : item.first_air_date;
     if (!date) return '';
-    return new Date(date).getFullYear().toString();
+    const year = yearOf(date);
+    return isNaN(year) ? '' : year.toString();
   };
 
   // Direct torrent search (independent of TMDB)
@@ -720,10 +725,10 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
             }));
           } else if (tmdbFilters['primary_release_date.gte'] || tmdbFilters['primary_release_date.lte']) {
             const startYear = tmdbFilters['primary_release_date.gte'] 
-              ? new Date(tmdbFilters['primary_release_date.gte']).getFullYear() 
+              ? yearOf(tmdbFilters['primary_release_date.gte']) 
               : '';
             const endYear = tmdbFilters['primary_release_date.lte'] 
-              ? new Date(tmdbFilters['primary_release_date.lte']).getFullYear() 
+              ? yearOf(tmdbFilters['primary_release_date.lte']) 
               : '';
             setFilters(prev => ({
               ...prev,
@@ -741,10 +746,10 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
             }));
           } else if (tmdbFilters['first_air_date.gte'] || tmdbFilters['first_air_date.lte']) {
             const startYear = tmdbFilters['first_air_date.gte'] 
-              ? new Date(tmdbFilters['first_air_date.gte']).getFullYear() 
+              ? yearOf(tmdbFilters['first_air_date.gte']) 
               : '';
             const endYear = tmdbFilters['first_air_date.lte'] 
-              ? new Date(tmdbFilters['first_air_date.lte']).getFullYear() 
+              ? yearOf(tmdbFilters['first_air_date.lte']) 
               : '';
             setFilters(prev => ({
               ...prev,
@@ -759,14 +764,15 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
           setHasSearched(true);
           
           const mediaType = tmdbFilters.media_type || 'movie';
-          const { results: rawSectionResults } = await discoverWithFilters(mediaType, tmdbFilters, 1);
+          const sectionCtx: DiscoverContext = { mediaType, filtersByType: { [mediaType]: tmdbFilters }, totals: {} };
+          discoverCtx.current = sectionCtx;
+          const seq = ++searchSeq.current;
+          const { results: typedResults, totalPages: pages, totalResults: total } = await fetchDiscoverPage(sectionCtx, 1);
+          if (seq !== searchSeq.current) return;
 
-          // Ensure all results have media_type set
-          const typedResults = rawSectionResults.map(item => ({
-            ...item,
-            media_type: item.media_type || mediaType
-          }));
-          
+          setCurrentPage(1);
+          setTotalPages(pages);
+          setTotalResults(total);
           setAllResults(typedResults);
           setIsLoading(false);
         } else {
@@ -783,11 +789,13 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sectionId]);
 
-  // Hydrate state from URL params on mount
-  useEffect(() => {
+  // Hydrate state from URL params (on mount and on back/forward navigation)
+  const [pendingUrlSearch, setPendingUrlSearch] = useState<{ page: number; hasQuery: boolean } | null>(null);
+
+  const hydrateFromUrl = () => {
     const params = getParamsFromUrl();
     if (params.q || (params.genres && params.genres.length > 0) || params.startYear || params.endYear || params.minRating || params.certification) {
-      if (params.q) setQuery(params.q);
+      setQuery(params.q || '');
       setFilters(prev => ({
         ...prev,
         mediaType: params.type || 'all',
@@ -798,16 +806,46 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
         certification: params.certification || '',
         sortBy: params.sortBy || 'popularity.desc',
       }));
-      // Trigger search after state settles
-      setTimeout(() => {
-        if (params.q) {
-          handleSearch(undefined, params.page || 1);
-        } else {
-          handleDiscover(params.page || 1);
-        }
-      }, 0);
+      // Trigger search once the state above has been applied (so handlers see fresh state)
+      setPendingUrlSearch({ page: params.page || 1, hasQuery: !!params.q });
     }
+  };
+
+  useEffect(() => {
+    hydrateFromUrl();
+    const onPopState = () => {
+      const p = getParamsFromUrl();
+      const hasParams = p.q || (p.genres && p.genres.length > 0) || p.startYear || p.endYear || p.minRating || p.certification;
+      if (hasParams) {
+        hydrateFromUrl();
+      } else {
+        searchSeq.current++;
+        setQuery('');
+        setAllResults([]);
+        setFilteredResults([]);
+        setHasSearched(false);
+        setIsLoading(false);
+        setTotalPages(1);
+        setTotalResults(0);
+        setCurrentPage(1);
+        setSearchError(null);
+        lastSearchedQuery.current = '';
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!pendingUrlSearch) return;
+    const { page, hasQuery } = pendingUrlSearch;
+    setPendingUrlSearch(null);
+    if (hasQuery) {
+      handleSearch(undefined, page);
+    } else {
+      handleDiscover(page);
+    }
+  }, [pendingUrlSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load genres and certifications on mount
   useEffect(() => {
@@ -915,28 +953,33 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
       filtered = filtered.filter(item => item.media_type === filters.mediaType);
     }
 
+    // Filter by genres (all selected genres must match, same as discover)
+    if (filters.genres.length > 0) {
+      filtered = filtered.filter(item => {
+        const ids: number[] = (item as any).genre_ids || [];
+        return filters.genres.every(g => ids.includes(g));
+      });
+    }
+
     // Filter by year range
-    if (filters.startYear || filters.endYear) {
-      const startYear = filters.startYear ? (typeof filters.startYear === 'string' ? parseInt(filters.startYear) : filters.startYear) : undefined;
-      const endYear = filters.endYear ? (typeof filters.endYear === 'string' ? parseInt(filters.endYear) : filters.endYear) : undefined;
-      
-      if (startYear && !isNaN(startYear) || endYear && !isNaN(endYear)) {
-        filtered = filtered.filter(item => {
-          const date = item.media_type === 'movie' ? item.release_date : item.first_air_date;
-          if (!date) return false;
-          const itemYear = new Date(date).getFullYear();
-          
-          if (startYear && endYear && startYear === endYear) {
-            // Single year
-            return itemYear === startYear;
-          } else {
-            // Year range
-            const meetsStart = !startYear || itemYear >= startYear;
-            const meetsEnd = !endYear || itemYear <= endYear;
-            return meetsStart && meetsEnd;
-          }
-        });
-      }
+    const startYear = parseYear(filters.startYear);
+    const endYear = parseYear(filters.endYear);
+    if (startYear || endYear) {
+      filtered = filtered.filter(item => {
+        const date = item.media_type === 'movie' ? item.release_date : item.first_air_date;
+        if (!date) return false;
+        const itemYear = yearOf(date);
+
+        if (startYear && endYear && startYear === endYear) {
+          // Single year
+          return itemYear === startYear;
+        } else {
+          // Year range
+          const meetsStart = !startYear || itemYear >= startYear;
+          const meetsEnd = !endYear || itemYear <= endYear;
+          return meetsStart && meetsEnd;
+        }
+      });
     }
 
     // Filter by minimum rating
@@ -1000,6 +1043,8 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
   useEffect(() => {
     if (!query.trim() || query.trim() === lastSearchedQuery.current) return;
     const timer = setTimeout(() => {
+      // A search for this query may have already started (e.g. recent search click, URL hydrate)
+      if (query.trim() === lastSearchedQuery.current) return;
       handleSearch(undefined, 1);
     }, 400);
     return () => clearTimeout(timer);
@@ -1008,52 +1053,25 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
   const loadMoreResults = async () => {
     if (loadingMore || isLoading || currentPage >= totalPages || !hasSearched) return;
     const nextPage = currentPage + 1;
+    const seq = searchSeq.current;
     setLoadingMore(true);
     try {
       let newItems: SearchResult[] = [];
-      if (searchMode === 'search' && query.trim()) {
-        const data = await searchMulti(query.trim(), nextPage);
+      if (searchMode === 'search') {
+        // Page the query that was actually searched, not whatever is currently typed
+        const searchedQuery = lastSearchedQuery.current;
+        if (!searchedQuery) return;
+        const data = await searchMulti(searchedQuery, nextPage);
         newItems = (data.results || []).filter(
           (item: SearchResult) => item.media_type === 'movie' || item.media_type === 'tv'
         );
       } else {
-        const mediaType = filters.mediaType === 'all' ? 'movie' : filters.mediaType;
-        const tmdbFilters: TMDBFilters = {};
-        if (filters.genres.length > 0) tmdbFilters.with_genres = filters.genres;
-        if (filters.startYear || filters.endYear) {
-          const sy = filters.startYear ? Number(filters.startYear) : undefined;
-          const ey = filters.endYear ? Number(filters.endYear) : undefined;
-          if (sy && ey && sy === ey) {
-            if (mediaType === 'movie') tmdbFilters.primary_release_year = sy;
-            else tmdbFilters.first_air_date_year = sy;
-          } else {
-            if (sy && !isNaN(sy)) {
-              if (mediaType === 'movie') tmdbFilters['primary_release_date.gte'] = `${sy}-01-01`;
-              else tmdbFilters['first_air_date.gte'] = `${sy}-01-01`;
-            }
-            if (ey && !isNaN(ey)) {
-              if (mediaType === 'movie') tmdbFilters['primary_release_date.lte'] = `${ey}-12-31`;
-              else tmdbFilters['first_air_date.lte'] = `${ey}-12-31`;
-            }
-          }
-        }
-        if (filters.minRating) tmdbFilters['vote_average.gte'] = Number(filters.minRating);
-        if (filters.certification && mediaType === 'movie') {
-          tmdbFilters.certification = filters.certification;
-          tmdbFilters.certification_country = 'US';
-        }
-        if (filters.actors.length > 0) tmdbFilters.with_cast = filters.actors;
-        const sortMap: Record<string, string> = {
-          'rating.desc': 'vote_average.desc', 'rating.asc': 'vote_average.asc',
-          'year.desc': mediaType === 'movie' ? 'primary_release_date.desc' : 'first_air_date.desc',
-          'year.asc': mediaType === 'movie' ? 'primary_release_date.asc' : 'first_air_date.asc',
-          'title.asc': mediaType === 'movie' ? 'original_title.asc' : 'name.asc',
-          'title.desc': mediaType === 'movie' ? 'original_title.desc' : 'name.desc',
-        };
-        tmdbFilters.sort_by = (filters.sortBy !== 'relevance' && sortMap[filters.sortBy]) ? sortMap[filters.sortBy] : 'popularity.desc';
-        const { results: rawResults } = await discoverWithFilters(mediaType, tmdbFilters, nextPage);
-        newItems = rawResults.map(item => ({ ...item, media_type: item.media_type || mediaType }));
+        const ctx = discoverCtx.current;
+        if (!ctx) return;
+        newItems = (await fetchDiscoverPage(ctx, nextPage)).results;
       }
+      // A new search started while this page was loading - discard it
+      if (seq !== searchSeq.current) return;
       if (newItems.length > 0) setAllResults(prev => [...prev, ...newItems]);
       setCurrentPage(nextPage);
     } catch (err) {
@@ -1074,7 +1092,8 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+    // Re-attach whenever the sentinel (re)renders; re-observing also re-checks visibility after each page loads
+  }, [hasSearched, isLoading, showStreams, filteredResults.length > 0, loadingMore, currentPage]);
 
   const handleFilterChange = (key: string, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -1192,7 +1211,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                     onMouseDown={() => {
                       setQuery(s);
                       setShowRecentSearches(false);
-                      setTimeout(() => handleSearch(undefined, 1), 0);
+                      handleSearch(undefined, 1, s);
                     }}
                     className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center gap-2"
                   >
@@ -1655,7 +1674,8 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                       value={filters.startYear || ''}
                       onChange={(e) => {
                         const value = e.target.value === '' ? '' : parseInt(e.target.value);
-                        if (value === '' || (!isNaN(value) && value >= 1900 && value <= new Date().getFullYear() + 1)) {
+                        // Allow partial years while typing; values under 1900 are ignored when searching
+                        if (value === '' || (!isNaN(value) && value >= 0 && value <= new Date().getFullYear() + 1)) {
                           handleFilterChange('startYear', value);
                         }
                       }}
@@ -1675,7 +1695,8 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                       value={filters.endYear || ''}
                       onChange={(e) => {
                         const value = e.target.value === '' ? '' : parseInt(e.target.value);
-                        if (value === '' || (!isNaN(value) && value >= 1900 && value <= new Date().getFullYear() + 1)) {
+                        // Allow partial years while typing; values under 1900 are ignored when searching
+                        if (value === '' || (!isNaN(value) && value >= 0 && value <= new Date().getFullYear() + 1)) {
                           handleFilterChange('endYear', value);
                         }
                       }}
@@ -2011,7 +2032,7 @@ export default function SearchForm({ basePath = '/' }: SearchFormProps) {
                     const year = getDate(item);
                     const posterUrl = item.poster_path
                       ? getImageUrl(item.poster_path, 'w500')
-                      : '/images/placeholder-poster.jpg';
+                      : createUrl('images/placeholder-poster.jpg');
 
                     let mediaType: 'movie' | 'tv';
                     if (item.media_type === 'movie' || item.media_type === 'tv') {

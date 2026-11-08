@@ -114,7 +114,7 @@ function CarouselSection({ section }: { section: Section }) {
                   ) : (
                     <div className="w-full aspect-[2/3] bg-gray-800 rounded-lg mb-2 flex items-center justify-center relative">
                       <i className="fas fa-image text-gray-600 text-4xl"></i>
-                      <div className="absolute top-2 right-2 z-10">
+                      <div className="absolute top-2 right-2 z-10" onClick={(e) => e.preventDefault()}>
                         <WatchlistButton
                           movieId={movieId}
                           mediaType={mediaType}
@@ -127,7 +127,7 @@ function CarouselSection({ section }: { section: Section }) {
                   <h3 className="text-white font-semibold text-sm truncate group-hover:text-red-600 transition-colors">
                     {title}
                   </h3>
-                  {movie.release_date && (
+                  {(movie.release_date || movie.first_air_date) && (
                     <p className="text-gray-400 text-xs">
                       {new Date(movie.release_date || movie.first_air_date).getFullYear()}
                     </p>
@@ -208,11 +208,12 @@ export default function TvShowsPageSections() {
         if (section.section_type === 'builtin') {
           // Load builtin section
           if (section.config?.tmdb_filters && section.config.tmdb_filters.media_type) {
-            const movies = await discoverWithFilters(
+            const discovered = await discoverWithFilters(
               section.config.tmdb_filters.media_type,
               section.config.tmdb_filters,
-              12
+              1
             );
+            const movies = (discovered?.results || []).slice(0, 12);
             if (movies && movies.length > 0) {
               loadedSections.push({
                 id: section.id,
@@ -245,11 +246,12 @@ export default function TvShowsPageSections() {
           // Load custom section
           if (section.config?.tmdb_filters && section.config.tmdb_filters.media_type) {
             // Auto-generated - fetch from TMDB
-            const movies = await discoverWithFilters(
+            const discovered = await discoverWithFilters(
               section.config.tmdb_filters.media_type,
               section.config.tmdb_filters,
-              12
+              1
             );
+            const movies = (discovered?.results || []).slice(0, 12);
             if (movies && movies.length > 0) {
               loadedSections.push({
                 id: section.id,

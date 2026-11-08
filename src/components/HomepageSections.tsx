@@ -14,6 +14,28 @@ interface Section {
   section_id?: string; // The homepage_sections table ID for fetching filters
 }
 
+// Streaming platforms surfaced as "Popular on X" rows (mirrors src/pages/index.astro)
+const STREAMING_PLATFORMS = [
+  { id: 'netflix', providerId: '8', title: 'Popular on Netflix' },
+  { id: 'hulu', providerId: '15', title: 'Popular on Hulu' },
+  { id: 'disney-plus', providerId: '337', title: 'Popular on Disney+' },
+] as const;
+
+async function loadStreamingMovies(providerId: string): Promise<any[]> {
+  try {
+    const data = await discoverWithFilters('movie', {
+      with_watch_providers: providerId,
+      watch_region: 'US',
+      with_watch_monetization_types: 'flatrate',
+      sort_by: 'popularity.desc',
+    }, 1);
+    return (data?.results || []).slice(0, 12);
+  } catch (error) {
+    console.error(`Error loading streaming provider ${providerId}:`, error);
+    return [];
+  }
+}
+
 // Separate component for carousel section to avoid hooks in map
 function CarouselSection({ section }: { section: Section }) {
   const carouselRef = useRef<HTMLDivElement>(null);
@@ -114,7 +136,7 @@ function CarouselSection({ section }: { section: Section }) {
                   ) : (
                     <div className="w-full aspect-[2/3] bg-gray-800 rounded-lg mb-2 flex items-center justify-center relative">
                       <i className="fas fa-image text-gray-600 text-4xl"></i>
-                      <div className="absolute top-2 right-2 z-10">
+                      <div className="absolute top-2 right-2 z-10" onClick={(e) => e.preventDefault()}>
                         <WatchlistButton
                           movieId={movieId}
                           mediaType={mediaType}
@@ -127,7 +149,7 @@ function CarouselSection({ section }: { section: Section }) {
                   <h3 className="text-white font-semibold text-sm truncate group-hover:text-red-600 transition-colors">
                     {title}
                   </h3>
-                  {movie.release_date && (
+                  {(movie.release_date || movie.first_air_date) && (
                     <p className="text-gray-400 text-xs">
                       {new Date(movie.release_date || movie.first_air_date).getFullYear()}
                     </p>
@@ -235,11 +257,12 @@ export default function HomepageSections() {
           // Check if section has TMDB filters
           if (section.config?.tmdb_filters && section.config.tmdb_filters.media_type) {
             // Load with TMDB filters
-            const movies = await discoverWithFilters(
+            const discovered = await discoverWithFilters(
               section.config.tmdb_filters.media_type,
               section.config.tmdb_filters,
-              12
+              1
             );
+            const movies = (discovered?.results || []).slice(0, 12);
             if (movies && movies.length > 0) {
               loadedSections.push({
                 id: section.id,
@@ -270,11 +293,12 @@ export default function HomepageSections() {
           // Check if custom section has TMDB filters for auto-generation
           if (section.config?.tmdb_filters && section.config.tmdb_filters.media_type) {
             // Auto-generated category - fetch from TMDB
-            const movies = await discoverWithFilters(
+            const discovered = await discoverWithFilters(
               section.config.tmdb_filters.media_type,
               section.config.tmdb_filters,
-              12
+              1
             );
+            const movies = (discovered?.results || []).slice(0, 12);
             if (movies && movies.length > 0) {
               loadedSections.push({
                 id: section.id,
@@ -312,6 +336,23 @@ export default function HomepageSections() {
               console.error('Error loading custom section:', customError);
             }
           }
+        }
+      }
+
+      // Keep the "Popular on X" rows visible even if they are not configured in the database
+      for (const platform of STREAMING_PLATFORMS) {
+        const key = `streaming-${platform.id}`;
+        if (homepageSections.some((s: any) => s.section_key === key)) continue;
+        const movies = await loadStreamingMovies(platform.providerId);
+        if (movies.length > 0) {
+          loadedSections.push({
+            id: key,
+            title: platform.title,
+            movies,
+            mediaType: 'movie',
+            section_key: key,
+            section_type: 'builtin',
+          });
         }
       }
 
@@ -360,8 +401,11 @@ export default function HomepageSections() {
         case 'upcoming':
           endpoint = tmdbEndpoints.upcomingMovies;
           break;
-        default:
+        default: {
+          const platform = STREAMING_PLATFORMS.find((p) => `streaming-${p.id}` === sectionKey);
+          if (platform) return await loadStreamingMovies(platform.providerId);
           return [];
+        }
       }
 
       const data = await fetchFromTMDB(endpoint);
@@ -382,12 +426,13 @@ export default function HomepageSections() {
       console.log('Loading default sections from TMDB...');
       console.log('TMDB API Key configured:', !!import.meta.env.PUBLIC_TMDB_API_KEY);
       
-      const [trendingData, popularMoviesData, topRatedData, popularTvData, upcomingData] = await Promise.allSettled([
+      const [trendingData, popularMoviesData, topRatedData, popularTvData, upcomingData, ...streamingResults] = await Promise.allSettled([
         fetchFromTMDB(tmdbEndpoints.trending),
         fetchFromTMDB(tmdbEndpoints.popularMovies),
         fetchFromTMDB(tmdbEndpoints.topRatedMovies),
         fetchFromTMDB(tmdbEndpoints.popularTv),
         fetchFromTMDB(tmdbEndpoints.upcomingMovies),
+        ...STREAMING_PLATFORMS.map((platform) => loadStreamingMovies(platform.providerId)),
       ]);
       
       // Extract results from Promise.allSettled
@@ -448,9 +493,20 @@ export default function HomepageSections() {
           section_key: 'upcoming',
           section_type: 'builtin',
         },
+        ...STREAMING_PLATFORMS.map((platform, index): Section => {
+          const result = streamingResults[index];
+          return {
+            id: `streaming-${platform.id}`,
+            title: platform.title,
+            movies: result?.status === 'fulfilled' ? result.value : [],
+            mediaType: 'movie',
+            section_key: `streaming-${platform.id}`,
+            section_type: 'builtin',
+          };
+        }),
       ].filter(section => section.movies.length > 0);
       
-      console.log('Sections with content:', defaultSections.length, 'out of 5');
+      console.log('Sections with content:', defaultSections.length);
       
       if (defaultSections.length === 0) {
         console.error('All TMDB API calls failed or returned no data. Check your TMDB API key and network connection.');
@@ -470,10 +526,10 @@ export default function HomepageSections() {
       setTimeout(() => {
         const fallbackHero = document.getElementById('fallback-hero');
         const serverSections = document.getElementById('server-rendered-sections');
-        if (fallbackHero && loadedSections.length > 0) {
+        if (fallbackHero && defaultSections.length > 0) {
           fallbackHero.style.display = 'none';
         }
-        if (serverSections && loadedSections.length > 0) {
+        if (serverSections && defaultSections.length > 0) {
           serverSections.style.display = 'none';
         }
       }, 500);

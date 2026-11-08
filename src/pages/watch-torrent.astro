@@ -165,10 +165,22 @@ import { createUrl } from '../lib/utils';
 </Layout>
 
 <script>
+  import { createUrl } from '../lib/utils';
+
+  function escapeHtml(value: unknown): string {
+    return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+  }
+
   // Wait for DOM to be ready
-  document.addEventListener('DOMContentLoaded', () => {
+  // Astro bundles scripts as ES modules (deferred), so DOMContentLoaded may have
+  // already fired by the time the listener is registered. Check readyState first.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      initializeTorrentPlayer();
+    });
+  } else {
     initializeTorrentPlayer();
-  });
+  }
 
   function initializeTorrentPlayer() {
     // Get URL parameters
@@ -237,31 +249,32 @@ import { createUrl } from '../lib/utils';
           }
         });
       }
+    } else {
+      // Hide loading, show player
+      loadingScreen.classList.add('hidden');
+      playerContainer.classList.remove('hidden');
       
-      return;
+      // Update titles
+      videoTitle.textContent = title;
+      contentTitle.textContent = title;
+      document.title = `Watch ${title} - NotFlix`;
+      
+      // Update navigation links with proper base path
+      backLink.href = createUrl('/');
     }
     
-    // Hide loading, show player
-    loadingScreen.classList.add('hidden');
-    playerContainer.classList.remove('hidden');
-    
-    // Update titles
-    videoTitle.textContent = title;
-    contentTitle.textContent = title;
-    document.title = `Watch ${title} - NotFlix`;
-    
-    // Update navigation links with proper base path
-    const basePath = window.location.pathname.includes('/i-like-boobs') ? '/i-like-boobs/' : '/';
-    backLink.href = basePath;
-    
-    // WebTorrent client
-    let webtorrentClient = null;
-    let webtorrentTorrent = null;
+    // WebTorrent client (declared before any early use so the input-screen
+    // handlers and the window.* helpers below always work)
+    let webtorrentClient: any = null;
+    let webtorrentTorrent: any = null;
     
     // Load the magnet link automatically
-    loadWebTorrent(magnetLink);
+    if (magnetLink) {
+      loadWebTorrent(magnetLink);
+    }
     
     async function loadWebTorrent(magnetLink: string | null, torrentFile?: File, stereoEnabled = false) {
+      const webtorrentStatus = document.getElementById('webtorrent-status')!;
       try {
         // Import WebTorrent as ES module
         const WebTorrentModule = await import('https://esm.sh/webtorrent') as any;
@@ -277,7 +290,6 @@ import { createUrl } from '../lib/utils';
         
         const webtorrentContainer = document.getElementById('webtorrent-container');
         const webtorrentPlayer = document.getElementById('webtorrent-player');
-        const webtorrentStatus = document.getElementById('webtorrent-status');
         const webtorrentProgress = document.getElementById('webtorrent-progress');
         
         // Update status
@@ -339,7 +351,7 @@ import { createUrl } from '../lib/utils';
             webtorrentStatus.innerHTML = `
               <div class="flex items-center space-x-2">
                 <i class="fas fa-play-circle text-green-400"></i>
-                <span>Playing: ${videoFile.name}</span>
+                <span>Playing: ${escapeHtml(videoFile.name)}</span>
               </div>
             `;
             onVideoReady(stereoEnabled);
@@ -380,7 +392,7 @@ import { createUrl } from '../lib/utils';
           webtorrentStatus.innerHTML = `
             <div class="flex items-center space-x-2">
               <i class="fas fa-exclamation-triangle text-red-400"></i>
-              <span>Error: ${err.message}</span>
+              <span>Error: ${escapeHtml(err.message)}</span>
             </div>
           `;
         });
@@ -389,7 +401,7 @@ import { createUrl } from '../lib/utils';
         webtorrentStatus.innerHTML = `
           <div class="flex items-center space-x-2">
             <i class="fas fa-exclamation-triangle text-red-400"></i>
-            <span>Error loading torrent: ${error.message}</span>
+            <span>Error loading torrent: ${escapeHtml(error.message)}</span>
           </div>
         `;
       }
@@ -437,7 +449,7 @@ import { createUrl } from '../lib/utils';
           webtorrentStatus.innerHTML = `
             <div class="flex items-center space-x-2">
               <i class="fas fa-exclamation-circle text-red-400"></i>
-              <span>${message}</span>
+              <span>${escapeHtml(message)}</span>
             </div>
           `;
         }, { once: true });
@@ -479,7 +491,7 @@ import { createUrl } from '../lib/utils';
           webtorrentStatus.innerHTML = `
             <div class="flex items-center space-x-2">
               <i class="fas fa-exclamation-circle text-red-400"></i>
-              <span>${message}</span>
+              <span>${escapeHtml(message)}</span>
             </div>
           `;
         });
@@ -488,10 +500,23 @@ import { createUrl } from '../lib/utils';
         webtorrentStatus.innerHTML = `
           <div class="flex items-center space-x-2">
             <i class="fas fa-exclamation-triangle text-red-400"></i>
-            <span>Error loading stream: ${error.message}</span>
+            <span>Error loading stream: ${escapeHtml(error.message)}</span>
           </div>
         `;
       }
+    }
+
+    // three.js is loaded once and cached; onVideoReady preloads it so the
+    // Enter VR click doesn't wait on the CDN.
+    let threePromise: Promise<any> | null = null;
+    function loadThree(): Promise<any> {
+      if (!threePromise) {
+        threePromise = (import('https://esm.sh/three@0.169.0') as Promise<any>).catch((err) => {
+          threePromise = null;
+          throw err;
+        });
+      }
+      return threePromise;
     }
 
     async function isVRSupported(): Promise<boolean> {
@@ -512,6 +537,7 @@ import { createUrl } from '../lib/utils';
       }
       const supported = await isVRSupported();
       enterVrBtn.classList.toggle('hidden', !supported);
+      if (supported) loadThree().catch(() => {});
       if (!supported) {
         console.log('WebXR immersive-vr is not supported on this browser/device.');
       }
@@ -556,7 +582,26 @@ import { createUrl } from '../lib/utils';
         return;
       }
 
-      const THREE = await import('https://esm.sh/three@0.169.0') as any;
+      // Request the session first: it needs the click's transient user
+      // activation, which would expire during the three.js CDN download.
+      let session: any;
+      try {
+        session = await (navigator as any).xr.requestSession('immersive-vr', {
+          optionalFeatures: ['local-floor'],
+        });
+      } catch (err: any) {
+        alert('Could not start VR session: ' + err.message);
+        return;
+      }
+
+      let THREE: any;
+      try {
+        THREE = await loadThree();
+      } catch (err: any) {
+        alert('Could not load the VR renderer: ' + err.message);
+        session.end().catch(() => {});
+        return;
+      }
 
       const canvas = document.createElement('canvas');
       canvas.style.position = 'fixed';
@@ -587,28 +632,41 @@ import { createUrl } from '../lib/utils';
       // Three.js's WebXR manager automatically restricts layer 1 to the
       // left-eye camera and layer 2 to the right-eye camera, so each plane
       // is only visible to its own eye.
-      const leftMesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: videoTexture }));
+      const leftMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
+      const leftMesh = new THREE.Mesh(geometry, leftMaterial);
       leftMesh.position.set(0, 0, -3);
       leftMesh.layers.set(1);
       scene.add(leftMesh);
 
-      const rightMesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: videoTexture }));
+      const rightMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
+      const rightMesh = new THREE.Mesh(geometry, rightMaterial);
       rightMesh.position.set(STEREO_OFFSET, 0, -3);
       rightMesh.layers.set(2);
       scene.add(rightMesh);
 
-      let session: any;
+      // Release GPU resources and the canvas once the session is over
+      let cleanedUp = false;
+      const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        renderer.setAnimationLoop(null);
+        geometry.dispose();
+        leftMaterial.dispose();
+        rightMaterial.dispose();
+        videoTexture.dispose();
+        renderer.dispose();
+        canvas.remove();
+      };
+      session.addEventListener('end', cleanup);
+
       try {
-        session = await (navigator as any).xr.requestSession('immersive-vr', {
-          optionalFeatures: ['local-floor'],
-        });
+        await renderer.xr.setSession(session);
       } catch (err: any) {
         alert('Could not start VR session: ' + err.message);
-        canvas.remove();
+        session.end().catch(() => {});
+        cleanup();
         return;
       }
-
-      await renderer.xr.setSession(session);
 
       let taintErrorShown = false;
       renderer.setAnimationLoop(() => {
@@ -622,11 +680,6 @@ import { createUrl } from '../lib/utils';
           }
           session.end().catch(() => {});
         }
-      });
-
-      session.addEventListener('end', () => {
-        renderer.setAnimationLoop(null);
-        canvas.remove();
       });
     };
   }

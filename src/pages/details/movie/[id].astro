@@ -24,7 +24,7 @@ try {
   
   // Fetch cast information
   const credits = await fetchFromTMDB(`/movie/${id}/credits`);
-  cast = credits.cast.slice(0, 10); // Get first 10 cast members
+  cast = (credits.cast || []).slice(0, 10); // Get first 10 cast members
 } catch (e) {
   error = e.message;
   console.error('Error fetching movie details:', e);
@@ -74,7 +74,7 @@ const posterUrl = getImageUrl(movie.poster_path, 'w500');
           
           <div class="flex flex-wrap items-center gap-4 mb-6 text-lg">
             <span class="bg-yellow-600 text-black px-2 py-1 rounded font-bold">
-              {movie.vote_average.toFixed(1)}
+              {(movie.vote_average || 0).toFixed(1)}
             </span>
             <span>{formatDate(movie.release_date)}</span>
             <span>{formatRuntime(movie.runtime)}</span>
@@ -88,7 +88,7 @@ const posterUrl = getImageUrl(movie.poster_path, 'w500');
           </p>
           
           <div class="flex flex-wrap gap-2 mb-6">
-            {movie.genres.map((genre) => (
+            {(movie.genres || []).map((genre) => (
               <span class="bg-gray-800 bg-opacity-80 px-3 py-1 rounded-full text-sm">
                 {genre.name}
               </span>
@@ -104,7 +104,7 @@ const posterUrl = getImageUrl(movie.poster_path, 'w500');
               Watch Now
             </a>
             <button 
-              onclick={`searchStreamingServices('${movie.title}', ${movie.release_date ? movie.release_date.split('-')[0] : 'null'})`}
+              onclick={`searchStreamingServices(${JSON.stringify(movie.title || '')}, ${movie.release_date ? movie.release_date.split('-')[0] : 'null'})`}
               class="btn-secondary text-lg px-8 py-3"
             >
               <i class="fas fa-external-link-alt mr-2"></i>
@@ -195,7 +195,7 @@ const posterUrl = getImageUrl(movie.poster_path, 'w500');
             <div class="flex items-center justify-between">
               <span class="text-gray-400">TMDB Rating</span>
               <span class="text-yellow-400 font-bold text-lg">
-                {movie.vote_average.toFixed(1)}/10
+                {(movie.vote_average || 0).toFixed(1)}/10
               </span>
             </div>
             <div class="flex items-center justify-between">
@@ -214,7 +214,7 @@ const posterUrl = getImageUrl(movie.poster_path, 'w500');
           <section class="bg-gray-800 rounded-lg p-6">
             <h3 class="text-xl font-bold text-white mb-4">Production</h3>
             <div class="space-y-2">
-              {movie.production_companies.slice(0, 5).map((company) => (
+              {(movie.production_companies || []).slice(0, 5).map((company) => (
                 <div class="flex items-center space-x-3">
                   {company.logo_path && (
                     <img 

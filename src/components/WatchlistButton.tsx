@@ -36,7 +36,7 @@ export default function WatchlistButton({
       checkWatchlistStatus();
     });
     return cleanup;
-  }, [movieId, mediaType]);
+  }, [user, movieId, mediaType]);
 
   const checkWatchlistStatus = () => {
     if (!user) {

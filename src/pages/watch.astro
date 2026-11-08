@@ -157,7 +157,7 @@ import { createUrl } from '../lib/utils';
       </div>
 
       <!-- Invisible hover trigger strip — sits above iframe at the very top -->
-      <div id="fs-trigger-zone" class="absolute top-0 left-0 right-0 z-50" style="height:48px;"></div>
+      <div id="fs-trigger-zone" class="absolute top-0 left-0 right-0 z-50" style="height:48px; pointer-events:none;"></div>
 
       <!-- Server loading indicator -->
       <div id="server-loading" class="absolute inset-0 flex items-center justify-center bg-black/70 text-white z-25 hidden">
@@ -333,6 +333,21 @@ import { createUrl } from '../lib/utils';
 </style>
 
 <script>
+  import { createUrl } from '../lib/utils';
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // Origins the embed players may post messages from (filled in by initializeWatchPage)
+  const embedOrigins = new Set<string>();
+
+  // Only trust postMessage events that come from the player iframe or a known embed origin
+  function isEmbedMessage(e: MessageEvent) {
+    const iframe = document.getElementById('video-player') as HTMLIFrameElement | null;
+    return (!!iframe && e.source === iframe.contentWindow) || embedOrigins.has(e.origin);
+  }
+
   // Show popup blocked notification
   function showPopupBlockedNotification() {
     const notification = document.getElementById('popup-notification');
@@ -356,12 +371,6 @@ import { createUrl } from '../lib/utils';
     // Allow all popups for now to ensure video controls work
     return originalWindowOpen.call(window, url, name, specs);
   };
-  
-  // Block popunder attempts
-  window.addEventListener('beforeunload', (e) => {
-    // Prevent any popunder attempts on page unload
-    e.preventDefault();
-  });
   
   // Block focus/blur popup tricks
   let userInteracted = false;
@@ -403,41 +412,6 @@ import { createUrl } from '../lib/utils';
       });
     }
     
-    // Monitor iframe load events to see what's being loaded
-    const originalCreateElement = document.createElement;
-    document.createElement = function(tagName) {
-      const element = originalCreateElement.call(this, tagName);
-      if (tagName.toLowerCase() === 'iframe') {
-        console.log('Iframe created:', element);
-        element.addEventListener('load', function() {
-          console.log('Iframe loaded:', {
-            src: this.src,
-            contentWindow: this.contentWindow ? 'has contentWindow' : 'no contentWindow',
-            contentDocument: this.contentDocument ? 'has contentDocument' : 'no contentDocument'
-          });
-          // Try to log nested iframes
-          try {
-            if (this.contentDocument) {
-              const nestedIframes = this.contentDocument.querySelectorAll('iframe');
-              if (nestedIframes.length > 0) {
-                console.log('Nested iframes found:', nestedIframes.length);
-                nestedIframes.forEach((iframe, index) => {
-                  console.log(`Nested iframe ${index}:`, {
-                    src: iframe.src,
-                    id: iframe.id,
-                    className: iframe.className
-                  });
-                });
-              }
-            }
-          } catch (e) {
-            // CORS will prevent this, but we try
-          }
-        });
-      }
-      return element;
-    };
-    
     // Get URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const type = urlParams.get('type') || 'movie';
@@ -468,39 +442,34 @@ import { createUrl } from '../lib/utils';
     loadingScreen.classList.add('hidden');
     playerContainer.classList.remove('hidden');
     
-    // Build VidSrc URL as primary (auto-playing correctly)
-    const buildVidSrcUrl = (type, id, season, episode) => {
-      if (type === 'movie') {
-        return `https://vidsrc.sh/embed/movie/${id}?autoplay=1`;
-      } else if (type === 'tv') {
-        return `https://vidsrc.sh/embed/tv/${id}/${season}/${episode}?autoplay=1`;
-      }
-      return '';
-    };
-
-    const primaryUrl = buildVidSrcUrl(type, id, season, episode);
+    // Current episode (changes without a page reload when the user switches episode)
+    let curSeason = season;
+    let curEpisode = episode;
 
     // Server priority: newest working domains first → fallbacks → WebTorrent
-    const epPath = type === 'tv' ? `/${season}/${episode}` : '';
+    // URLs are built lazily so they always reflect the current season/episode.
+    const epPath = () => type === 'tv' ? `/${curSeason}/${curEpisode}` : '';
     const alternativeServers = [
-      { name: 'VidSrc SH', url: `https://vidsrc.sh/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
-      { name: 'VidSrc TO', url: `https://vidsrc.to/embed/${type}/${id}${epPath}`, playerType: 'iframe' },
-      { name: 'VidSrcMe RU', url: `https://vidsrcme.ru/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
-      { name: 'VidSrcMe SU', url: `https://vidsrcme.su/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
-      { name: 'VidSrc-me RU', url: `https://vidsrc-me.ru/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
-      { name: 'VidSrc-me SU', url: `https://vidsrc-me.su/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
-      { name: 'VidSrc-embed RU', url: `https://vidsrc-embed.ru/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
-      { name: 'VidSrc-embed SU', url: `https://vidsrc-embed.su/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
-      { name: 'Vsrc SU', url: `https://vsrc.su/embed/${type}/${id}${epPath}?autoplay=1`, playerType: 'iframe' },
-      { name: 'SuperEmbed', url: `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1`, playerType: 'iframe' },
-      { name: 'EmbedSu', url: `https://embed.su/embed/${type}/${id}${epPath}`, playerType: 'iframe' },
-      { name: 'WebTorrent', url: 'webtorrent', playerType: 'webtorrent' }
+      { name: 'VidSrc SH', url: () => `https://vidsrc.sh/embed/${type}/${id}${epPath()}?autoplay=1`, playerType: 'iframe' },
+      { name: 'VidSrc TO', url: () => `https://vidsrc.to/embed/${type}/${id}${epPath()}`, playerType: 'iframe' },
+      { name: 'VidSrcMe RU', url: () => `https://vidsrcme.ru/embed/${type}/${id}${epPath()}?autoplay=1`, playerType: 'iframe' },
+      { name: 'VidSrcMe SU', url: () => `https://vidsrcme.su/embed/${type}/${id}${epPath()}?autoplay=1`, playerType: 'iframe' },
+      { name: 'VidSrc-me RU', url: () => `https://vidsrc-me.ru/embed/${type}/${id}${epPath()}?autoplay=1`, playerType: 'iframe' },
+      { name: 'VidSrc-me SU', url: () => `https://vidsrc-me.su/embed/${type}/${id}${epPath()}?autoplay=1`, playerType: 'iframe' },
+      { name: 'VidSrc-embed RU', url: () => `https://vidsrc-embed.ru/embed/${type}/${id}${epPath()}?autoplay=1`, playerType: 'iframe' },
+      { name: 'VidSrc-embed SU', url: () => `https://vidsrc-embed.su/embed/${type}/${id}${epPath()}?autoplay=1`, playerType: 'iframe' },
+      { name: 'Vsrc SU', url: () => `https://vsrc.su/embed/${type}/${id}${epPath()}?autoplay=1`, playerType: 'iframe' },
+      { name: 'SuperEmbed', url: () => `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1${type === 'tv' ? `&s=${curSeason}&e=${curEpisode}` : ''}`, playerType: 'iframe' },
+      { name: 'EmbedSu', url: () => `https://embed.su/embed/${type}/${id}${epPath()}`, playerType: 'iframe' },
+      { name: 'WebTorrent', url: () => 'webtorrent', playerType: 'webtorrent' }
     ];
-    
-    // Update video player
-    videoPlayer.src = primaryUrl;
-    checkSavedProgress();
-    
+
+    // Origins the embed players may legitimately post messages from
+    alternativeServers
+      .filter(s => s.playerType === 'iframe')
+      .forEach(s => embedOrigins.add(new URL(s.url()).origin));
+    embedOrigins.add('https://theajack.github.io');
+
     // Monitor iframe src changes
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
@@ -519,13 +488,12 @@ import { createUrl } from '../lib/utils';
     document.title = `Watch ${title} - NotFlix`;
     
     // Update navigation links with proper base path
-    const basePath = window.location.pathname.includes('/i-like-boobs') ? '/i-like-boobs/' : '/';
-    backLink.href = basePath + `details/${type}/${id}`;
-    detailsLink.href = basePath + `details/${type}/${id}`;
-    
+    backLink.href = createUrl(`details/${type}/${id}`);
+    detailsLink.href = createUrl(`details/${type}/${id}`);
+
     // --- Progress Tracking ---
     function progressKey() {
-      const s = type === 'tv' ? `_s${season}_e${episode}` : '';
+      const s = type === 'tv' ? `_s${curSeason}_e${curEpisode}` : '';
       return `notflix_progress_${type}_${id}${s}`;
     }
     function formatTime(secs) {
@@ -545,35 +513,71 @@ import { createUrl } from '../lib/utils';
     }
     function saveProgress() {
       if (elapsedSeconds < 60) return;
+      try {
+        // Don't overwrite a larger saved resume point the user hasn't acted on yet
+        const raw = localStorage.getItem(progressKey());
+        if (raw && JSON.parse(raw).elapsed > elapsedSeconds) return;
+      } catch (_) {}
       localStorage.setItem(progressKey(), JSON.stringify({ elapsed: elapsedSeconds, savedAt: Date.now() }));
     }
     function clearProgress() {
       localStorage.removeItem(progressKey());
     }
+    let resumeFrom = 0;
+    const resumeBanner = document.getElementById('resume-banner');
+    document.getElementById('resume-btn').addEventListener('click', () => {
+      resumeBanner.classList.add('hidden');
+      const sep = videoPlayer.src.includes('?') ? '&' : '?';
+      videoPlayer.src = videoPlayer.src + sep + `t=${resumeFrom}`;
+      elapsedSeconds = resumeFrom;
+      startProgressTracking();
+    });
+    document.getElementById('resume-dismiss-btn').addEventListener('click', () => {
+      resumeBanner.classList.add('hidden');
+      clearProgress();
+      startProgressTracking();
+    });
     function checkSavedProgress() {
+      resumeBanner.classList.add('hidden');
       try {
         const raw = localStorage.getItem(progressKey());
         if (!raw) return;
         const { elapsed, savedAt } = JSON.parse(raw);
         if (Date.now() - savedAt > 90 * 24 * 60 * 60 * 1000) { clearProgress(); return; }
         if (elapsed < 60) return;
-        const banner = document.getElementById('resume-banner');
+        resumeFrom = elapsed;
         document.getElementById('resume-time').textContent = formatTime(elapsed);
-        banner.classList.remove('hidden');
-        document.getElementById('resume-btn').addEventListener('click', () => {
-          banner.classList.add('hidden');
-          const sep = videoPlayer.src.includes('?') ? '&' : '?';
-          videoPlayer.src = videoPlayer.src + sep + `t=${elapsed}`;
-          elapsedSeconds = elapsed;
-          startProgressTracking();
-        });
-        document.getElementById('resume-dismiss-btn').addEventListener('click', () => {
-          banner.classList.add('hidden');
-          clearProgress();
-          startProgressTracking();
-        });
+        resumeBanner.classList.remove('hidden');
       } catch (_) {}
     }
+
+    // Called when the user moves to a different episode without a page reload
+    function switchEpisode(newSeason, newEpisode) {
+      curSeason = String(newSeason);
+      curEpisode = String(newEpisode);
+      clearInterval(progressInterval);
+      elapsedSeconds = 0;
+      videoTitle.textContent = `${title} S${curSeason}E${curEpisode}`;
+      // Only touch the iframe when it is the active player (not while a torrent is playing)
+      if (alternativeServers[currentServerIndex]?.playerType === 'iframe') {
+        loadServer(currentServerIndex);
+      }
+      checkSavedProgress();
+    }
+
+    // A finished movie has nothing to resume
+    window.addEventListener('message', (e) => {
+      if (type !== 'movie' || !isEmbedMessage(e)) return;
+      try {
+        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        const evt = (data?.event ?? data?.type ?? data?.name ?? data?.status ?? '').toString().toLowerCase();
+        if (evt === 'ended' || evt === 'complete' || evt === 'finish') {
+          clearInterval(progressInterval);
+          elapsedSeconds = 0;
+          clearProgress();
+        }
+      } catch (_) {}
+    });
 
     window.addEventListener('beforeunload', saveProgress);
     window.addEventListener('visibilitychange', () => { if (document.hidden) saveProgress(); });
@@ -583,10 +587,22 @@ import { createUrl } from '../lib/utils';
     let webtorrentClient = null;
     let webtorrentTorrent = null;
     let serverStallTimeout = null;
+    let lastIframeServerIndex = 0; // last iframe server used, to fall back to if the torrent modal is cancelled
 
     function showServerErrorOverlay() {
       document.getElementById('server-loading').classList.add('hidden');
       document.getElementById('server-error-overlay').classList.remove('hidden');
+    }
+
+    // Move to the next iframe server, or show the error overlay if there isn't one
+    // (failover never jumps into the WebTorrent modal on its own)
+    function failoverToNextServer() {
+      const next = alternativeServers[currentServerIndex + 1];
+      if (next && next.playerType === 'iframe') {
+        loadServer(currentServerIndex + 1);
+      } else {
+        showServerErrorOverlay();
+      }
     }
 
     function loadServer(index) {
@@ -615,24 +631,32 @@ import { createUrl } from '../lib/utils';
           webtorrentClient = null;
           webtorrentTorrent = null;
         }
-        videoPlayer.src = server.url;
+        // Tear down the torrent <video> so it doesn't keep playing/buffering unseen
+        const torrentVideo = document.getElementById('webtorrent-player') as HTMLVideoElement | null;
+        if (torrentVideo) {
+          torrentVideo.pause();
+          torrentVideo.removeAttribute('src');
+          torrentVideo.load();
+        }
+        videoPlayer.src = server.url();
         serverSelect.selectedIndex = index;
         currentServerIndex = index;
+        lastIframeServerIndex = index;
 
-        // Stall detection — iframe may load an error page without firing 'error'
+        // Stall detection — if the iframe never finishes loading, move on.
+        // (A cross-origin iframe that loads an error page still fires 'load',
+        // which can't be told apart from a working embed.)
         serverStallTimeout = setTimeout(() => {
           serverLoadingMsg.textContent = `${server.name} is not responding…`;
-          if (currentServerIndex < alternativeServers.length - 1) {
-            loadServer(currentServerIndex + 1);
-          } else {
-            showServerErrorOverlay();
-          }
+          failoverToNextServer();
         }, 15000);
       }
     }
 
     // Hide loading indicator when video loads successfully
     videoPlayer.addEventListener('load', () => {
+      // Ignore the blank page used to park the iframe while a torrent plays
+      if (videoPlayer.src.startsWith('about:')) return;
       clearTimeout(serverStallTimeout);
       document.getElementById('server-loading').classList.add('hidden');
       startProgressTracking();
@@ -644,11 +668,7 @@ import { createUrl } from '../lib/utils';
       const failedName = alternativeServers[currentServerIndex]?.name || 'Server';
       const serverLoadingMsg = document.getElementById('server-loading-msg');
       serverLoadingMsg.textContent = `${failedName} failed, trying next…`;
-      if (currentServerIndex < alternativeServers.length - 1) {
-        setTimeout(() => loadServer(currentServerIndex + 1), 1500);
-      } else {
-        showServerErrorOverlay();
-      }
+      setTimeout(failoverToNextServer, 1500);
     });
 
     document.getElementById('retry-all-btn').addEventListener('click', () => {
@@ -679,7 +699,14 @@ import { createUrl } from '../lib/utils';
       option.dataset.playerType = server.playerType;
       serverSelect.appendChild(option);
     });
-    
+
+    // Initial load (arms the stall timer). With a magnet link the torrent is
+    // loaded instead, so the iframe stays empty.
+    if (!magnetLink) {
+      loadServer(0);
+    }
+    checkSavedProgress();
+
     // If magnet link is provided, auto-load WebTorrent
     if (magnetLink) {
       // Find WebTorrent server index
@@ -697,8 +724,8 @@ import { createUrl } from '../lib/utils';
           setTimeout(() => {
             const magnetInput = document.getElementById('magnet-input') as HTMLInputElement;
             if (magnetInput) {
-              const decodedMagnet = decodeURIComponent(magnetLink);
-              magnetInput.value = decodedMagnet;
+              // URLSearchParams.get() already decoded the magnet link
+              magnetInput.value = magnetLink;
               console.log('Pre-filled magnet link in input');
               
               // Auto-click load button after a short delay
@@ -751,7 +778,10 @@ import { createUrl } from '../lib/utils';
       const webtorrentProgress = document.getElementById('webtorrent-progress');
       const serverLoading = document.getElementById('server-loading');
       
-      // Hide iframe, show WebTorrent player
+      // Hide iframe (and stop it playing audio underneath), show WebTorrent player
+      clearTimeout(serverStallTimeout);
+      clearInterval(progressInterval);
+      videoPlayer.src = 'about:blank';
       videoPlayer.classList.add('hidden');
       webtorrentContainer.classList.remove('hidden');
       webtorrentProgress.classList.remove('hidden');
@@ -818,7 +848,7 @@ import { createUrl } from '../lib/utils';
           webtorrentStatus.innerHTML = `
             <div class="flex items-center space-x-2">
               <i class="fas fa-play-circle text-green-400"></i>
-              <span>Playing: ${videoFile.name}</span>
+              <span>Playing: ${escapeHtml(videoFile.name)}</span>
             </div>
           `;
         } else {
@@ -858,30 +888,31 @@ import { createUrl } from '../lib/utils';
         webtorrentStatus.innerHTML = `
           <div class="flex items-center space-x-2">
             <i class="fas fa-exclamation-circle text-red-400"></i>
-            <span>Error: ${err.message}</span>
+            <span>Error: ${escapeHtml(err.message)}</span>
           </div>
         `;
       });
     }
     
     // WebTorrent modal handlers
-    document.getElementById('close-webtorrent-modal')?.addEventListener('click', () => {
+    // Cancelling the modal goes back to the last iframe server (unless a torrent is already playing)
+    function cancelWebTorrentModal() {
       hideWebTorrentModal();
-      // Reset to previous server if cancelled
-      if (currentServerIndex > 0) {
-        serverSelect.selectedIndex = currentServerIndex - 1;
-        loadServer(currentServerIndex - 1);
+      if (webtorrentClient) {
+        serverSelect.selectedIndex = currentServerIndex;
+        return;
       }
-    });
-    
-    document.getElementById('cancel-webtorrent-btn')?.addEventListener('click', () => {
-      hideWebTorrentModal();
-      // Reset to previous server if cancelled
-      if (currentServerIndex > 0) {
-        serverSelect.selectedIndex = currentServerIndex - 1;
-        loadServer(currentServerIndex - 1);
+      const src = videoPlayer.getAttribute('src');
+      if (!src || src.startsWith('about:')) {
+        loadServer(lastIframeServerIndex);
+      } else {
+        // Iframe was never touched, just restore the selection
+        serverSelect.selectedIndex = lastIframeServerIndex;
+        currentServerIndex = lastIframeServerIndex;
       }
-    });
+    }
+    document.getElementById('close-webtorrent-modal')?.addEventListener('click', cancelWebTorrentModal);
+    document.getElementById('cancel-webtorrent-btn')?.addEventListener('click', cancelWebTorrentModal);
     
     document.getElementById('load-webtorrent-btn')?.addEventListener('click', async () => {
       const magnetInput = document.getElementById('magnet-input');
@@ -912,7 +943,7 @@ import { createUrl } from '../lib/utils';
     
     // Set up TV show episode controls if needed
     if (type === 'tv') {
-      setupTVControls(id, season, episode);
+      setupTVControls(id, season, episode, switchEpisode);
     }
   }
   
@@ -927,7 +958,7 @@ import { createUrl } from '../lib/utils';
     errorScreen.classList.remove('hidden');
   }
   
-  async function setupTVControls(id, currentSeason, currentEpisode) {
+  async function setupTVControls(id, currentSeason, currentEpisode, switchEpisode) {
     const episodeControls = document.getElementById('episode-controls');
     const seasonSelect = document.getElementById('season-select');
     const episodeSelect = document.getElementById('episode-select');
@@ -941,6 +972,9 @@ import { createUrl } from '../lib/utils';
     // Track episode counts and runtimes for auto-next
     let episodeCountBySeason = {};
     let episodeRuntimes = {}; // { season: { episodeNum: runtimeMinutes } }
+    let episodesBySeason = {}; // { season: TMDB episode list } for the episode info panel
+    let optionsSeason = null; // season the episode <select> currently lists
+    let optionsRequestId = 0; // guards against out-of-order season fetches
     let maxSeasons = 10;
 
     // Try to get real TV show data from TMDB
@@ -966,8 +1000,9 @@ import { createUrl } from '../lib/utils';
     }
     
     // Populate episode options
-    async function updateEpisodeOptions(selectedSeason) {
-      episodeSelect.innerHTML = '';
+    // Returns false if a newer request superseded this one
+    async function updateEpisodeOptions(selectedSeason, selectedEpisode = 1) {
+      const requestId = ++optionsRequestId;
       
       // Try to get real episode data
       let seasonData = null;
@@ -980,8 +1015,15 @@ import { createUrl } from '../lib/utils';
         console.log('Could not fetch season data:', e);
       }
       
+      if (requestId !== optionsRequestId) return false;
+      episodeSelect.innerHTML = '';
+      
       const episodes = seasonData?.episodes || [];
-      const maxEpisodes = episodes.length || 24;
+      // If the season fetch failed, fall back to the show's own episode count before guessing
+      const showSeasonCount = tvShowData?.seasons?.find(s => s.season_number == selectedSeason)?.episode_count;
+      const maxEpisodes = episodes.length || showSeasonCount || 24;
+      episodesBySeason[selectedSeason] = episodes;
+      optionsSeason = String(selectedSeason);
       episodeCountBySeason[selectedSeason] = maxEpisodes;
       episodeRuntimes[selectedSeason] = {};
       episodes.forEach((ep, i) => { if (ep?.runtime) episodeRuntimes[selectedSeason][i + 1] = ep.runtime; });
@@ -991,12 +1033,13 @@ import { createUrl } from '../lib/utils';
         option.value = i;
         const episodeData = episodes[i - 1];
         option.textContent = episodeData?.name ? `${i}. ${episodeData.name}` : `Episode ${i}`;
-        option.selected = i == currentEpisode;
+        option.selected = i == selectedEpisode;
         episodeSelect.appendChild(option);
       }
       
       // Update episode info if available
       updateEpisodeInfo(selectedSeason, episodeSelect.value, episodes);
+      return true;
     }
     
     function updateEpisodeInfo(season, episode, episodes = []) {
@@ -1010,76 +1053,57 @@ import { createUrl } from '../lib/utils';
       }
     }
     
-    await updateEpisodeOptions(currentSeason);
+    await updateEpisodeOptions(currentSeason, currentEpisode);
     
-    // Function to load a specific episode
-    function loadEpisode(season, episode) {
+    // Function to load a specific episode.
+    // Keeps the selects, URL, progress tracking and auto-next state in sync.
+    async function loadEpisode(season, episode, pushHistory = true) {
+      season = String(season);
+      episode = String(episode);
+
+      // Make sure the episode <select> lists this season before selecting from it
+      if (optionsSeason !== season) {
+        const ok = await updateEpisodeOptions(season, episode);
+        if (!ok) return; // superseded by a newer season change
+      }
+      seasonSelect.value = season;
+      episodeSelect.value = episode;
+      updateEpisodeInfo(season, episode, episodesBySeason[season] || []);
+
       // Update URL without reloading
-      const url = new URL(window.location);
-      url.searchParams.set('season', season);
-      url.searchParams.set('episode', episode);
-      window.history.pushState({}, '', url);
-      
-      // Update video player with VidSrc format (primary with auto-play)
-      const videoPlayer = document.getElementById('video-player');
-      const newUrl = `https://vidsrc.sh/embed/tv/${id}/${season}/${episode}?autoplay=1`;
-      videoPlayer.src = newUrl;
-      
-      // Update title
-      const title = new URLSearchParams(window.location.search).get('title') || 'Unknown';
-      document.getElementById('video-title').textContent = `${title} S${season}E${episode}`;
-      
-      // Update all server options to reflect new episode
-      const serverSelect = document.getElementById('server-select');
-      const servers = Array.from(serverSelect.options);
-      servers.forEach((option, index) => {
-        const serverName = option.textContent;
-        if (serverName.includes('VidSrc') || serverName.includes('Vsrc') || serverName.includes('VidSrcMe')) {
-          // Update URL pattern for all VidSrc servers
-          option.value = option.value.replace(/\/embed\/tv\/\d+\/\d+\/\d+/, `/embed/tv/${id}/${season}/${episode}`);
-        }
-      });
-      
-      // Reset progress tracking for the new episode
-      clearInterval(progressInterval);
-      elapsedSeconds = 0;
+      if (pushHistory) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('season', season);
+        url.searchParams.set('episode', episode);
+        window.history.pushState({}, '', url);
+      }
 
       // Reset auto-next state for the new episode
       resetAutoNext();
 
-      // Show brief loading indicator
-      const serverLoading = document.getElementById('server-loading');
-      const serverLoadingMsg = document.getElementById('server-loading-msg');
-      serverLoadingMsg.textContent = 'Loading episode…';
-      serverLoading.classList.remove('hidden');
-      setTimeout(() => { serverLoading.classList.add('hidden'); }, 3000);
+      // Updates title, resets progress and reloads the active iframe server
+      switchEpisode(season, episode);
     }
     
     // Handle episode changes (with auto-loading)
     episodeSelect.addEventListener('change', () => {
-      const episodes = seasonSelect.value === currentSeason ? [] : []; // Would need to store episodes data
-      updateEpisodeInfo(seasonSelect.value, episodeSelect.value, episodes);
-      
-      // Auto-play the selected episode
-      const newSeason = seasonSelect.value;
-      const newEpisode = episodeSelect.value;
-      loadEpisode(newSeason, newEpisode);
+      loadEpisode(seasonSelect.value, episodeSelect.value);
     });
     
-    seasonSelect.addEventListener('change', async () => {
-      await updateEpisodeOptions(seasonSelect.value);
-      
-      // Auto-play first episode of the new season
-      const newSeason = seasonSelect.value;
-      const newEpisode = episodeSelect.value || '1';
-      loadEpisode(newSeason, newEpisode);
+    // Changing season auto-plays episode 1 of the new season
+    seasonSelect.addEventListener('change', () => {
+      loadEpisode(seasonSelect.value, 1);
     });
     
     // Load episode button handler (now just calls the loadEpisode function)
     loadEpisodeBtn.addEventListener('click', () => {
-      const newSeason = seasonSelect.value;
-      const newEpisode = episodeSelect.value;
-      loadEpisode(newSeason, newEpisode);
+      loadEpisode(seasonSelect.value, episodeSelect.value);
+    });
+
+    // Back/forward buttons: follow the season/episode in the URL
+    window.addEventListener('popstate', () => {
+      const params = new URLSearchParams(window.location.search);
+      loadEpisode(params.get('season') || '1', params.get('episode') || '1', false);
     });
 
     // --- Auto Next Episode ---
@@ -1117,9 +1141,8 @@ import { createUrl } from '../lib/utils';
       // then swap the src. The new episode loads inside the live fullscreen
       // session which keeps the autoplay permission active.
       const goNext = () => {
+        // loadEpisode refreshes the episode list first when crossing a season boundary
         loadEpisode(next.season, next.episode);
-        seasonSelect.value = next.season;
-        episodeSelect.value = next.episode;
       };
 
       if (playerEl?.requestFullscreen && !document.fullscreenElement) {
@@ -1154,17 +1177,25 @@ import { createUrl } from '../lib/utils';
     let videoCurrentTime = 0;
     let endTimer = null;
 
-    function setEndTimer() {
+    function clearEndTimer() {
       clearTimeout(endTimer);
+      endTimer = null;
+    }
+
+    function setEndTimer() {
+      clearEndTimer();
       if (!videoDuration) return;
       const remaining = Math.max(videoDuration - videoCurrentTime, 0) * 1000;
       if (remaining < 2000) return;
-      endTimer = setTimeout(showNextEpisodeOverlay, remaining);
+      endTimer = setTimeout(() => {
+        endTimer = null;
+        showNextEpisodeOverlay();
+      }, remaining);
     }
 
     function resetAutoNext() {
       clearInterval(countdownInterval);
-      clearTimeout(endTimer);
+      clearEndTimer();
       autoNextTriggered = false;
       autoNextCancelled = false;
       videoDuration = null;
@@ -1179,7 +1210,7 @@ import { createUrl } from '../lib/utils';
 
     nextCancelBtn.addEventListener('click', () => {
       clearInterval(countdownInterval);
-      clearTimeout(endTimer);
+      clearEndTimer();
       autoNextCancelled = true;
       nextOverlay.classList.add('hidden');
     });
@@ -1188,6 +1219,7 @@ import { createUrl } from '../lib/utils';
     // Log everything so we know exactly what events VidSrc sends.
     // Capture duration + currentTime to drive a precise end timer.
     window.addEventListener('message', (e) => {
+      if (!isEmbedMessage(e)) return;
       try {
         const raw = typeof e.data === 'string' ? e.data : JSON.stringify(e.data);
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
@@ -1219,23 +1251,23 @@ import { createUrl } from '../lib/utils';
 
         // Pause → cancel timer so it doesn't fire while paused
         if (evt === 'pause' || evt === 'paused') {
-          clearTimeout(endTimer);
+          clearEndTimer();
         }
 
         // Seek / scrub → update position and reset timer to new remaining time
         if (evt === 'seek' || evt === 'seeked' || evt === 'seeking') {
-          clearTimeout(endTimer);
           setEndTimer();
         }
 
-        // timeupdate → keep position fresh; set timer once we have duration
-        if (evt === 'timeupdate' || evt === 'progress') {
-          if (videoDuration && !endTimer) setEndTimer();
+        // timeupdate → re-sync the timer to the real position so stalls/buffering
+        // don't make it fire early
+        if (evt === 'timeupdate') {
+          if (videoDuration) setEndTimer();
         }
 
         // Ended signal → show overlay immediately
         if (evt === 'ended' || evt === 'complete' || evt === 'finish' || evt === 'stop') {
-          clearTimeout(endTimer);
+          clearEndTimer();
           showNextEpisodeOverlay();
         }
       } catch (_) {}
@@ -1291,6 +1323,8 @@ import { createUrl } from '../lib/utils';
     fsControls.addEventListener('mouseleave', () => hideFsControls());
 
     document.addEventListener('fullscreenchange', () => {
+      // The hover strip only exists in fullscreen; outside it must not block the embed's top edge
+      fsTrigger.style.pointerEvents = document.fullscreenElement ? 'auto' : 'none';
       if (!document.fullscreenElement) {
         clearTimeout(fsHideTimer);
         fsControls.classList.add('hidden');
@@ -1298,50 +1332,31 @@ import { createUrl } from '../lib/utils';
       }
     });
 
-    fsPrevBtn.addEventListener('click', () => {
+    fsPrevBtn.addEventListener('click', async () => {
       const s = parseInt(seasonSelect.value);
       const e = parseInt(episodeSelect.value);
       if (e > 1) {
         loadEpisode(s, e - 1);
-        seasonSelect.value  = s;
-        episodeSelect.value = e - 1;
       } else if (s > 1) {
-        const prevEps = episodeCountBySeason[s - 1] || 1;
-        updateEpisodeOptions(s - 1).then(() => {
-          loadEpisode(s - 1, prevEps);
-          seasonSelect.value  = s - 1;
-          episodeSelect.value = prevEps;
-        });
+        // Need the previous season's episode count to jump to its last episode
+        const ok = await updateEpisodeOptions(s - 1, 1);
+        if (!ok) return;
+        loadEpisode(s - 1, episodeCountBySeason[s - 1] || 1);
       }
     });
 
     fsNextBtn.addEventListener('click', () => {
       const next = getNextEpisodeInfo();
       if (!next) return;
-      if (next.season !== parseInt(seasonSelect.value)) {
-        updateEpisodeOptions(next.season).then(() => {
-          loadEpisode(next.season, next.episode);
-          seasonSelect.value  = next.season;
-          episodeSelect.value = next.episode;
-        });
-      } else {
-        loadEpisode(next.season, next.episode);
-        seasonSelect.value  = next.season;
-        episodeSelect.value = next.episode;
-      }
+      loadEpisode(next.season, next.episode);
     });
 
     fsSeasonSel.addEventListener('change', async () => {
-      seasonSelect.value = fsSeasonSel.value;
-      await updateEpisodeOptions(fsSeasonSel.value);
-      fsEpisodeSel.innerHTML = episodeSelect.innerHTML;
-      fsEpisodeSel.value     = '1';
-      episodeSelect.value    = '1';
-      loadEpisode(fsSeasonSel.value, '1');
+      await loadEpisode(fsSeasonSel.value, 1);
+      syncFsSelects();
     });
 
     fsEpisodeSel.addEventListener('change', () => {
-      episodeSelect.value = fsEpisodeSel.value;
       loadEpisode(seasonSelect.value, fsEpisodeSel.value);
     });
   }
@@ -1349,6 +1364,7 @@ import { createUrl } from '../lib/utils';
   function setupPopupBlocker() {
     // Additional iframe protection
     const iframe = document.getElementById('video-player');
+    if (!iframe) return;
     
     // Intercept iframe navigation attempts
     iframe.addEventListener('load', () => {
@@ -1399,13 +1415,14 @@ import { createUrl } from '../lib/utils';
     
     // Detect and block redirect attempts
     let lastUrl = window.location.href;
-    setInterval(() => {
+    const urlWatchTimer = setInterval(() => {
       if (window.location.href !== lastUrl) {
         // URL changed unexpectedly, might be a redirect attempt
         console.warn('Unexpected URL change detected');
         lastUrl = window.location.href;
       }
     }, 500);
+    window.addEventListener('pagehide', () => clearInterval(urlWatchTimer), { once: true });
   }
   
   // Advanced popup detection and blocking

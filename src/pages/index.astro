@@ -100,7 +100,7 @@ const heroMovie = trendingData.results?.[0];
     <section id="fallback-hero" class="relative h-[70vh] flex items-center justify-center overflow-hidden">
       <div 
         class="absolute inset-0 bg-cover bg-center"
-        style={`background-image: url('https://image.tmdb.org/t/p/original${heroMovie.backdrop_path}')`}
+        style={`background-image: url('https://image.tmdb.org/t/p/original${heroMovie.backdrop_path || heroMovie.poster_path}')`}
       ></div>
       <div class="absolute inset-0 bg-black bg-opacity-50"></div>
       

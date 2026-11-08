@@ -8,6 +8,7 @@ interface MoodOption {
   emoji: string;
   movieGenres: number[];
   tvGenres: number[];
+  tvKeywords?: number[];
 }
 
 interface ToneOption {
@@ -20,6 +21,7 @@ interface ToneOption {
   addGenres?: number[];
   certLte?: string;
   keywords?: number[];
+  tvKeywords?: number[];
 }
 
 interface EraOption {
@@ -46,13 +48,20 @@ interface LengthOption {
   runtimeGte?: number;
 }
 
+// TMDB keyword IDs used where TV has no matching genre
+const ROMANCE_KEYWORD = 9840;
+const SPY_KEYWORD = 470;
+
+// Genre IDs that exist for TV (movie-only IDs like Thriller/Romance/History are not valid for /discover/tv)
+const TV_GENRE_IDS = new Set([10759, 16, 35, 80, 99, 18, 10751, 10762, 9648, 10763, 10764, 10765, 10766, 10767, 10768, 37]);
+
 const MOODS: MoodOption[] = [
   { label: 'Action & Adventure', emoji: '💥', movieGenres: [28, 12], tvGenres: [10759] },
   { label: 'Comedy', emoji: '😂', movieGenres: [35], tvGenres: [35] },
   { label: 'Drama', emoji: '🎭', movieGenres: [18], tvGenres: [18] },
-  { label: 'Horror & Thriller', emoji: '😱', movieGenres: [27, 53], tvGenres: [27, 80] },
+  { label: 'Horror & Thriller', emoji: '😱', movieGenres: [27, 53], tvGenres: [9648, 80] },
   { label: 'Sci-Fi & Fantasy', emoji: '🚀', movieGenres: [878, 14], tvGenres: [10765] },
-  { label: 'Romance', emoji: '❤️', movieGenres: [10749], tvGenres: [10749] },
+  { label: 'Romance', emoji: '❤️', movieGenres: [10749], tvGenres: [18], tvKeywords: [ROMANCE_KEYWORD] },
   { label: 'Crime & Mystery', emoji: '🔍', movieGenres: [80, 9648], tvGenres: [80, 9648] },
   { label: 'Documentary', emoji: '🎬', movieGenres: [99], tvGenres: [99] },
 ];
@@ -60,7 +69,7 @@ const MOODS: MoodOption[] = [
 const TONE_MAP: Record<string, ToneOption[]> = {
   'Action & Adventure': [
     { label: 'Superhero', subtitle: 'Capes, powers, and blockbusters', keywords: [9715] },
-    { label: 'Spy & Espionage', subtitle: 'Slick agents and globe-trotting intrigue', addMovieGenres: [53], addTvGenres: [53] },
+    { label: 'Spy & Espionage', subtitle: 'Slick agents and globe-trotting intrigue', addMovieGenres: [53], tvKeywords: [SPY_KEYWORD] },
     { label: 'War & Combat', subtitle: 'Gritty military stories', addMovieGenres: [10752], addTvGenres: [10768] },
     { label: 'Any style', subtitle: 'All action & adventure' },
   ],
@@ -78,7 +87,7 @@ const TONE_MAP: Record<string, ToneOption[]> = {
   ],
   'Horror & Thriller': [
     { label: 'Psychological', subtitle: 'Mind games over jump scares', overrideMovieGenres: [53, 9648], overrideTvGenres: [9648] },
-    { label: 'Supernatural', subtitle: 'Ghosts, demons, the paranormal', overrideMovieGenres: [27], overrideTvGenres: [27] },
+    { label: 'Supernatural', subtitle: 'Ghosts, demons, the paranormal', overrideMovieGenres: [27], overrideTvGenres: [10765] },
     { label: 'Mystery & Suspense', subtitle: 'Secrets, twists, whodunits', overrideMovieGenres: [9648, 53], overrideTvGenres: [9648] },
     { label: 'Any style', subtitle: 'All horror & thriller' },
   ],
@@ -96,7 +105,7 @@ const TONE_MAP: Record<string, ToneOption[]> = {
   ],
   'Crime & Mystery': [
     { label: 'Whodunit & Detective', subtitle: 'Puzzles, clues, investigations', overrideMovieGenres: [9648], overrideTvGenres: [9648, 80] },
-    { label: 'Heist & Caper', subtitle: 'Elaborate plans and big scores', addMovieGenres: [53], addTvGenres: [53] },
+    { label: 'Heist & Caper', subtitle: 'Elaborate plans and big scores', addMovieGenres: [53], addTvGenres: [9648] },
     { label: 'Legal Thriller', subtitle: 'Courtrooms, lawyers, and justice', addGenres: [53] },
     { label: 'Any style', subtitle: 'All crime & mystery' },
   ],
@@ -146,18 +155,38 @@ function buildFilters(
   const filters: Record<string, any> = {};
 
   let genres = contentType === 'movie' ? [...mood.movieGenres] : [...mood.tvGenres];
+  let extraGenres: number[] = [];
+  const keywords: number[] = contentType === 'tv' ? [...(mood.tvKeywords || [])] : [];
 
   if (tone) {
     if (contentType === 'movie' && tone.overrideMovieGenres) genres = tone.overrideMovieGenres;
     else if (contentType === 'tv' && tone.overrideTvGenres) genres = tone.overrideTvGenres;
 
-    if (contentType === 'movie' && tone.addMovieGenres) genres = [...genres, ...tone.addMovieGenres];
-    else if (contentType === 'tv' && tone.addTvGenres) genres = [...genres, ...tone.addTvGenres];
+    if (contentType === 'movie' && tone.addMovieGenres) extraGenres = [...extraGenres, ...tone.addMovieGenres];
+    else if (contentType === 'tv' && tone.addTvGenres) extraGenres = [...extraGenres, ...tone.addTvGenres];
 
-    if (tone.addGenres) genres = [...genres, ...tone.addGenres];
+    if (tone.addGenres) {
+      if (contentType === 'movie') {
+        extraGenres = [...extraGenres, ...tone.addGenres];
+      } else {
+        // Map movie-only genres to their closest TV equivalent
+        tone.addGenres.forEach(g => {
+          if (g === 10749) keywords.push(ROMANCE_KEYWORD);
+          else if (g === 53) extraGenres.push(9648);
+          else if (TV_GENRE_IDS.has(g)) extraGenres.push(g);
+        });
+      }
+    }
+    if (contentType === 'tv' && tone.tvKeywords) keywords.push(...tone.tvKeywords);
   }
 
-  if (genres.length > 0) filters.with_genres = genres;
+  // Mood genres are alternatives (OR, '|'); tone add-ons narrow the result (AND, ',')
+  if (extraGenres.length > 0) {
+    const all = [genres[0], ...extraGenres].filter(g => g !== undefined);
+    filters.with_genres = Array.from(new Set(all)).join(',');
+  } else if (genres.length > 0) {
+    filters.with_genres = genres.join('|');
+  }
 
   if (contentType === 'movie') {
     if (era.movieGte) filters['primary_release_date.gte'] = era.movieGte;
@@ -181,10 +210,129 @@ function buildFilters(
     filters['certification.lte'] = tone.certLte;
   }
 
-  if (tone?.keywords?.length) filters.with_keywords = tone.keywords.join(',');
+  if (tone?.keywords?.length) keywords.push(...tone.keywords);
+  if (keywords.length) filters.with_keywords = Array.from(new Set(keywords)).join(',');
   if (companyIds?.length) filters.with_companies = companyIds.join('|');
 
   return filters;
+}
+
+// Fetch a discover page. TMDB has no "exclude language" param, so `without_original_language`
+// is applied client-side here and never sent to the API.
+async function fetchDiscoverPage(type: 'movie' | 'tv', filters: Record<string, any>, page: number) {
+  const { without_original_language, ...apiFilters } = filters;
+  const data = await discoverWithFilters(type, apiFilters, page);
+  if (!without_original_language) return data;
+  return {
+    ...data,
+    results: (data.results || []).filter((r: any) => r.original_language !== without_original_language),
+  };
+}
+
+function OptionCard({ emoji, label, subtitle, onClick }: {
+  emoji?: string; label: string; subtitle?: string; onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick}
+      className="group bg-gray-900 hover:bg-netflix-red border border-gray-700 hover:border-netflix-red rounded-xl p-5 text-left transition-all duration-200 hover:scale-[1.03] hover:shadow-2xl focus:outline-none focus:ring-2 focus:ring-netflix-red"
+    >
+      {emoji && <div className="text-3xl mb-2">{emoji}</div>}
+      <div className="text-white font-bold text-base leading-tight">{label}</div>
+      {subtitle && <div className="text-gray-400 text-xs mt-1 group-hover:text-red-100">{subtitle}</div>}
+    </button>
+  );
+}
+
+function StepHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="text-center mb-8">
+      <h2 className="text-3xl md:text-4xl font-bold text-white mb-2">{title}</h2>
+      {subtitle && <p className="text-gray-400 text-base">{subtitle}</p>}
+    </div>
+  );
+}
+
+function TasteTile({ item, isSelected, onToggle, onRemove }: { item: any; isSelected: boolean; onToggle: () => void; onRemove?: () => void }) {
+  const title = item.title || item.name;
+  return (
+    <div className="relative">
+      <button onClick={onToggle}
+        className={`relative w-full rounded-xl overflow-hidden transition-all duration-200 hover:scale-[1.03] focus:outline-none ${
+          isSelected ? 'ring-4 ring-netflix-red scale-[1.03]' : 'ring-1 ring-gray-700 hover:ring-gray-500'
+        }`}
+      >
+        {item.poster_path
+          ? <img src={getImageUrl(item.poster_path, 'w342')} alt={title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
+          : <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center"><i className="fas fa-image text-gray-600 text-3xl" /></div>
+        }
+        {isSelected && (
+          <div className="absolute inset-0 bg-netflix-red bg-opacity-20 flex items-start justify-end p-2">
+            <div className="bg-netflix-red rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
+              <i className="fas fa-check text-white text-xs" />
+            </div>
+          </div>
+        )}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-2">
+          <p className="text-white text-xs font-semibold truncate">{title}</p>
+        </div>
+      </button>
+      {onRemove && (
+        <button onClick={e => { e.stopPropagation(); onRemove(); }}
+          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-600 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors z-10"
+          aria-label="Remove"
+        >
+          <i className="fas fa-times text-white text-xs" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Refinement chip (results view)
+function Chip({ label, icon, active, onClick }: {
+  label: string; icon?: string; active: boolean; onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick}
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all shrink-0 ${
+        active
+          ? 'bg-netflix-red border-netflix-red text-white'
+          : 'bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'
+      }`}
+    >
+      {icon && <i className={`fas ${icon} text-xs`} />}
+      {label}
+    </button>
+  );
+}
+
+// Refinement chip (taste step)
+function TChip({ label, icon, active, onClick }: { label: string; icon?: string; active: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick}
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all shrink-0 ${
+        active ? 'bg-netflix-red border-netflix-red text-white' : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'
+      }`}
+    >
+      {icon && <i className={`fas ${icon} text-xs`} />}
+      {label}
+    </button>
+  );
+}
+
+function SortBtn({ label, icon, active, onClick }: { label: string; icon: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold border transition-all ${
+        active
+          ? 'bg-netflix-red border-netflix-red text-white'
+          : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'
+      }`}
+    >
+      <i className={`fas ${icon} text-xs`} /> {label}
+    </button>
+  );
 }
 
 export default function FindForm() {
@@ -233,6 +381,10 @@ export default function FindForm() {
   // Infinite scroll
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<() => void>(() => {});
+  // Request sequencing: stale responses are ignored
+  const resultsSeq = useRef(0);
+  const tasteSeq = useRef(0);
+  const loadingMoreRef = useRef(false);
 
   useEffect(() => {
     if (!titleSearch.trim()) { setTitleSearchResults([]); return; }
@@ -272,15 +424,17 @@ export default function FindForm() {
     e: EraOption, r: RatingOption, l: LengthOption | null,
     extra: Record<string, any> = {}
   ) => {
+    const seq = ++tasteSeq.current;
     setTasteLoading(true);
     setTastePool([]); setVisibleCount(INITIAL_VISIBLE); setTastePage(1);
     try {
       const merged = { ...buildFilters(type, m, t, e, r, l), ...extra };
-      const data = await discoverWithFilters(type, merged, 1);
+      const data = await fetchDiscoverPage(type, merged, 1);
+      if (seq !== tasteSeq.current) return;
       setTastePool(data.results || []);
       setTasteTotalPages(data.total_pages || 1);
-    } catch { setTastePool([]); }
-    finally { setTasteLoading(false); }
+    } catch { if (seq === tasteSeq.current) setTastePool([]); }
+    finally { if (seq === tasteSeq.current) setTasteLoading(false); }
   };
 
   const refineTaste = (overrides: Record<string, any>) => {
@@ -290,12 +444,14 @@ export default function FindForm() {
 
   const loadMoreTasteSamples = async () => {
     if (visibleCount < tastePool.length) { setVisibleCount(v => v + LOAD_MORE_BATCH); return; }
-    if (tastePage >= tasteTotalPages) return;
+    if (tastePage >= tasteTotalPages || tasteLoadingMore || tasteLoading) return;
+    const seq = tasteSeq.current;
     setTasteLoadingMore(true);
     try {
       const next = tastePage + 1;
       const merged = { ...buildFilters(contentType, mood!, tone, era!, rating!, length), ...tasteFilters };
-      const data = await discoverWithFilters(contentType, merged, next);
+      const data = await fetchDiscoverPage(contentType, merged, next);
+      if (seq !== tasteSeq.current) return;
       setTastePool(prev => [...prev, ...(data.results || [])]);
       setTastePage(next); setVisibleCount(v => v + LOAD_MORE_BATCH);
     } catch {} finally { setTasteLoadingMore(false); }
@@ -320,6 +476,7 @@ export default function FindForm() {
     type: 'movie' | 'tv', m: MoodOption, t: ToneOption | null,
     e: EraOption, r: RatingOption, l: LengthOption | null, pickedIds: number[]
   ) => {
+    const seq = ++resultsSeq.current;
     setLoading(true); setError(null); setBroadened(false); setStep('results');
     try {
       let companyIds: number[] = [];
@@ -330,12 +487,15 @@ export default function FindForm() {
         }));
       }
 
+      if (seq !== resultsSeq.current) return;
       const base = buildFilters(type, m, t, e, r, l, companyIds);
       const data = await discoverWithFilters(type, base, 1);
+      if (seq !== resultsSeq.current) return;
 
       if ((data.total_results === 0 || !data.results?.length) && companyIds.length > 0) {
         const fallbackBase = buildFilters(type, m, t, e, r, l);
         const fallback = await discoverWithFilters(type, fallbackBase, 1);
+        if (seq !== resultsSeq.current) return;
         setResults(fallback.results || []);
         setTotalResults(fallback.total_results || 0);
         setResultTotalPages(fallback.total_pages || 1);
@@ -349,35 +509,41 @@ export default function FindForm() {
       }
       setResultFilters({});
       setResultPage(1);
-    } catch (err: any) { setError(err.message || 'Failed to load results'); }
-    finally { setLoading(false); }
+    } catch (err: any) { if (seq === resultsSeq.current) setError(err.message || 'Failed to load results'); }
+    finally { if (seq === resultsSeq.current) setLoading(false); }
   };
 
   const applyRefinement = async (overrides: Record<string, any>) => {
+    const seq = ++resultsSeq.current;
     setRefineLoading(true);
     const merged = { ...baseFilters, ...overrides };
     try {
-      const data = await discoverWithFilters(contentType, merged, 1);
+      const data = await fetchDiscoverPage(contentType, merged, 1);
+      if (seq !== resultsSeq.current) return;
       setResults(data.results || []);
       setTotalResults(data.total_results || 0);
       setResultTotalPages(data.total_pages || 1);
       setResultFilters(overrides);
       setResultPage(1);
     } catch {}
-    finally { setRefineLoading(false); }
+    finally { if (seq === resultsSeq.current) setRefineLoading(false); }
   };
 
   const loadMoreResults = async () => {
-    if (resultPage >= resultTotalPages) return;
+    if (resultPage >= resultTotalPages || loadingMoreRef.current || refineLoading || loading) return;
+    const seq = resultsSeq.current;
+    loadingMoreRef.current = true;
     setLoadMoreLoading(true);
     try {
       const next = resultPage + 1;
       const merged = { ...baseFilters, ...resultFilters };
-      const data = await discoverWithFilters(contentType, merged, next);
+      const data = await fetchDiscoverPage(contentType, merged, next);
+      // A refinement/new search started while this page was loading - discard it
+      if (seq !== resultsSeq.current) return;
       setResults(prev => [...prev, ...(data.results || [])]);
       setResultPage(next);
     } catch {}
-    finally { setLoadMoreLoading(false); }
+    finally { loadingMoreRef.current = false; setLoadMoreLoading(false); }
   };
 
   useEffect(() => { loadMoreRef.current = loadMoreResults; });
@@ -391,9 +557,12 @@ export default function FindForm() {
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+    // Re-attach whenever the sentinel (re)renders; re-observing also re-checks visibility after each page loads
+  }, [step, loading, error, refineLoading, results.length > 0, loadMoreLoading, resultPage]);
 
   const restart = () => {
+    resultsSeq.current++; tasteSeq.current++;
+    setLoading(false); setRefineLoading(false); setTasteLoading(false);
     setStep('type'); setMood(null); setTone(null); setEra(null); setRating(null); setLength(null);
     setTastePool([]); setVisibleCount(INITIAL_VISIBLE); setTastePage(1); setTasteTotalPages(1);
     setTasteFilters({}); setTasteClientSort('default');
@@ -403,87 +572,17 @@ export default function FindForm() {
     setBaseFilters({}); setResultFilters({}); setResultPage(1); setResultTotalPages(1);
   };
 
-  const OptionCard = ({ emoji, label, subtitle, onClick }: {
-    emoji?: string; label: string; subtitle?: string; onClick: () => void;
-  }) => (
-    <button onClick={onClick}
-      className="group bg-gray-900 hover:bg-netflix-red border border-gray-700 hover:border-netflix-red rounded-xl p-5 text-left transition-all duration-200 hover:scale-[1.03] hover:shadow-2xl focus:outline-none focus:ring-2 focus:ring-netflix-red"
-    >
-      {emoji && <div className="text-3xl mb-2">{emoji}</div>}
-      <div className="text-white font-bold text-base leading-tight">{label}</div>
-      {subtitle && <div className="text-gray-400 text-xs mt-1 group-hover:text-red-100">{subtitle}</div>}
-    </button>
-  );
-
-  const StepHeader = ({ title, subtitle }: { title: string; subtitle?: string }) => (
-    <div className="text-center mb-8">
-      <h2 className="text-3xl md:text-4xl font-bold text-white mb-2">{title}</h2>
-      {subtitle && <p className="text-gray-400 text-base">{subtitle}</p>}
-    </div>
-  );
-
-  const TasteTile = ({ item, onToggle, onRemove }: { item: any; onToggle: () => void; onRemove?: () => void }) => {
-    const title = item.title || item.name;
-    const isSelected = selectedTitles.has(item.id);
-    return (
-      <div className="relative">
-        <button onClick={onToggle}
-          className={`relative w-full rounded-xl overflow-hidden transition-all duration-200 hover:scale-[1.03] focus:outline-none ${
-            isSelected ? 'ring-4 ring-netflix-red scale-[1.03]' : 'ring-1 ring-gray-700 hover:ring-gray-500'
-          }`}
-        >
-          {item.poster_path
-            ? <img src={getImageUrl(item.poster_path, 'w342')} alt={title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
-            : <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center"><i className="fas fa-image text-gray-600 text-3xl" /></div>
-          }
-          {isSelected && (
-            <div className="absolute inset-0 bg-netflix-red bg-opacity-20 flex items-start justify-end p-2">
-              <div className="bg-netflix-red rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
-                <i className="fas fa-check text-white text-xs" />
-              </div>
-            </div>
-          )}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-2">
-            <p className="text-white text-xs font-semibold truncate">{title}</p>
-          </div>
-        </button>
-        {onRemove && (
-          <button onClick={e => { e.stopPropagation(); onRemove(); }}
-            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-600 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors z-10"
-            aria-label="Remove"
-          >
-            <i className="fas fa-times text-white text-xs" />
-          </button>
-        )}
-      </div>
-    );
-  };
-
   // ─── Results view ───────────────────────────────────────────────────────────
   if (step === 'results') {
     const rf = resultFilters;
     const isMovie = contentType === 'movie';
     const sortBy = rf.sort_by || baseFilters.sort_by;
 
-    // Refinement chip helper
-    const Chip = ({ label, icon, active, onClick }: {
-      label: string; icon?: string; active: boolean; onClick: () => void;
-    }) => (
-      <button onClick={onClick}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all shrink-0 ${
-          active
-            ? 'bg-netflix-red border-netflix-red text-white'
-            : 'bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'
-        }`}
-      >
-        {icon && <i className={`fas ${icon} text-xs`} />}
-        {label}
-      </button>
-    );
-
     const setSort = (sort: string) => {
-      const already = sortBy === sort;
-      applyRefinement(already ? {} : { sort_by: sort });
+      const n = { ...rf };
+      if (rf.sort_by === sort) delete n.sort_by;
+      else n.sort_by = sort;
+      applyRefinement(n);
     };
 
     // Mutually exclusive cert chips — clears all cert keys then sets the chosen one
@@ -577,24 +676,15 @@ export default function FindForm() {
                 <Chip label="Show older" icon="fa-calendar-minus" active={rf[dateLteKey] === '2010-12-31'}
                   onClick={() => toggleDateFilter(dateLteKey, '2010-12-31')} />
 
-                <span className="text-gray-700 self-center">|</span>
-
-                {/* Age rating — 3 levels for both movies and TV */}
-                <span className="text-gray-700 self-center">|</span>
-                {isMovie ? <>
+                {/* Age rating — movies only (/discover/tv has no certification filter) */}
+                {isMovie && <>
+                  <span className="text-gray-700 self-center">|</span>
                   <Chip label="G / PG" icon="fa-child" active={rf['certification.lte'] === 'PG'}
                     onClick={() => toggleCertRange('PG', null)} />
                   <Chip label="Up to PG-13" icon="fa-user" active={rf['certification.lte'] === 'PG-13'}
                     onClick={() => toggleCertRange('PG-13', null)} />
                   <Chip label="R-rated" icon="fa-exclamation-circle" active={rf['certification.gte'] === 'R'}
                     onClick={() => toggleCertRange(null, 'R')} />
-                </> : <>
-                  <Chip label="G / PG (TV)" icon="fa-child" active={rf['certification.lte'] === 'TV-PG'}
-                    onClick={() => toggleCertRange('TV-PG', null)} />
-                  <Chip label="Teen (TV-14)" icon="fa-user" active={rf['certification.lte'] === 'TV-14'}
-                    onClick={() => toggleCertRange('TV-14', null)} />
-                  <Chip label="Mature (TV-MA)" icon="fa-exclamation-circle" active={rf['certification.gte'] === 'TV-MA'}
-                    onClick={() => toggleCertRange(null, 'TV-MA')} />
                 </>}
 
                 {/* Runtime */}
@@ -604,8 +694,8 @@ export default function FindForm() {
                   <Chip label="Under 2 hrs" icon="fa-clock" active={rf['with_runtime.lte'] === 120} onClick={() => toggleRuntime('with_runtime.lte', 120)} />
                   <Chip label="Over 2 hrs" icon="fa-hourglass-half" active={rf['with_runtime.gte'] === 120} onClick={() => toggleRuntime('with_runtime.gte', 120)} />
                 </> : <>
-                  <Chip label="Short episodes" subtitle="under 30 min" icon="fa-bolt" active={rf['with_runtime.lte'] === 30} onClick={() => toggleRuntime('with_runtime.lte', 30)} />
-                  <Chip label="Long episodes" subtitle="45 min+" icon="fa-hourglass-half" active={rf['with_runtime.gte'] === 45} onClick={() => toggleRuntime('with_runtime.gte', 45)} />
+                  <Chip label="Short episodes" icon="fa-bolt" active={rf['with_runtime.lte'] === 30} onClick={() => toggleRuntime('with_runtime.lte', 30)} />
+                  <Chip label="Long episodes" icon="fa-hourglass-half" active={rf['with_runtime.gte'] === 45} onClick={() => toggleRuntime('with_runtime.gte', 45)} />
                 </>}
 
                 {/* Language */}
@@ -618,14 +708,12 @@ export default function FindForm() {
                     else applyRefinement({ ...n, with_original_language: 'en' });
                   }}
                 />
-                <Chip label="Non-English" icon="fa-globe" active={rf.with_original_language === 'xx'}
+                <Chip label="Non-English" icon="fa-globe" active={!!rf.without_original_language}
                   onClick={() => {
-                    // TMDB doesn't support "not English" natively, so we cycle through popular non-English languages
-                    const already = rf.with_original_language === 'xx';
+                    // TMDB has no "not English" param; fetchDiscoverPage filters these out client-side
                     const n = { ...rf };
-                    if (already) { delete n.with_original_language; applyRefinement(n); }
+                    if (n.without_original_language) { delete n.without_original_language; applyRefinement(n); }
                     else {
-                      // Remove language filter and add vote_count boost to surface well-known non-English titles
                       delete n.with_original_language;
                       applyRefinement({ ...n, without_original_language: 'en' });
                     }
@@ -854,7 +942,7 @@ export default function FindForm() {
                 <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Added by you</p>
                 <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
                   {Array.from(pinnedItems.values()).map(item => (
-                    <TasteTile key={item.id} item={item} onToggle={() => toggleTasteSelection(item.id)} onRemove={() => removePinnedItem(item.id)} />
+                    <TasteTile key={item.id} item={item} isSelected={selectedTitles.has(item.id)} onToggle={() => toggleTasteSelection(item.id)} onRemove={() => removePinnedItem(item.id)} />
                   ))}
                 </div>
               </div>
@@ -867,17 +955,6 @@ export default function FindForm() {
               const tasteSortBy = tf.sort_by;
               const tasteDateGteKey = im ? 'primary_release_date.gte' : 'first_air_date.gte';
               const tasteDateLteKey = im ? 'primary_release_date.lte' : 'first_air_date.lte';
-
-              const TChip = ({ label, icon, active, onClick }: { label: string; icon?: string; active: boolean; onClick: () => void }) => (
-                <button onClick={onClick}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all shrink-0 ${
-                    active ? 'bg-netflix-red border-netflix-red text-white' : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'
-                  }`}
-                >
-                  {icon && <i className={`fas ${icon} text-xs`} />}
-                  {label}
-                </button>
-              );
 
               const setTasteSort = (sort: string) => {
                 const n = { ...tf };
@@ -932,16 +1009,11 @@ export default function FindForm() {
                       <TChip label="Show older" icon="fa-calendar-minus" active={tf[tasteDateLteKey] === '2010-12-31'}
                         onClick={() => toggleTasteDate(tasteDateLteKey, '2010-12-31')} />
 
-                      <span className="text-gray-700 self-center">|</span>
-
-                      {im ? <>
+                      {im && <>
+                        <span className="text-gray-700 self-center">|</span>
                         <TChip label="G / PG" icon="fa-child" active={tf['certification.lte'] === 'PG'} onClick={() => toggleTasteCert('PG', null)} />
                         <TChip label="Up to PG-13" icon="fa-user" active={tf['certification.lte'] === 'PG-13'} onClick={() => toggleTasteCert('PG-13', null)} />
                         <TChip label="R-rated" icon="fa-exclamation-circle" active={tf['certification.gte'] === 'R'} onClick={() => toggleTasteCert(null, 'R')} />
-                      </> : <>
-                        <TChip label="G / PG (TV)" icon="fa-child" active={tf['certification.lte'] === 'TV-PG'} onClick={() => toggleTasteCert('TV-PG', null)} />
-                        <TChip label="Teen (TV-14)" icon="fa-user" active={tf['certification.lte'] === 'TV-14'} onClick={() => toggleTasteCert('TV-14', null)} />
-                        <TChip label="Mature (TV-MA)" icon="fa-exclamation-circle" active={tf['certification.gte'] === 'TV-MA'} onClick={() => toggleTasteCert(null, 'TV-MA')} />
                       </>}
 
                       <span className="text-gray-700 self-center">|</span>
@@ -1003,24 +1075,11 @@ export default function FindForm() {
                     }
                   });
 
-                  const SortBtn = ({ id, label, icon }: { id: typeof tasteClientSort; label: string; icon: string }) => (
-                    <button
-                      onClick={() => setTasteClientSort(v => v === id ? 'default' : id)}
-                      className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold border transition-all ${
-                        tasteClientSort === id
-                          ? 'bg-netflix-red border-netflix-red text-white'
-                          : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'
-                      }`}
-                    >
-                      <i className={`fas ${icon} text-xs`} /> {label}
-                    </button>
-                  );
-
                   return (
                     <>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-4xl mb-4">
                         {sortedPool.slice(0, visibleCount).map((item: any) => (
-                          <TasteTile key={item.id} item={item} onToggle={() => toggleTasteSelection(item.id)} />
+                          <TasteTile key={item.id} item={item} isSelected={selectedTitles.has(item.id)} onToggle={() => toggleTasteSelection(item.id)} />
                         ))}
                       </div>
 
@@ -1036,11 +1095,11 @@ export default function FindForm() {
                           </button>
                         )}
                         <span className="text-gray-600 text-xs self-center">sort by:</span>
-                        <SortBtn id="popular"    label="Most popular"    icon="fa-fire" />
-                        <SortBtn id="rated"      label="Highest rated"   icon="fa-star" />
-                        <SortBtn id="recent"     label="Most recent"     icon="fa-calendar-alt" />
-                        <SortBtn id="mainstream" label="Mainstream"      icon="fa-crown" />
-                        <SortBtn id="obscure"    label="Hidden gems"     icon="fa-gem" />
+                        <SortBtn label="Most popular" icon="fa-fire" active={tasteClientSort === 'popular'} onClick={() => setTasteClientSort(v => v === 'popular' ? 'default' : 'popular')} />
+                        <SortBtn label="Highest rated" icon="fa-star" active={tasteClientSort === 'rated'} onClick={() => setTasteClientSort(v => v === 'rated' ? 'default' : 'rated')} />
+                        <SortBtn label="Most recent" icon="fa-calendar-alt" active={tasteClientSort === 'recent'} onClick={() => setTasteClientSort(v => v === 'recent' ? 'default' : 'recent')} />
+                        <SortBtn label="Mainstream" icon="fa-crown" active={tasteClientSort === 'mainstream'} onClick={() => setTasteClientSort(v => v === 'mainstream' ? 'default' : 'mainstream')} />
+                        <SortBtn label="Hidden gems" icon="fa-gem" active={tasteClientSort === 'obscure'} onClick={() => setTasteClientSort(v => v === 'obscure' ? 'default' : 'obscure')} />
                       </div>
                     </>
                   );
